@@ -14,14 +14,43 @@ import { limiter, norm, normNumber, safeJson } from "./util";
 
 /* ------------------------------------------------------------------ ingest */
 
-/** Phase 1: store files as they stream in (chunked uploads). */
-export async function storeBatchFiles(batchId: string, files: { name: string; buf: Uint8Array; rel?: string }[]) {
+/** Flatbed metadata that rides along with a crop (or marks the original sheet). */
+export interface SheetMeta {
+  kind?: "sheet" | "crop";
+  pairKey?: string;
+  side?: "front" | "back";
+  sheetName?: string;
+  sheetRel?: string;
+  sheetHash?: string;
+  cropIndex?: number;
+  cropBox?: unknown;
+}
+
+/** Phase 1: store files as they stream in (chunked uploads). Original flatbed sheets are kept but never become cards. */
+export async function storeBatchFiles(batchId: string, files: { name: string; buf: Uint8Array; rel?: string; meta?: SheetMeta }[]) {
   const out = [];
   for (const f of files) {
     const st = await storeUpload(batchId, f.buf, f.rel);
+    const m = f.meta ?? {};
     out.push(
       await db.uploadFile.create({
-        data: { batchId, name: f.name, rel: st.rel, hash: st.hash, phash: st.phash, mime: st.mime, size: f.buf.byteLength, readable: st.readable },
+        data: {
+          batchId,
+          name: f.name,
+          rel: st.rel,
+          hash: st.hash,
+          phash: st.phash,
+          mime: st.mime,
+          size: f.buf.byteLength,
+          readable: st.readable,
+          side: m.kind === "sheet" ? "sheet" : m.side,
+          pairKey: m.kind === "sheet" ? null : m.pairKey,
+          sheetName: m.sheetName,
+          sheetRel: m.sheetRel,
+          sheetHash: m.sheetHash,
+          cropIndex: m.cropIndex,
+          cropBox: m.cropBox ? JSON.stringify(m.cropBox) : null,
+        },
       }),
     );
   }
@@ -39,7 +68,10 @@ const PHASH_NEAR = 20; // of 256 bits (~8%): "same card, rescanned or recompress
 /** Phase 2: pair, dedupe, parse, and create cards for every not-yet-organized file in the batch. */
 export async function organizeBatch(batchId: string, input: OrganizeInput) {
   await db.batch.update({ where: { id: batchId }, data: { pairMode: input.pairMode } });
-  const stored = await db.uploadFile.findMany({ where: { batchId, cardId: null }, orderBy: { name: "asc" } });
+  const stored = await db.uploadFile.findMany({
+    where: { batchId, cardId: null, OR: [{ side: null }, { side: { not: "sheet" } }] },
+    orderBy: { name: "asc" },
+  });
 
   const groups = pairFiles(stored, input.pairMode);
   const manifest = input.manifest ? parseManifest(input.manifest) : [];
@@ -109,6 +141,13 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
         pairId: `${batchId.slice(-6)}-${String(already + created.length + 1).padStart(4, "0")}`,
         pile,
         readable: g.pile !== "unreadable",
+        sheetInfo:
+          front?.sheetName || back?.sheetName
+            ? JSON.stringify({
+                front: front?.sheetName ? { sheet: front.sheetName, rel: front.sheetRel, index: front.cropIndex } : null,
+                back: back?.sheetName ? { sheet: back.sheetName, rel: back.sheetRel, index: back.cropIndex } : null,
+              })
+            : null,
         game: m.fields.game ?? "Other",
         name: m.fields.name,
         setName: m.fields.setName,

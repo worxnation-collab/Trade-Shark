@@ -36,6 +36,7 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <BatchActions batchId={id} unprocessed={unprocessed} />
+          <Link href={`/admin/flatbed?batch=${id}`} className="btn-ghost">+ Flatbed sheet</Link>
           {cards[0] && <Link href={`/admin/review/${cards[0].id}${queueQuery(queue)}`} className="btn-dark">Review this list →</Link>}
         </div>
       </div>

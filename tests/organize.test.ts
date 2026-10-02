@@ -105,3 +105,25 @@ card002-front.jpg,"Lightning Bolt, Again",M10,146,NM,2,MTG`;
     expect(matchManifest(rows, "card002-front.png", "card002-back.png", 0)?.fields.name).toBe("Lightning Bolt, Again");
   });
 });
+
+describe("flatbed explicit pairs", () => {
+  it("pairs by sheet position, never by name or order, and keeps front-only crops out of Unpaired", () => {
+    const files = [
+      { name: "batch-002.jpg", readable: true, pairKey: "fb1-002", side: "front" },
+      { name: "batch-001-back.jpg", readable: true, pairKey: "fb1-001", side: "back" },
+      { name: "batch-001.jpg", readable: true, pairKey: "fb1-001", side: "front" },
+      { name: "batch-003.jpg", readable: true, pairKey: "fb1-003", side: "front" },
+      { name: "loose-front.jpg", readable: true },
+      { name: "loose-back.jpg", readable: true },
+    ];
+    const g = pairFiles(files);
+    const sheet = g.filter((x) => x.method === "sheet");
+    expect(sheet.map((x) => [x.front?.name, x.back?.name, x.pile])).toEqual([
+      ["batch-001.jpg", "batch-001-back.jpg", "none"],
+      ["batch-002.jpg", undefined, "none"],
+      ["batch-003.jpg", undefined, "none"],
+    ]);
+    // Loose feeder files still pair the old way.
+    expect(g.find((x) => x.front?.name === "loose-front.jpg")?.back?.name).toBe("loose-back.jpg");
+  });
+});

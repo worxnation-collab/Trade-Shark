@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 const NAV = [
   ["/admin", "Dashboard"],
   ["/admin/upload", "Upload"],
+  ["/admin/flatbed", "Flatbed"],
   ["/admin/batches", "Batches"],
   ["/admin/cards", "Inventory"],
   ["/admin/export", "Export"],

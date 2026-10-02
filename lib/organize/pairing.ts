@@ -3,6 +3,9 @@ import { sideOf, stemOf } from "./parse";
 export interface InFile {
   name: string; // original filename (may include folder path from a folder drop)
   readable: boolean;
+  /** Set by the flatbed split: crop N of the front sheet and crop N of the back sheet share a key. */
+  pairKey?: string | null;
+  side?: string | null;
 }
 
 export interface PairGroup<T extends InFile> {
@@ -10,7 +13,7 @@ export interface PairGroup<T extends InFile> {
   front?: T;
   back?: T;
   /** how the pair was formed */
-  method: "filename" | "order" | "single" | "unreadable";
+  method: "filename" | "order" | "single" | "unreadable" | "sheet";
   pile: "none" | "unpaired" | "unreadable";
 }
 
@@ -28,6 +31,19 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
  */
 export function pairFiles<T extends InFile>(files: T[], mode: PairMode = "auto"): PairGroup<T>[] {
   const out: PairGroup<T>[] = [];
+  // Flatbed crops arrive already paired by sheet position. Never re-pair them by name or order.
+  const explicit = new Map<string, { front?: T; back?: T }>();
+  for (const f of files) {
+    if (!f.pairKey || !f.readable) continue;
+    const g = explicit.get(f.pairKey) ?? {};
+    g[f.side === "back" ? "back" : "front"] = f;
+    explicit.set(f.pairKey, g);
+  }
+  for (const [key, g] of [...explicit.entries()].sort((a, b) => collator.compare(a[0], b[0]))) {
+    if (g.front && g.back) out.push({ pairKey: key, front: g.front, back: g.back, method: "sheet", pile: "none" });
+    else out.push({ pairKey: key, front: g.front ?? g.back, method: "sheet", pile: g.front ? "none" : "unpaired" });
+  }
+  files = files.filter((f) => !(f.pairKey && f.readable));
   const readable = files.filter((f) => f.readable);
   for (const f of files.filter((f) => !f.readable)) {
     out.push({ pairKey: stemOf(f.name), front: f, method: "unreadable", pile: "unreadable" });

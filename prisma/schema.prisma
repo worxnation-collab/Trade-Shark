@@ -37,6 +37,14 @@ model UploadFile {
   size      Int
   readable  Boolean
   cardId    String?
+  // Flatbed crops: explicit pairing (front/back crop N of the same sheet pair) and where the crop came from.
+  pairKey   String?
+  side      String? // front | back
+  sheetName String?
+  sheetRel  String?
+  sheetHash String?
+  cropIndex Int?
+  cropBox   String? // JSON corners in sheet pixels
   createdAt DateTime @default(now())
 
   @@index([batchId])
@@ -79,6 +87,7 @@ model Card {
   frontPhash     String? // 64-bit dHash (hex) for near-duplicate rescans
   backPhash      String?
   readable       Boolean @default(true)
+  sheetInfo      String? // JSON: { front: { sheet, rel, index, box }, back: {...} } for flatbed crops
   duplicateOfId  String?
 
   // identification

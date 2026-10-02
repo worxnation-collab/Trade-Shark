@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
+import { createBatch, organize, processAll, uploadItems } from "@/lib/client/upload";
 
 type Picked = { file: File; path: string };
 
@@ -71,57 +72,20 @@ export function UploadForm() {
     addPicked([...list].map((f) => ({ file: f, path: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name })));
   }
 
-  async function post(url: string, body?: BodyInit, json = false) {
-    const res = await fetch(url, { method: "POST", body, headers: json ? { "Content-Type": "application/json" } : undefined });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({ error: res.statusText }))).error ?? res.statusText);
-    return res.json();
-  }
-
   async function submit() {
     if (!files.length) return;
     setBusy(true);
     setError("");
     try {
-      const { id } = await post("/api/admin/batches", JSON.stringify({ name }), true);
-      // Small chunks keep each server call well under serverless time/size limits.
-      const CHUNK = 4;
-      for (let i = 0; i < files.length; i += CHUNK) {
-        setProgress({ label: "Uploading", done: i, total: files.length });
-        const chunk = files.slice(i, i + CHUNK);
-        const urls = await post(`/api/admin/batches/${id}/upload-urls`, JSON.stringify({ names: chunk.map((p) => p.path) }), true);
-        if (urls.mode === "direct") {
-          // Straight to private storage; the server only gets the paths.
-          await Promise.all(
-            chunk.map(async (p, j) => {
-              const res = await fetch(urls.items[j].signedUrl, {
-                method: "PUT",
-                headers: { "Content-Type": p.file.type || "application/octet-stream", "x-upsert": "true" },
-                body: p.file,
-              });
-              if (!res.ok) throw new Error(`Upload failed for ${p.path}: ${res.status}`);
-            }),
-          );
-          const items = chunk.map((p, j) => ({ name: p.path, rel: urls.items[j].rel }));
-          await post(`/api/admin/batches/${id}/files`, JSON.stringify({ items }), true);
-        } else {
-          const fd = new FormData();
-          for (const p of chunk) {
-            fd.append("files", p.file);
-            fd.append("names", p.path);
-          }
-          await post(`/api/admin/batches/${id}/files`, fd);
-        }
-      }
+      const id = await createBatch(name);
+      await uploadItems(
+        id,
+        files.map((p) => ({ file: p.file, name: p.path })),
+        (done, total) => setProgress({ label: "Uploading", done, total }),
+      );
       setProgress({ label: "Pairing + deduping", done: files.length, total: files.length });
-      const org = await post(`/api/admin/batches/${id}/organize`, JSON.stringify({ pairMode, manifest, pastedLines: lines }), true);
-      let remaining = org.cards as number;
-      const total = remaining;
-      while (remaining > 0) {
-        setProgress({ label: "Identifying + pricing", done: total - remaining, total });
-        const r = await post(`/api/admin/batches/${id}/process?limit=1`);
-        remaining = r.remaining;
-        if (r.processed === 0) break;
-      }
+      const org = await organize(id, { pairMode, manifest, pastedLines: lines });
+      await processAll(id, org.cards, (done, total) => setProgress({ label: "Identifying + pricing", done, total }));
       router.push(`/admin/batches/${id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

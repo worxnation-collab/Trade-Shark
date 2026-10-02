@@ -2,20 +2,21 @@
   "name": "trade-shark",
   "version": "0.1.0",
   "private": true,
-  "description": "Trade Shark — personal card shop and listing desk. Scan it. Price it. List it.",
+  "description": "Trade Shark \u2014 personal card shop and listing desk. Scan it. Price it. List it.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/copy-opencv.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "db:push": "prisma db push",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && node scripts/copy-opencv.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "@prisma/client": "^6.19.3",
     "@supabase/supabase-js": "^2.117.2",
+    "@techstark/opencv-js": "^4.5.2",
     "next": "^15.5.27",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -244,6 +244,24 @@ export function ReviewScreen(p: Props) {
             <div className="break-all"><b>Front</b> {c.frontOrigName ?? "—"}</div>
             <div className="break-all"><b>Back</b> {c.backOrigName ?? "—"}</div>
             <div className="break-all font-mono"><b className="font-sans">Hash</b> {c.frontHash?.slice(0, 16)}…</div>
+            {c.sheetInfo &&
+              (() => {
+                const si = JSON.parse(c.sheetInfo) as Record<string, { sheet: string; rel?: string; index?: number } | null>;
+                return (["front", "back"] as const).map((k) =>
+                  si[k] ? (
+                    <div key={k} className="break-all">
+                      <b>Flatbed {k}</b> crop {si[k]!.index} of{" "}
+                      {si[k]!.rel ? (
+                        <a className="underline" href={`/api/admin/images/${si[k]!.rel}`} target="_blank" rel="noreferrer">
+                          {si[k]!.sheet}
+                        </a>
+                      ) : (
+                        si[k]!.sheet
+                      )}
+                    </div>
+                  ) : null,
+                );
+              })()}
             <div className="flex flex-wrap gap-1 pt-1">
               <StatusChip status={c.status} />
               <PileChip pile={c.pile} />
