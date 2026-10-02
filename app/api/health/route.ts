@@ -19,6 +19,9 @@ export async function GET() {
           : /environment variable not found/.test(m)
             ? "missing_env"
             : "other";
-    return NextResponse.json({ db: "error", kind }, { status: 503 });
+    // Prisma error codes (P1000 auth, P1001 unreachable, ...) are safe to show and help diagnose setup.
+    const code = (e as { errorCode?: string }).errorCode ?? (m.match(/\bp\d{4}\b/)?.[0]?.toUpperCase() ?? null);
+    const tenant = /tenant or user not found/.test(m);
+    return NextResponse.json({ db: "error", kind: tenant ? "wrong_pooler_host_or_user" : kind, code }, { status: 503 });
   }
 }
