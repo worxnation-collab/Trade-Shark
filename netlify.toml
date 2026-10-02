@@ -1,7 +1,10 @@
-# Netlify picks up the Next.js runtime automatically.
+# Next.js on Netlify via the official runtime plugin.
 [build]
   command = "npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
