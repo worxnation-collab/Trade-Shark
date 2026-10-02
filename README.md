@@ -1,1 +1,122 @@
-# Trade-Shark
+# Trade Shark
+
+**Scan it. Price it. List it.**
+
+My personal card shop and listing desk. One seller (me). Dump a scanner or phone batch in; Trade Shark pairs fronts and backs, dedupes against inventory, identifies every card with every source it can reach, prices it from every source it can reach, and waits for me to review. Nothing goes live on eBay or TCGplayer by itself.
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env        # set TRADE_SHARK_PASSWORD at minimum
+npx prisma db push          # creates prisma/trade-shark.db
+npm run dev                 # http://localhost:3000/admin
+```
+
+Production: `npm run build && npm start`. Back up `prisma/trade-shark.db` and `data/` — that's the whole shop.
+
+## Workflow
+
+1. **Upload** (`/admin/upload`): drop a folder or a pile of files, plus an optional CSV manifest and/or pasted lines (one card per line, in order). Files go up in small chunks, so big scanner dumps are fine.
+2. **Organize** runs automatically:
+   - Pairs fronts and backs by filename (`card001-front`/`card001-back`, `card001_f`/`card001_b`) or front-then-back order. Pick *Fronts only* for phone batches with no backs.
+   - Dedupes against existing inventory by exact image hash (SHA-256), near-identical image (256-bit dHash, catches rescans), and name + set + number. Fronts only — card backs look the same across a game.
+   - Splits **Unreadable** (not an image, HEIC that can't be decoded), **Unpaired**, **Likely bulk** (`bulk`, `common`, `energy` in the name or `bulk` in the manifest) and **Duplicate** files into review piles. Nothing is dropped.
+   - Parses year, set, number, name, variant, and grade from the filename, manifest, or pasted line. Detects game: Pokemon, Sports, Magic, Other.
+   - Every card keeps original filename(s), hashes, batch id, pair id, winning source, and source confidence.
+3. **Identify + price** each card (progress bar; re-runnable per card or per batch).
+4. **Review** (`/admin/review/:id`): large front, back thumbnail, catalog image, form on the right, price panel. Uncertain fields are outlined in coral.
+   - <kbd>J</kbd>/<kbd>K</kbd> next/previous, <kbd>Enter</kbd> save + next, <kbd>F</kbd> flip front/back.
+   - Winning source plus alternates; **Use** an alternate to swap identity.
+   - Saving confirms the card: priced ≥ minimum → **Ready**, under → **Bulk Hold**, no price → **Identified**.
+5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
+6. **Shop** (`/`): grid + card page for For Sale cards (Ready or Listed). "Buy on eBay" once a URL is pasted; otherwise a mailto to `SHOP_EMAIL`.
+
+Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Archived`, plus `Bulk Hold`.
+
+## Environment keys
+
+| Key | Required | What it does |
+|---|---|---|
+| `TRADE_SHARK_PASSWORD` | **yes** | Password for `/admin` and `/api/admin/*`. Unset = nobody can sign in. Changing it logs out every session. |
+| `DATABASE_URL` | yes (default in `.env.example`) | SQLite file, e.g. `file:./trade-shark.db` (relative to `prisma/`). |
+| `DATA_DIR` | no (default `./data`) | Scans are stored in `DATA_DIR/images/<batch>/`. Served only through authenticated routes. |
+| `SITE_URL` | no | Public shop URL. Fills eBay `PicURL` and TCGplayer photo URLs with the public image route. |
+| `SHOP_EMAIL` | no | Contact page and "Email to buy" links. |
+| `SHOP_OWNER_NAME` | no | Shown on `/about`. |
+| `POKEMONTCG_API_KEY` | no | Raises Pokemon TCG API rate limits. The API works without it. |
+| `ANTHROPIC_API_KEY` | no | Vision identification with Claude (front + back). Tried first. |
+| `ANTHROPIC_MODEL` | no (default `claude-opus-5-5`) | Model for vision calls. |
+| `OPENAI_API_KEY` | no | Vision identification with OpenAI, used when Claude isn't configured or fails. |
+| `OPENAI_MODEL` | no (default `gpt-4o-mini`) | Model for OpenAI vision calls. |
+| `VISION_CONCURRENCY` | no (default `2`) | Max simultaneous vision calls. |
+| `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
+| `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
+| `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
+
+Missing keys skip that source and record why (`Source log` on each card, `Sources` on the dashboard). They never crash a batch.
+
+### What works with no API keys at all
+
+- Upload, pairing, dedupe, review piles, filename/manifest/pasted-line parsing, game detection.
+- **Pokemon TCG API** identification + TCGplayer market/low/mid/high prices (free, no key needed).
+- **Scryfall** identification + `usd` / `usd_foil` retail asks for Magic.
+- **Pasted sold comps**: paste a block from an eBay sold search (or any "title … $price" list) on the review screen. Junk is filtered out (lots, proxies, graded-vs-raw, wrong number, outliers) and shown struck through with a reason.
+- All pricing rules, fee math, Bulk Hold, both CSV exports, dashboard, public shop.
+
+Without vision keys, identification leans on filenames, manifests, and pasted lines, so name your files (`1999_base-set_4-102_charizard_holo-front.jpg`) or bring a manifest when you can.
+
+### eBay: sold comps vs active listings
+
+eBay's Browse API only returns **active** listings. Real sold comps come from the **Marketplace Insights API**, which eBay grants per app. Trade Shark tries Insights first; if your keys don't have it, it falls back to Browse and saves the results as **eBay active asks** (`retail_ask`). Asks are shown for context but never count as sold comps. Pasted comps always work.
+
+## Confidence rule
+
+- Every source returns a confidence from 0 to 1, with per-field confidence where it has one.
+- Sources merge into one winner plus alternates. A catalog match (Pokemon TCG API / Scryfall) that agrees with an independent read (vision, manifest, pasted line, filename) gets a boost. Disagreement flags **ID conflict**.
+- Vision self-reported confidence is capped at 0.9. Filename parsing caps around 0.55, manifests at 0.85.
+- **Threshold: 0.8** (change it in Settings). Under the threshold a card stays in **Inbox**, its shaky fields are highlighted, and it never advances on its own.
+- At or over the threshold it may auto-advance to **Identified** and **Priced**. **Ready** only happens when you save the card in review. Listing only happens when you export and publish.
+
+## Pricing rule
+
+The price panel shows every source with its date, kind (sold comp / market / retail ask / Manual), and raw title. Only the latest fetch per source counts; older quotes stay as history.
+
+Suggested list price (editable in Settings):
+
+1. **Median of clean sold comps** (eBay sold + pasted) if there are **3+**.
+2. Else **TCGplayer market** (Pokemon, via the Pokemon TCG API).
+3. Else blank. Optional extra fallback: Scryfall retail ask (off by default).
+4. **Condition multipliers** (NM 1, LP 0.85, MP 0.7, HP 0.5, DMG 0.3) apply only when the source price is NM. TCGplayer market and Scryfall are treated as NM; sold comps count as NM only if every kept title says NM.
+5. **Manual override always wins** and is labeled Manual.
+6. Under the **minimum list price ($2)** → **Bulk Hold**.
+
+Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Local 0. Shipping profiles: standard $1.00, bubble mailer $4.50, slab $6.00. The panel shows net after fees and shipping for each channel.
+
+**Price conflict** is flagged when source headlines disagree by more than 1.5×.
+
+**Reprice batch** refreshes quotes older than 24 hours (configurable). **Refresh all sources** on a card ignores the window.
+
+## Exports
+
+- **eBay** (`trade-shark-ebay-*.csv`): Seller Hub Reports / File Exchange format, `Action=Draft`. Upload under Seller Hub → Reports → Uploads; the drafts stay drafts until you publish them. Category ids and business-policy names are in Settings. The ungraded "Card Condition" descriptor codes come from eBay's trading-card condition policy; check them against a fresh Seller Hub template before a large upload.
+- **TCGplayer** (`trade-shark-tcgplayer-*.csv`): Pokemon and Magic only. `TCGplayer Id` is filled for Magic (from Scryfall); Pokemon rows match by set/name/number.
+
+## Images and privacy
+
+- Scans live in `DATA_DIR/images`. `/api/admin/images/*` requires the password.
+- The public shop uses `/api/shop/image/:cardId/:side`, which serves a scan **only while its card is Ready or Listed**. Inbox, Sold, and Archived cards 404.
+- TIFF scans are converted to JPEG on upload so browsers can show them.
+
+## Adding a source
+
+Write an adapter in `lib/sources/` that implements `IdentifyAdapter` or `PriceAdapter` (`lib/sources/types.ts`), returns `{ status, reason, data }`, and never throws. Register it in `lib/sources/index.ts`. The pipeline records a `SourceRun` row for every attempt and persists every quote.
+
+## Development
+
+```bash
+npm test          # vitest: parsing, pairing, comps filtering, pricing rule, fees, exports, dHash
+npm run lint      # tsc --noEmit
+```
+
+Layout: `lib/organize` (pairing, parsing, manifest), `lib/sources` (adapters), `lib/identify` (merge), `lib/pricing` (rule + fees), `lib/listing` (templates + CSV), `lib/pipeline.ts` (ingest → identify → price), `app/(shop)` public site, `app/admin` desk, `app/api` routes.

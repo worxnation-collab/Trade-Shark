@@ -1,0 +1,172 @@
+// Trade Shark — single seller. No users/sellers tables on purpose.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Batch {
+  id        String   @id @default(cuid())
+  name      String
+  notes     String?
+  pairMode  String   @default("auto") // auto | filename | order | fronts
+  createdAt DateTime @default(now())
+  cards     Card[]
+  files     UploadFile[]
+}
+
+// Every file I dropped, kept even if it never becomes a card.
+model UploadFile {
+  id        String   @id @default(cuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name      String // original filename incl. folder path
+  rel       String // path under data/images
+  hash      String
+  phash     String?
+  mime      String
+  size      Int
+  readable  Boolean
+  cardId    String?
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+}
+
+// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold
+// pile:   none | unpaired | unreadable | likely_bulk | duplicate
+model Card {
+  id      String @id @default(cuid())
+  batchId String
+  batch   Batch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  pairId  String
+  status  String @default("Inbox")
+  pile    String @default("none")
+
+  // identity
+  game      String  @default("Other") // Pokemon | Sports | Magic | Other
+  name      String?
+  setName   String?
+  setCode   String?
+  number    String?
+  year      String?
+  variant   String?
+  rarity    String?
+  player    String?
+  team      String?
+  condition String  @default("NM") // NM | LP | MP | HP | DMG
+  graded    String? // e.g. "PSA 10" — empty means raw
+  quantity  Int     @default(1)
+  cost      Float?
+  notes     String?
+
+  // images + provenance
+  frontImage     String?
+  backImage      String?
+  frontOrigName  String?
+  backOrigName   String?
+  frontHash      String?
+  backHash       String?
+  frontPhash     String? // 64-bit dHash (hex) for near-duplicate rescans
+  backPhash      String?
+  readable       Boolean @default(true)
+  duplicateOfId  String?
+
+  // identification
+  identSource      String? // filename | manifest | pasted | pokemontcg | scryfall | vision:anthropic | vision:openai | manual
+  sourceConfidence Float   @default(0)
+  fieldConfidence  String  @default("{}") // JSON: { name: 0.9, number: 0.4, ... }
+  identAlternates  String  @default("[]") // JSON: IdentCandidate[]
+  seedCandidates   String  @default("[]") // JSON: what the upload itself said (filename / manifest / pasted line)
+  processedAt      DateTime?
+  confirmedAt      DateTime? // set when I save the card in review
+  identConflict    Boolean @default(false)
+  catalogId        String? // pokemontcg id or scryfall id
+  catalogImage     String?
+  tcgplayerId      String?
+  tcgplayerUrl     String?
+
+  // pricing
+  suggestedPrice  Float?
+  suggestedSource String?
+  manualPrice     Float?
+  listPrice       Float?
+  priceConflict   Boolean @default(false)
+  pastedComps     String?
+  shippingProfile String  @default("standard") // standard | bubble | slab
+  pricedAt        DateTime?
+
+  // listing
+  title         String?
+  description   String?
+  listedChannel String? // ebay | tcgplayer | local
+  listedUrl     String?
+  listedAt      DateTime?
+  exportedAt    DateTime?
+  soldPrice     Float?
+  soldChannel   String?
+  soldAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes PriceQuote[]
+  runs   SourceRun[]
+
+  @@index([batchId])
+  @@index([status])
+  @@index([frontHash])
+  @@index([backHash])
+}
+
+// Every price we ever saw. Never overwritten; the panel shows the latest per source.
+model PriceQuote {
+  id        String   @id @default(cuid())
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source    String // pokemontcg | cardmarket | scryfall | ebay_sold | ebay_active | pasted | manual
+  kind      String // market | retail_ask | sold_comp | manual | summary
+  label     String? // market | low | mid | high | usd | usd_foil | comp | median
+  amount    Float
+  currency  String   @default("USD")
+  condition String? // NM when the source price is NM; null when unknown
+  rawTitle  String?
+  url       String?
+  soldAt    DateTime?
+  excluded  Boolean  @default(false)
+  excludeReason String?
+  fetchedAt DateTime @default(now())
+
+  @@index([cardId, source])
+}
+
+// One row per source attempt, so every skip/failure has a recorded reason.
+model SourceRun {
+  id         String   @id @default(cuid())
+  cardId     String
+  card       Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source     String
+  phase      String // identify | price
+  status     String // ok | no_match | skipped | error
+  reason     String?
+  durationMs Int      @default(0)
+  at         DateTime @default(now())
+
+  @@index([cardId])
+}
+
+model VisionCache {
+  hash      String   @id // sha256 of front(+back) bytes + provider
+  provider  String
+  result    String
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}

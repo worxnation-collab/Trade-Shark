@@ -1,0 +1,135 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import type { Settings } from "@/lib/settings";
+import { CONDITIONS, SHIPPING_PROFILES } from "@/lib/types";
+
+// Defined outside the form so inputs keep focus while typing.
+function N({ label, value, onChange, step = "0.01", hint }: { label: string; value: number; onChange: (n: number) => void; step?: string; hint?: string }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input className="input" type="number" step={step} value={value} onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />
+      {hint && <p className="mt-0.5 text-[11px] text-navy/50">{hint}</p>}
+    </div>
+  );
+}
+
+export function SettingsForm({ initial }: { initial: Settings }) {
+  const router = useRouter();
+  const [s, setS] = useState<Settings>(initial);
+  const [msg, setMsg] = useState("");
+  const num = (v: string) => (v === "" ? 0 : Number(v));
+
+  async function save(extra: Record<string, unknown> = {}) {
+    setMsg("Saving…");
+    const res = await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...s, recompute: true, ...extra }) });
+    const j = await res.json();
+    if (!res.ok) return setMsg(j.error ?? "Failed");
+    setS(j);
+    setMsg("Saved. Suggested prices recomputed from stored quotes.");
+    router.refresh();
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Identification</h2>
+        <N label="Confidence threshold" step="0.05" value={s.confidenceThreshold} onChange={(v) => setS({ ...s, confidenceThreshold: v })} hint="Cards under this never auto-advance past Inbox; their shaky fields are highlighted." />
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Suggested list price rule</h2>
+        <div className="grid grid-cols-2 gap-2">
+          <N label="Min sold comps for median" step="1" value={s.minComps} onChange={(v) => setS({ ...s, minComps: v })} />
+          <N label="Minimum list price ($)" value={s.minListPrice} onChange={(v) => setS({ ...s, minListPrice: v })} hint="Below this → Bulk Hold" />
+          <N label="Stale after (hours)" step="1" value={s.staleHours} onChange={(v) => setS({ ...s, staleHours: v })} />
+          <N label="Conflict ratio" step="0.1" value={s.conflictRatio} onChange={(v) => setS({ ...s, conflictRatio: v })} hint="Flag when sources differ by more than this ×" />
+        </div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={s.useTcgMarket} onChange={(e) => setS({ ...s, useTcgMarket: e.target.checked })} /> Fall back to TCGplayer market when comps &lt; minimum</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={s.useRetailAskFallback} onChange={(e) => setS({ ...s, useRetailAskFallback: e.target.checked })} /> Then fall back to Scryfall retail ask (off by default — asks aren&apos;t sales)</label>
+        <div>
+          <label className="label">Condition multipliers (applied only to NM source prices)</label>
+          <div className="grid grid-cols-5 gap-2">
+            {CONDITIONS.map((c) => (
+              <div key={c}>
+                <div className="text-xs font-semibold">{c}</div>
+                <input className="input" type="number" step="0.05" value={s.conditionMultipliers[c]} onChange={(e) => setS({ ...s, conditionMultipliers: { ...s.conditionMultipliers, [c]: num(e.target.value) } })} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Fees + shipping</h2>
+        {(["ebay", "tcgplayer", "local"] as const).map((ch) => (
+          <div key={ch} className="grid grid-cols-[6rem_1fr_1fr] items-end gap-2">
+            <div className="pb-2 text-sm font-semibold">{ch}</div>
+            <N label="% of sale" value={s.fees[ch].pct} onChange={(v) => setS({ ...s, fees: { ...s.fees, [ch]: { ...s.fees[ch], pct: v } } })} />
+            <N label="+ fixed $" value={s.fees[ch].fixed} onChange={(v) => setS({ ...s, fees: { ...s.fees, [ch]: { ...s.fees[ch], fixed: v } } })} />
+          </div>
+        ))}
+        <div className="grid grid-cols-3 gap-2">
+          {SHIPPING_PROFILES.map((p) => (
+            <N key={p} label={`${p === "bubble" ? "bubble mailer" : p} $`} value={s.shipping[p]} onChange={(v) => setS({ ...s, shipping: { ...s.shipping, [p]: v } })} />
+          ))}
+        </div>
+      </section>
+
+      <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Listing templates</h2>
+        <div>
+          <label className="label">Title template</label>
+          <input className="input font-mono text-xs" value={s.titleTemplate} onChange={(e) => setS({ ...s, titleTemplate: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Description template</label>
+          <textarea className="input h-40 font-mono text-xs" value={s.descriptionTemplate} onChange={(e) => setS({ ...s, descriptionTemplate: e.target.value })} />
+          <p className="mt-0.5 text-[11px] text-navy/50">
+            Placeholders: {"{name} {player} {team} {set} {number} {year} {variant} {variant_line} {rarity} {game} {grade} {condition} {condition_long} {shop_note}"}
+          </p>
+        </div>
+        <div>
+          <label className="label">Trade Shark note</label>
+          <input className="input" value={s.shopNote} onChange={(e) => setS({ ...s, shopNote: e.target.value })} />
+        </div>
+      </section>
+
+      <section className="card space-y-3 p-4 lg:col-span-2">
+        <h2 className="font-bold">eBay draft defaults</h2>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {(["Pokemon", "Magic", "Sports", "Other"] as const).map((g) => (
+            <div key={g}>
+              <label className="label">{g} category id</label>
+              <input className="input" value={s.ebayCategory[g]} onChange={(e) => setS({ ...s, ebayCategory: { ...s.ebayCategory, [g]: e.target.value } })} />
+            </div>
+          ))}
+          <div>
+            <label className="label">Item location</label>
+            <input className="input" value={s.ebayLocation} onChange={(e) => setS({ ...s, ebayLocation: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Shipping policy name</label>
+            <input className="input" value={s.ebayShippingProfileName} onChange={(e) => setS({ ...s, ebayShippingProfileName: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Return policy name</label>
+            <input className="input" value={s.ebayReturnProfileName} onChange={(e) => setS({ ...s, ebayReturnProfileName: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Payment policy name</label>
+            <input className="input" value={s.ebayPaymentProfileName} onChange={(e) => setS({ ...s, ebayPaymentProfileName: e.target.value })} />
+          </div>
+        </div>
+      </section>
+
+      <div className="flex items-center gap-3 lg:col-span-2">
+        <button className="btn-primary" onClick={() => save()}>Save settings</button>
+        <button className="btn-ghost" onClick={() => confirm("Reset all settings to defaults?") && save({ reset: true })}>Reset to defaults</button>
+        {msg && <span className="text-sm text-navy/60">{msg}</span>}
+      </div>
+    </div>
+  );
+}
