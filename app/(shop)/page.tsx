@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/SharkFin";
+import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { db } from "@/lib/db";
 import { cardLabel } from "@/lib/shop";
 import { FOR_SALE } from "@/lib/types";
@@ -9,7 +10,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ShopPage({ searchParams }: { searchParams: Promise<{ game?: string; q?: string }> }) {
   const { game, q } = await searchParams;
-  const cards = await db.card.findMany({
+  let cards;
+  try {
+    cards = await db.card.findMany({
     where: {
       status: { in: FOR_SALE },
       listPrice: { not: null },
@@ -20,7 +23,11 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
     },
     orderBy: { updatedAt: "desc" },
     take: 200,
-  });
+    });
+  } catch (e) {
+    console.error("shop query failed", e);
+    return <ShopUnavailable />;
+  }
   return (
     <div className="space-y-6">
       <section className="rounded-xl bg-navy px-6 py-8 text-sand">

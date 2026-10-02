@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { db } from "@/lib/db";
 import { CONDITION_LONG } from "@/lib/listing/templates";
 import { cardLabel, mailtoFor } from "@/lib/shop";
@@ -10,7 +11,13 @@ export const dynamic = "force-dynamic";
 
 export default async function CardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const c = await db.card.findUnique({ where: { id } });
+  let c;
+  try {
+    c = await db.card.findUnique({ where: { id } });
+  } catch (e) {
+    console.error("card query failed", e);
+    return <ShopUnavailable />;
+  }
   if (!c || !FOR_SALE.includes(c.status as never) || c.listPrice == null) notFound();
   const ebay = c.listedChannel === "ebay" && c.listedUrl ? c.listedUrl : null;
   const href = ebay ?? c.listedUrl ?? mailtoFor(c);

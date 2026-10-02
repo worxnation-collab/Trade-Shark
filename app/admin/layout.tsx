@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/SharkFin";
+import { missingConfig } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,26 @@ const NAV = [
   ["/admin/settings", "Settings"],
 ] as const;
 
+function SetupNeeded({ missing }: { missing: { key: string; why: string }[] }) {
+  return (
+    <div className="card mx-auto max-w-2xl space-y-3 p-6">
+      <h1 className="text-xl font-extrabold">Finish connecting the desk</h1>
+      <p className="text-sm text-navy/70">
+        Add these in Netlify → trade-shark → Project configuration → Environment variables, then redeploy.
+      </p>
+      <ul className="space-y-2 text-sm">
+        {missing.map((m) => (
+          <li key={m.key}>
+            <code className="rounded bg-sand-2 px-1.5 py-0.5 font-semibold">{m.key}</code> <span className="text-navy/60">{m.why}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const missing = missingConfig();
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-navy">
@@ -35,7 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-[1400px] px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-[1400px] px-4 py-6">{missing.length ? <SetupNeeded missing={missing} /> : children}</main>
     </div>
   );
 }
