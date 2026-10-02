@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MuteToggle } from "@/components/Feel";
 import { Wordmark } from "@/components/SharkFin";
 import { missingConfig } from "@/lib/env";
 
@@ -49,6 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </Link>
             ))}
             <Link href="/" className="rounded px-2.5 py-1 text-teal hover:bg-white/10">Shop ↗</Link>
+            <MuteToggle />
             <form action="/api/logout" method="post">
               <button className="rounded px-2.5 py-1 text-sand/60 hover:text-coral">Lock</button>
             </form>

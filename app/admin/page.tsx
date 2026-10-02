@@ -21,7 +21,7 @@ export default async function Dashboard() {
   const sold = cards.filter((c) => c.status === "Sold" && c.soldPrice != null);
   const soldProfit = sold.reduce((a, c) => {
     const ch = (c.soldChannel || c.listedChannel || "ebay") as Channel;
-    return a + netAfterFees(c.soldPrice!, ["ebay", "tcgplayer", "local"].includes(ch) ? ch : "ebay", c.shippingProfile as ShippingProfile, s).net - (c.cost ?? 0);
+    return a + netAfterFees(c.soldPrice!, ["ebay", "tcgplayer", "stripe", "local"].includes(ch) ? ch : "ebay", c.shippingProfile as ShippingProfile, s).net - (c.cost ?? 0);
   }, 0);
   const missingPrice = live.filter((c) => c.readable && c.listPrice == null && !["Sold"].includes(c.status)).length;
   const conflicts = live.filter((c) => c.priceConflict || c.identConflict).length;
@@ -36,14 +36,17 @@ export default async function Dashboard() {
         <div className="mt-1 text-2xl font-extrabold">{value}</div>
       </div>
     );
-    return href ? <Link href={href} className="block hover:brightness-95">{inner}</Link> : inner;
+    return href ? <Link href={href} className="lift block rounded-lg">{inner}</Link> : inner;
   };
 
   if (!cards.length)
     return (
       <EmptyState title="Nothing in the tank yet">
-        <p>Drop a scanner or phone batch in and Trade Shark will pair, dedupe, identify, and price it.</p>
-        <Link href="/admin/upload" className="btn-primary mt-4">Upload a batch</Link>
+        <p>Drop in a scanner, phone, or flatbed batch to get started.</p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Link href="/admin/upload" className="btn-primary">Upload a batch</Link>
+          <Link href="/admin/flatbed" className="btn-ghost">Flatbed split</Link>
+        </div>
       </EmptyState>
     );
 
@@ -55,7 +58,7 @@ export default async function Dashboard() {
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
         {STATUSES.map((st) => (
-          <Link key={st} href={`/admin/cards?status=${st}`} className="card block p-3 hover:border-teal">
+          <Link key={st} href={`/admin/cards?status=${st}`} className="card lift block p-3 hover:border-teal">
             <StatusChip status={st} />
             <div className="mt-2 text-2xl font-extrabold">{by[st]}</div>
           </Link>

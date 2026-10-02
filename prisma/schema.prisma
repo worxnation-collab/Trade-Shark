@@ -115,6 +115,15 @@ model Card {
   shippingProfile String  @default("standard") // standard | bubble | slab
   pricedAt        DateTime?
 
+  // Stripe Payment Link (direct buy). Created before a card can become Ready.
+  paymentLinkId        String?
+  paymentLinkUrl       String?
+  paymentLinkCreatedAt DateTime?
+  paymentLinkAmount    Float? // price baked into the link; a different list price means regenerate
+  paymentLinkActive    Boolean  @default(false)
+  stripeSessionId      String? // checkout session that sold it (webhook)
+  paymentLinkHistory   String   @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
+
   // listing
   title         String?
   description   String?
@@ -135,6 +144,7 @@ model Card {
   @@index([batchId])
   @@index([status])
   @@index([frontHash])
+  @@index([paymentLinkId])
   @@index([backHash])
 }
 

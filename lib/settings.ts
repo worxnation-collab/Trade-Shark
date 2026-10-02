@@ -14,7 +14,7 @@ export interface Settings {
   useTcgMarket: boolean;
   useRetailAskFallback: boolean;
   conditionMultipliers: Record<Condition, number>;
-  fees: { ebay: FeeRule; tcgplayer: FeeRule; local: FeeRule };
+  fees: { ebay: FeeRule; tcgplayer: FeeRule; stripe: FeeRule; local: FeeRule };
   shipping: Record<ShippingProfile, number>;
   staleHours: number;
   /** Price sources disagree when max/min of their headline prices exceeds this ratio. */
@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fees: {
     ebay: { pct: 13.25, fixed: 0.4 },
     tcgplayer: { pct: 10.25, fixed: 0.3 },
+    stripe: { pct: 2.9, fixed: 0.3 },
     local: { pct: 0, fixed: 0 },
   },
   shipping: { standard: 1.0, bubble: 4.5, slab: 6.0 },

@@ -138,6 +138,10 @@ export function pairFiles<T extends InFile>(
   }
 
   const sorted = [...plain].sort((a, b) => collator.compare(a.name, b.name));
+  // Backs this batch already names (-back, _b, flatbed backs) also teach Auto what a back looks like.
+  const batchBacks = [...tokened.values()].map((g) => g.back?.phash).filter((h): h is string => !!h);
+  for (const g of explicit.values()) if (g.back?.phash) batchBacks.push(g.back.phash);
+  opts = { ...opts, knownBacks: [...(opts.knownBacks ?? []), ...batchBacks] };
   if (mode === "auto" && sorted.length) {
     const { decision, looksBack } = detectBacks(sorted, opts.knownBacks);
     opts.onDecision?.(decision);

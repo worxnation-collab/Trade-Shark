@@ -2,7 +2,7 @@
   "name": "trade-shark",
   "version": "0.1.0",
   "private": true,
-  "description": "Trade Shark \u2014 personal card shop and listing desk. Scan it. Price it. List it.",
+  "description": "Trade Shark — personal card shop and listing desk. Scan it. Price it. List it.",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/copy-opencv.mjs && prisma generate && next build",
@@ -20,7 +20,8 @@
     "next": "^15.5.27",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.16.1",

@@ -4,7 +4,8 @@ import { guarded } from "@/lib/api";
 import { db } from "@/lib/db";
 import { applySuggestion, priceCard, relinkCatalog } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
-import { CONDITIONS, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
+import { issuePaymentLink, needsLink, retirePaymentLink } from "@/lib/payLink";
+import { CONDITIONS, FOR_SALE, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -62,9 +63,9 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   }
 
   if (!b.alternate && identityChanged) card = await relinkCatalog(card);
-  if (b.alternate || identityChanged) card = await priceCard(card, s);
-  else if ("pastedComps" in b && card.pastedComps !== before.pastedComps) card = await priceCard(card, s, { sources: ["pasted"] });
-  else card = await applySuggestion(id, s);
+  if (b.alternate || identityChanged) card = await priceCard(card, s, { allowLivePriceChange: true });
+  else if ("pastedComps" in b && card.pastedComps !== before.pastedComps) card = await priceCard(card, s, { sources: ["pasted"], allowLivePriceChange: true });
+  else card = await applySuggestion(id, s, { allowLivePriceChange: true });
 
   // Status moves only from my hand.
   let status = card.status;
@@ -75,15 +76,32 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   }
   const extra: Prisma.CardUpdateInput = {};
   if (card.listedUrl && card.listedUrl !== before.listedUrl && ["Ready", "Priced"].includes(status)) status = "Listed";
-  if (status === "Listed" && !card.listedAt) extra.listedAt = new Date();
   if (card.soldPrice != null && before.soldPrice == null && status !== "Sold") status = "Sold";
+
+  // A card only goes up for sale with a working pay link: create it before the status flips.
+  let linkError: string | undefined;
+  if (FOR_SALE.includes(status as never) && needsLink(card)) {
+    const r = await issuePaymentLink(card, s);
+    card = r.card;
+    if (!r.ok) {
+      linkError = r.error;
+      // Stay out of the shop: back to Priced (or Bulk Hold if it's under the minimum).
+      status = before.status === "Listed" || before.status === "Ready" ? "Priced" : card.listPrice != null && card.listPrice < s.minListPrice ? "BulkHold" : "Priced";
+    }
+  } else if (!FOR_SALE.includes(status as never) && card.paymentLinkActive) {
+    card = (await retirePaymentLink(card)).card;
+  }
+
+  if (status === "Listed" && !card.listedAt) extra.listedAt = new Date();
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();
   card = await db.card.update({ where: { id }, data: { status, ...extra } });
-  return NextResponse.json({ ok: true, card });
+  if (linkError) return NextResponse.json({ ok: false, error: linkError, card }, { status: 422 });
+  return NextResponse.json({ ok: true, card, wentLive: FOR_SALE.includes(status as never) && !FOR_SALE.includes(before.status as never), sold: status === "Sold" && before.status !== "Sold" });
 });
 
 export const DELETE = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
+  await retirePaymentLink(await db.card.findUniqueOrThrow({ where: { id } }));
   await db.card.update({ where: { id }, data: { status: "Archived" } });
   return NextResponse.json({ ok: true });
 });

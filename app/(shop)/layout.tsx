@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MuteToggle } from "@/components/Feel";
 import { Wordmark } from "@/components/SharkFin";
 
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
@@ -9,10 +10,11 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
           <Link href="/">
             <Wordmark light />
           </Link>
-          <nav className="flex gap-5 text-sm font-semibold text-sand">
+          <nav className="flex items-center gap-5 text-sm font-semibold text-sand">
             <Link href="/" className="hover:text-teal">Shop</Link>
             <Link href="/about" className="hover:text-teal">About</Link>
             <Link href="/contact" className="hover:text-teal">Contact</Link>
+            <MuteToggle className="-my-1" />
           </nav>
         </div>
       </header>

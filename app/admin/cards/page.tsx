@@ -39,7 +39,7 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
           {cards[0] && <Link href={`/admin/review/${cards[0].id}${queueQuery(p)}`} className="btn-primary">Review list →</Link>}
         </form>
       </div>
-      {cards.length ? <CardTable cards={cards} threshold={s.confidenceThreshold} queue={p} /> : <EmptyState title="No cards match" />}
+      {cards.length ? <CardTable cards={cards} threshold={s.confidenceThreshold} queue={p} /> : <EmptyState title="No cards match">Clear a filter, or upload a batch to fill the tank.</EmptyState>}
     </div>
   );
 }

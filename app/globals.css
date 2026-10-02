@@ -19,6 +19,10 @@ body {
 
 @utility btn {
   @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50;
+  transition-duration: 120ms;
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
 }
 @utility btn-primary {
   @apply btn bg-teal text-white hover:bg-teal-2;
@@ -60,4 +64,30 @@ table.grid-table td {
 kbd {
   @apply rounded border border-navy/20 bg-white px-1 font-mono text-[11px];
 }
+}
+
+/* Cards lift a touch on hover. */
+@utility lift {
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px -12px rgb(11 31 58 / 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+  .btn:active,
+  .btn-primary:active,
+  .btn-dark:active,
+  .btn-ghost:active,
+  .btn-coral:active,
+  .lift:hover {
+    transform: none !important;
+  }
 }

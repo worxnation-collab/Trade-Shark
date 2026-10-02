@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { db } from "@/lib/db";
 import { CONDITION_LONG } from "@/lib/listing/templates";
-import { cardLabel, mailtoFor } from "@/lib/shop";
+import { cardLabel, mailtoFor, PUBLIC_CARD_SELECT } from "@/lib/shop";
 import { FOR_SALE } from "@/lib/types";
 import { money } from "@/lib/util";
 
@@ -13,14 +13,14 @@ export default async function CardPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   let c;
   try {
-    c = await db.card.findUnique({ where: { id } });
+    c = await db.card.findUnique({ where: { id }, select: PUBLIC_CARD_SELECT });
   } catch (e) {
     console.error("card query failed", e);
     return <ShopUnavailable />;
   }
   if (!c || !FOR_SALE.includes(c.status as never) || c.listPrice == null) notFound();
   const ebay = c.listedChannel === "ebay" && c.listedUrl ? c.listedUrl : null;
-  const href = ebay ?? c.listedUrl ?? mailtoFor(c);
+  const pay = c.paymentLinkActive && c.paymentLinkUrl ? c.paymentLinkUrl : null;
   return (
     <div className="space-y-4">
       <Link href="/" className="text-sm font-semibold text-teal">← Back to the shop</Link>
@@ -45,9 +45,23 @@ export default async function CardPage({ params }: { params: Promise<{ id: strin
             <dt className="text-navy/60">Quantity</dt><dd>{c.quantity}</dd>
           </dl>
           <p className="text-sm text-navy/70">Photos are of this card. Ships from Florida with tracking.</p>
-          <a href={href} target={ebay ? "_blank" : undefined} rel="noopener noreferrer" className="btn-coral px-5 py-2.5 text-base">
-            {ebay ? "Buy on eBay" : c.listedUrl ? "View listing" : "Email to buy"}
-          </a>
+          <div className="flex flex-wrap items-center gap-3">
+            {pay ? (
+              <a href={pay} className="btn-coral px-6 py-3 text-base" data-pop>
+                Buy this card
+              </a>
+            ) : (
+              <a href={mailtoFor(c)} className="btn-coral px-6 py-3 text-base" data-pop>
+                Email to buy
+              </a>
+            )}
+            {ebay && (
+              <a href={ebay} target="_blank" rel="noopener noreferrer" className="btn-ghost px-4 py-3">
+                Also on eBay ↗
+              </a>
+            )}
+          </div>
+          {pay && <p className="text-xs text-navy/50">Secure checkout by Stripe. One of one: when it sells, it's gone.</p>}
         </div>
       </div>
     </div>

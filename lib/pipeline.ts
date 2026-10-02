@@ -300,7 +300,7 @@ export async function flagNameDuplicate(card: Card) {
 
 /* ------------------------------------------------------------------- price */
 
-export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boolean; sources?: string[] } = {}) {
+export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boolean; sources?: string[]; allowLivePriceChange?: boolean } = {}) {
   const game = card.game as Game;
   const staleMs = s.staleHours * 3600_000;
   const existing = await db.priceQuote.findMany({ where: { cardId: card.id } });
@@ -371,16 +371,17 @@ export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boo
       });
     }
   }
-  return applySuggestion(card.id, s);
+  return applySuggestion(card.id, s, { allowLivePriceChange: opts.allowLivePriceChange });
 }
 
 /** Recompute suggestion + status from stored quotes (no network). */
-export async function applySuggestion(cardId: string, s: Settings) {
+export async function applySuggestion(cardId: string, s: Settings, opts: { allowLivePriceChange?: boolean } = {}) {
   const card = await db.card.findUniqueOrThrow({ where: { id: cardId } });
   const quotes = (await db.priceQuote.findMany({ where: { cardId } })) as QuoteRow[];
   const sug = suggest(quotes, card, s);
   const identOk = !!card.confirmedAt || card.sourceConfidence >= s.confidenceThreshold;
-  const listPrice = card.manualPrice ?? sug.price;
+  // A live pay link fixes the price buyers see; only a manual save may change it (and regenerates the link).
+  const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : (card.manualPrice ?? sug.price);
   return db.card.update({
     where: { id: cardId },
     data: {

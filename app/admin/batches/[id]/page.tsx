@@ -8,6 +8,15 @@ import { getSettings } from "@/lib/settings";
 import { PILE_LABEL, PILES } from "@/lib/types";
 import { BatchActions } from "./BatchActions";
 
+const PILE_HELP: Record<string, string> = {
+  review: "Every card here is confident or already confirmed. Nice.",
+  unpaired: "Every front found its back (or the batch is fronts only).",
+  unreadable: "Every file opened fine.",
+  likely_bulk: "No bulk flagged in this batch.",
+  duplicate: "No repeats of cards you already have.",
+  none: "All cards are in a review pile; check the other tabs.",
+};
+
 export default async function BatchPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ pile?: string }> }) {
   const { id } = await params;
   const { pile = "all" } = await searchParams;
@@ -57,7 +66,11 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
           </Link>
         ))}
       </div>
-      {cards.length ? <CardTable cards={cards} threshold={s.confidenceThreshold} queue={queue} /> : <EmptyState title="Nothing in this pile" />}
+      {cards.length ? (
+        <CardTable cards={cards} threshold={s.confidenceThreshold} queue={queue} />
+      ) : (
+        <EmptyState title="Nothing in this pile">{PILE_HELP[pile] ?? "Pick another tab above."}</EmptyState>
+      )}
     </div>
   );
 }

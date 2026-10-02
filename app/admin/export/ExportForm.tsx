@@ -1,7 +1,9 @@
 "use client";
 
+import { EmptyState } from "@/components/SharkFin";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { confetti } from "@/lib/client/feel";
 import { money } from "@/lib/util";
 
 interface Row { id: string; label: string; game: string; price: number | null; pairId: string; status: string; listedUrl: string | null; listedChannel: string | null }
@@ -13,7 +15,7 @@ export function ExportForm({ ready, awaitingUrl }: { ready: Row[]; awaitingUrl: 
   const [msg, setMsg] = useState("");
   const [urls, setUrls] = useState<Record<string, string>>({});
 
-  async function exportCsv(channel: "ebay" | "tcgplayer") {
+  async function exportCsv(channel: "ebay" | "tcgplayer", btn?: HTMLElement) {
     const fd = new FormData();
     for (const id of sel) fd.append("ids", id);
     fd.append("markListed", mark ? "1" : "0");
@@ -27,6 +29,7 @@ export function ExportForm({ ready, awaitingUrl }: { ready: Row[]; awaitingUrl: 
     a.click();
     URL.revokeObjectURL(a.href);
     setMsg(`Downloaded ${name}.${mark ? " Exported cards are now Listed — paste live URLs below once published." : ""}`);
+    if (mark && sel.size) confetti(btn);
     router.refresh();
   }
 
@@ -47,8 +50,8 @@ export function ExportForm({ ready, awaitingUrl }: { ready: Row[]; awaitingUrl: 
             <label className="flex items-center gap-1 text-sm">
               <input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} /> Mark exported cards Listed
             </label>
-            <button className="btn-primary" disabled={!sel.size} onClick={() => exportCsv("ebay")}>eBay draft CSV ({sel.size})</button>
-            <button className="btn-dark" disabled={!tcgCount} onClick={() => exportCsv("tcgplayer")}>TCGplayer CSV ({tcgCount})</button>
+            <button className="btn-primary" disabled={!sel.size} onClick={(e) => exportCsv("ebay", e.currentTarget)}>eBay draft CSV ({sel.size})</button>
+            <button className="btn-dark" disabled={!tcgCount} onClick={(e) => exportCsv("tcgplayer", e.currentTarget)}>TCGplayer CSV ({tcgCount})</button>
           </div>
         </div>
         {msg && <p className="mb-2 rounded bg-teal/10 p-2 text-sm text-teal-2">{msg}</p>}
@@ -73,7 +76,7 @@ export function ExportForm({ ready, awaitingUrl }: { ready: Row[]; awaitingUrl: 
             </tbody>
           </table>
         ) : (
-          <p className="text-sm text-navy/60">No Ready cards. Save cards in review to move them to Ready.</p>
+          <EmptyState title="Nothing ready to list">Save a priced card in review and it lands here with its pay link.</EmptyState>
         )}
         <p className="mt-3 text-xs text-navy/50">
           eBay file uses Action=Draft: upload it in Seller Hub → Reports → Uploads, then finish and publish the drafts yourself. TCGplayer file includes Pokémon and Magic only.
@@ -95,7 +98,7 @@ export function ExportForm({ ready, awaitingUrl }: { ready: Row[]; awaitingUrl: 
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-navy/60">All listed cards have a URL.</p>
+          <p className="text-sm text-navy/60">Every listed card has its live URL.</p>
         )}
       </section>
     </div>

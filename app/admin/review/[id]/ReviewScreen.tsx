@@ -7,6 +7,7 @@ import { ConfidenceChip, PileChip, StatusChip } from "@/components/StatusChip";
 import { netAfterFees, sourceName, type QuoteRow, type Suggestion } from "@/lib/pricing/engine";
 import type { Settings } from "@/lib/settings";
 import { CONDITIONS, GAMES, SHIPPING_PROFILES, STATUS_LABEL, STATUSES, type IdentCandidate, type IdentField, type ShippingProfile } from "@/lib/types";
+import { confetti } from "@/lib/client/feel";
 import { money } from "@/lib/util";
 
 type J<T> = { [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? string | null : T[K] };
@@ -103,6 +104,8 @@ export function ReviewScreen(p: Props) {
   const [comps, setComps] = useState(str(c.pastedComps));
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const formRef = useRef<HTMLDivElement>(null);
+  const saveBtn = useRef<HTMLButtonElement>(null);
+  const [copied, setCopied] = useState(false);
 
   const set = (k: keyof Form, v: string) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -144,7 +147,13 @@ export function ReviewScreen(p: Props) {
     if (alt) body.alternate = { source: alt.source, catalogId: alt.catalogId, catalogImage: alt.catalogImage, tcgplayerId: alt.tcgplayerId, tcgplayerUrl: alt.tcgplayerUrl };
     if (!f.title) body.title = "";
     const ok = await patch(body, "Saving");
-    if (!ok) return;
+    if (!ok) {
+      // e.g. Stripe refused the pay link: the card stayed Priced. Show the server's truth.
+      router.refresh();
+      return;
+    }
+    // Celebrate going live or a sale, never block on it.
+    if (ok.wentLive || ok.sold) confetti(saveBtn.current);
     if (andNext && p.nextId) go(p.nextId);
     else router.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -378,6 +387,49 @@ export function ReviewScreen(p: Props) {
               {SHIPPING_PROFILES.map((x) => <option key={x} value={x}>{x === "bubble" ? "bubble mailer" : x}</option>)}
             </select>
           </div>
+          <div className="col-span-2 rounded-md border border-teal/30 bg-teal/5 p-2">
+            <label className="label">Stripe pay link</label>
+            {c.paymentLinkUrl && c.paymentLinkActive ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input readOnly className="input font-mono text-xs" value={c.paymentLinkUrl} onFocus={(e) => e.currentTarget.select()} />
+                  <button
+                    type="button"
+                    className="btn-dark shrink-0"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(c.paymentLinkUrl!);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } catch {
+                        setErr("Couldn't copy; select the link and copy it.");
+                      }
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-navy/60">
+                  <span>
+                    {money(c.paymentLinkAmount)} · created {c.paymentLinkCreatedAt ? new Date(c.paymentLinkCreatedAt).toLocaleString() : ""}
+                  </span>
+                  <a href={c.paymentLinkUrl} target="_blank" rel="noreferrer" className="font-semibold text-teal underline">Open</a>
+                  <button
+                    type="button"
+                    className="font-semibold text-coral underline"
+                    disabled={!!busy}
+                    onClick={() => confirm("Expire this link and create a new one at the current list price?") && action(`/api/admin/cards/${c.id}/paylink`, "Regenerating link")}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-navy/60">
+                {c.paymentLinkUrl ? "Link expired (sold, archived, or pulled from sale). " : ""}A buy link is created automatically when you save this card as Ready.
+              </p>
+            )}
+          </div>
           <div className="col-span-2">
             <label className="label">Live listing URL (paste after you publish)</label>
             <div className="flex gap-2">
@@ -400,6 +452,7 @@ export function ReviewScreen(p: Props) {
               <option value="">—</option>
               <option value="ebay">eBay</option>
               <option value="tcgplayer">TCGplayer</option>
+              <option value="stripe">Stripe (pay link)</option>
               <option value="local">Local</option>
             </select>
           </div>
@@ -410,7 +463,7 @@ export function ReviewScreen(p: Props) {
         </div>
         {err && <p className="rounded bg-coral/10 p-2 text-sm text-coral">{err}</p>}
         <div className="flex items-center gap-2 pt-1">
-          <button className="btn-primary flex-1 justify-center py-2" disabled={!!busy} onClick={() => save(true)}>
+          <button ref={saveBtn} className="btn-primary flex-1 justify-center py-2" disabled={!!busy} onClick={() => save(true)}>
             {busy || "Save + next"} <kbd className="bg-teal-2 text-white">Enter</kbd>
           </button>
           <button className="btn-ghost" disabled={!!busy} onClick={() => save(false)}>Save</button>
@@ -418,7 +471,8 @@ export function ReviewScreen(p: Props) {
           <button className="btn-ghost" onClick={() => go(p.nextId)}>J</button>
         </div>
         <p className="text-[11px] text-navy/50">
-          Saving confirms this card. Priced ≥ {money(s.minListPrice)} → Ready; under → Bulk Hold. Nothing is listed until you export and publish it yourself.
+          Saving confirms this card. Priced ≥ {money(s.minListPrice)} → Ready with a Stripe pay link (if Stripe fails it stays Priced); under → Bulk
+          Hold. eBay/TCGplayer listings still only go up when you export and publish them yourself.
         </p>
       </div>
 
@@ -450,7 +504,7 @@ export function ReviewScreen(p: Props) {
             {price != null ? (
               <table className="w-full">
                 <tbody>
-                  {(["ebay", "tcgplayer", "local"] as const).map((ch) => {
+                  {(["ebay", "tcgplayer", "stripe", "local"] as const).map((ch) => {
                     const n = netAfterFees(price, ch, f.shippingProfile as ShippingProfile, s);
                     return (
                       <tr key={ch}>

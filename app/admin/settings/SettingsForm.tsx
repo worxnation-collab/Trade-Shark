@@ -64,7 +64,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
 
       <section className="card space-y-3 p-4">
         <h2 className="font-bold">Fees + shipping</h2>
-        {(["ebay", "tcgplayer", "local"] as const).map((ch) => (
+        {(["ebay", "tcgplayer", "stripe", "local"] as const).map((ch) => (
           <div key={ch} className="grid grid-cols-[6rem_1fr_1fr] items-end gap-2">
             <div className="pb-2 text-sm font-semibold">{ch}</div>
             <N label="% of sale" value={s.fees[ch].pct} onChange={(v) => setS({ ...s, fees: { ...s.fees, [ch]: { ...s.fees[ch], pct: v } } })} />

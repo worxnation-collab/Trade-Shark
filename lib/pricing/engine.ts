@@ -140,7 +140,7 @@ export function suggest(
   };
 }
 
-export type Channel = "ebay" | "tcgplayer" | "local";
+export type Channel = "ebay" | "tcgplayer" | "stripe" | "local";
 
 export function netAfterFees(price: number, channel: Channel, profile: ShippingProfile, s: Settings) {
   const f = s.fees[channel];

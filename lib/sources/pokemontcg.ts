@@ -51,6 +51,9 @@ export const pokemonTcgIdentify: IdentifyAdapter = {
     const num = ctx.hints.number?.split("/")[0].replace(/^0+(?=\d)/, "");
     if (!name && !num) return none("no name or number to search with");
     const attempts: string[] = [];
+    // "58/102" names the set size too: ask for that printing first so newer reprints don't crowd it out.
+    const total = ctx.hints.number?.split("/")[1]?.trim();
+    if (name && num && total && /^\d+$/.test(total)) attempts.push(`name:"${name}" number:${esc(num)} set.printedTotal:${total}`);
     if (name && num) attempts.push(`name:"${name}" number:${esc(num)}`);
     if (name) attempts.push(`name:"${name}"`);
     // Loose prefix search only when a number can confirm the hit.
@@ -96,7 +99,7 @@ export const pokemonTcgIdentify: IdentifyAdapter = {
         name: c.name,
         setName: c.set.name,
         setCode: c.set.ptcgoCode ?? c.set.id,
-        number: `${c.number}/${c.set.printedTotal}`,
+        number: c.set.printedTotal ? `${c.number}/${c.set.printedTotal}` : c.number,
         year: c.set.releaseDate?.slice(0, 4),
         rarity: c.rarity,
       },

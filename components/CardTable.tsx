@@ -24,7 +24,7 @@ export function CardTable({ cards, threshold, queue }: { cards: Card[]; threshol
         </thead>
         <tbody>
           {cards.map((c) => (
-            <tr key={c.id} className="hover:bg-sand/60">
+            <tr key={c.id} className="transition-colors hover:bg-sand/60">
               <td className="w-12">
                 <Link href={`/admin/review/${c.id}${qs}`}>
                   {c.frontImage && c.readable ? (
@@ -52,6 +52,7 @@ export function CardTable({ cards, threshold, queue }: { cards: Card[]; threshol
               <td><StatusChip status={c.status} /></td>
               <td className="space-x-1">
                 <PileChip pile={c.pile} />
+                {c.paymentLinkActive && <span className="chip bg-teal text-white">pay link</span>}
                 {c.priceConflict && <span className="chip bg-coral/15 text-coral">price conflict</span>}
                 {c.identConflict && <span className="chip bg-coral/15 text-coral">ID conflict</span>}
               </td>

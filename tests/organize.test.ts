@@ -212,3 +212,18 @@ describe("Auto detects whether a batch has backs", () => {
     expect(g.filter((x) => x.pile === "none")).toHaveLength(4);
   });
 });
+
+describe("Auto learns backs from the same batch", () => {
+  it("a lone untokened back is recognized when another card's back is named in the batch", () => {
+    const files = [
+      { name: "zard-front.jpg", readable: true, phash: randomHash(70) },
+      { name: "zard-back.jpg", readable: true, phash: mutate(BACK, 10, 70) },
+      pf("IMG_0001.jpg", randomHash(71)),
+      pf("IMG_0002.jpg", mutate(BACK, 22, 71)),
+    ];
+    let d: any;
+    const g = pairFiles(files, "auto", { onDecision: (x) => (d = x) });
+    expect(d.result).toBe("pairs");
+    expect(g.find((x) => x.front?.name === "IMG_0001.jpg")?.back?.name).toBe("IMG_0002.jpg");
+  });
+});

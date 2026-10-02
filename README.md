@@ -43,6 +43,7 @@ How it fits Netlify's limits:
    - <kbd>J</kbd>/<kbd>K</kbd> next/previous, <kbd>Enter</kbd> save + next, <kbd>F</kbd> flip front/back.
    - Winning source plus alternates; **Use** an alternate to swap identity.
    - Saving confirms the card: priced ≥ minimum → **Ready**, under → **Bulk Hold**, no price → **Identified**.
+5. **Pay link (Stripe):** saving a card as Ready first creates a Stripe Payment Link for it: quantity 1, USD at the list price, product name and description from the listing title and description, the front photo when `SITE_URL` is https, US shipping address collection, and a one-sale limit so it can't sell twice. If Stripe fails, the card stays Priced and the error shows on the review screen. The link (with Copy, Open, Regenerate) sits on the review screen, and the public card page gets a **Buy this card** button. Changing the price of a live card regenerates the link (the old one is expired first). After checkout Stripe sends the buyer to `/shop/thank-you?card=<id>` (confetti, nothing else). The card is marked **Sold** only by the signed webhook at `/api/stripe/webhook` (`checkout.session.completed`, matched to the card's current or earlier link) or when you enter a sold price yourself. Stripe Payment Links have no cancel URL; a buyer who backs out returns with the browser's Back button to the card page.
 5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
 6. **Shop** (`/`): grid + card page for For Sale cards (Ready or Listed). "Buy on eBay" once a URL is pasted; otherwise a mailto to `SHOP_EMAIL`.
 
@@ -71,6 +72,8 @@ Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Arc
 | `VISION_CONCURRENCY` | no (default `2`) | Max simultaneous vision calls. |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
+| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, cards can't be marked Ready (the save explains why). Use a restricted key with Payment Links write access if you like. |
+| `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
 | `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
 
 Missing keys skip that source and record why (`Source log` on each card, `Sources` on the dashboard). They never crash a batch.
@@ -110,7 +113,7 @@ Suggested list price (editable in Settings):
 5. **Manual override always wins** and is labeled Manual.
 6. Under the **minimum list price ($2)** → **Bulk Hold**.
 
-Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Local 0. Shipping profiles: standard $1.00, bubble mailer $4.50, slab $6.00. The panel shows net after fees and shipping for each channel.
+Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0.30, Local 0. Shipping profiles: standard $1.00, bubble mailer $4.50, slab $6.00. The panel shows net after fees and shipping for each channel.
 
 **Price conflict** is flagged when source headlines disagree by more than 1.5×.
 
