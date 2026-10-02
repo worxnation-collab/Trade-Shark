@@ -167,7 +167,7 @@ export const anthropicVision: IdentifyAdapter = {
     if (!imgs.length) return skip("no readable image to send");
     try {
       const { out, cached: wasCached } = await cached("anthropic", anthropicModel, ctx, async () => {
-        const client = new Anthropic({ apiKey: anthropic });
+        const client = new Anthropic({ apiKey: anthropic, timeout: Number(process.env.VISION_TIMEOUT_MS || 22000), maxRetries: 1 });
         const content: Anthropic.Beta.BetaContentBlockParam[] = [
           ...imgs.map(
             (i): Anthropic.Beta.BetaContentBlockParam => ({
@@ -215,7 +215,7 @@ export const openaiVision: IdentifyAdapter = {
       const { out, cached: wasCached } = await cached("openai", openaiModel, ctx, async () => {
         const res = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
-          signal: AbortSignal.timeout(90000),
+          signal: AbortSignal.timeout(Number(process.env.VISION_TIMEOUT_MS || 22000)),
           headers: { Authorization: `Bearer ${openai}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: openaiModel,

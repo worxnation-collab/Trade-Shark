@@ -16,7 +16,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       frontImage: { not: null },
       readable: true,
       ...(game ? { game } : {}),
-      ...(q ? { OR: [{ name: { contains: q } }, { player: { contains: q } }, { setName: { contains: q } }] } : {}),
+      ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { player: { contains: q, mode: "insensitive" } }, { setName: { contains: q, mode: "insensitive" } }] } : {}),
     },
     orderBy: { updatedAt: "desc" },
     take: 200,

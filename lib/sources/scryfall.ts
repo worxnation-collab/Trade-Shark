@@ -26,7 +26,7 @@ export interface ScryCard {
 
 async function get<T>(path: string) {
   return run(async () => {
-    const r = await fetchJson<T>(`${API}${path}`, { headers: H, timeoutMs: 15000, retries: 1 });
+    const r = await fetchJson<T>(`${API}${path}`, { headers: H, timeoutMs: 8000, retries: 1 });
     await new Promise((res) => setTimeout(res, 110));
     return r;
   });

@@ -6,14 +6,27 @@ My personal card shop and listing desk. One seller (me). Dump a scanner or phone
 
 ## Quick start
 
+Data lives in **Supabase**: Postgres (schema `trade_shark`) for inventory and quotes, and a private Storage bucket (`trade-shark-scans`) for scans. The site runs on **Netlify**.
+
 ```bash
 npm install
-cp .env.example .env        # set TRADE_SHARK_PASSWORD at minimum
-npx prisma db push          # creates prisma/trade-shark.db
+cp .env.example .env        # TRADE_SHARK_PASSWORD, DATABASE_URL, DIRECT_URL, SUPABASE_URL, SUPABASE_SECRET_KEY
+npx prisma db push          # only needed if the schema changes; tables already exist in Supabase
 npm run dev                 # http://localhost:3000/admin
 ```
 
-Production: `npm run build && npm start`. Back up `prisma/trade-shark.db` and `data/` — that's the whole shop.
+Leave `SUPABASE_URL`/`SUPABASE_SECRET_KEY` unset locally and scans go to `DATA_DIR/images` on disk instead (the database is still Postgres).
+
+### Deploy on Netlify
+
+1. Netlify → Add new project → Import from GitHub → this repo, branch `trade-shark-v1` (or `main` once merged). Build settings come from `netlify.toml`.
+2. Project configuration → Environment variables: add every key from `.env.example` you use. At minimum `TRADE_SHARK_PASSWORD`, `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SITE_URL` (your Netlify URL).
+3. Project configuration → Functions → raise the function timeout to the max your plan allows (26s on Pro). Scryfall/Pokemon lookups fit in 10s; vision calls need the extra room.
+
+How it fits Netlify's limits:
+- Scans upload from the browser straight to Supabase Storage through signed upload URLs, so the 6 MB function request limit doesn't apply.
+- Images are served as 1-hour signed URLs (admin: password required; shop: only for-sale cards), never as public files.
+- Processing runs one card per request with short source timeouts. A source that times out is logged and filled in later by **Reprice batch**.
 
 ## Workflow
 
@@ -39,8 +52,13 @@ Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Arc
 | Key | Required | What it does |
 |---|---|---|
 | `TRADE_SHARK_PASSWORD` | **yes** | Password for `/admin` and `/api/admin/*`. Unset = nobody can sign in. Changing it logs out every session. |
-| `DATABASE_URL` | yes (default in `.env.example`) | SQLite file, e.g. `file:./trade-shark.db` (relative to `prisma/`). |
-| `DATA_DIR` | no (default `./data`) | Scans are stored in `DATA_DIR/images/<batch>/`. Served only through authenticated routes. |
+| `DATABASE_URL` | yes | Supabase **transaction pooler** string (port 6543) with `?pgbouncer=true&connection_limit=1&schema=trade_shark`. |
+| `DIRECT_URL` | yes | Supabase **session pooler** string (port 5432) with `?schema=trade_shark`. Used by `prisma db push`. |
+| `SUPABASE_URL` | for Netlify | Project URL, e.g. `https://<ref>.supabase.co`. |
+| `SUPABASE_SECRET_KEY` | for Netlify | Secret (service role) key. Server-only; lets the app read/write the private scans bucket. Never expose it to the browser. |
+| `SUPABASE_BUCKET` | no (default `trade-shark-scans`) | Storage bucket name. |
+| `DATA_DIR` | no (default `./data`) | Local-disk scan storage when Supabase Storage isn't configured. |
+| `VISION_TIMEOUT_MS` | no (default `22000`) | Per-call vision timeout; keep it under the function timeout. |
 | `SITE_URL` | no | Public shop URL. Fills eBay `PicURL` and TCGplayer photo URLs with the public image route. |
 | `SHOP_EMAIL` | no | Contact page and "Email to buy" links. |
 | `SHOP_OWNER_NAME` | no | Shown on `/about`. |
@@ -104,8 +122,9 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Local 0. Shippin
 
 ## Images and privacy
 
-- Scans live in `DATA_DIR/images`. `/api/admin/images/*` requires the password.
+- Scans live in the private Supabase bucket (or `DATA_DIR/images` locally). `/api/admin/images/*` requires the password.
 - The public shop uses `/api/shop/image/:cardId/:side`, which serves a scan **only while its card is Ready or Listed**. Inbox, Sold, and Archived cards 404.
+- The `trade_shark` tables have RLS on and no grants for Supabase's `anon`/`authenticated` roles; only the app's server connection reads them.
 - TIFF scans are converted to JPEG on upload so browsers can show them.
 
 ## Adding a source

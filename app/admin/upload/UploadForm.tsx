@@ -83,15 +83,34 @@ export function UploadForm() {
     setError("");
     try {
       const { id } = await post("/api/admin/batches", JSON.stringify({ name }), true);
-      const CHUNK = 6;
+      // Small chunks keep each server call well under serverless time/size limits.
+      const CHUNK = 4;
       for (let i = 0; i < files.length; i += CHUNK) {
         setProgress({ label: "Uploading", done: i, total: files.length });
-        const fd = new FormData();
-        for (const p of files.slice(i, i + CHUNK)) {
-          fd.append("files", p.file);
-          fd.append("names", p.path);
+        const chunk = files.slice(i, i + CHUNK);
+        const urls = await post(`/api/admin/batches/${id}/upload-urls`, JSON.stringify({ names: chunk.map((p) => p.path) }), true);
+        if (urls.mode === "direct") {
+          // Straight to private storage; the server only gets the paths.
+          await Promise.all(
+            chunk.map(async (p, j) => {
+              const res = await fetch(urls.items[j].signedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": p.file.type || "application/octet-stream", "x-upsert": "true" },
+                body: p.file,
+              });
+              if (!res.ok) throw new Error(`Upload failed for ${p.path}: ${res.status}`);
+            }),
+          );
+          const items = chunk.map((p, j) => ({ name: p.path, rel: urls.items[j].rel }));
+          await post(`/api/admin/batches/${id}/files`, JSON.stringify({ items }), true);
+        } else {
+          const fd = new FormData();
+          for (const p of chunk) {
+            fd.append("files", p.file);
+            fd.append("names", p.path);
+          }
+          await post(`/api/admin/batches/${id}/files`, fd);
         }
-        await post(`/api/admin/batches/${id}/files`, fd);
       }
       setProgress({ label: "Pairing + deduping", done: files.length, total: files.length });
       const org = await post(`/api/admin/batches/${id}/organize`, JSON.stringify({ pairMode, manifest, pastedLines: lines }), true);
@@ -99,7 +118,7 @@ export function UploadForm() {
       const total = remaining;
       while (remaining > 0) {
         setProgress({ label: "Identifying + pricing", done: total - remaining, total });
-        const r = await post(`/api/admin/batches/${id}/process?limit=6`);
+        const r = await post(`/api/admin/batches/${id}/process?limit=1`);
         remaining = r.remaining;
         if (r.processed === 0) break;
       }

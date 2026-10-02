@@ -15,7 +15,7 @@ export function BatchActions({ batchId, unprocessed }: { batchId: string; unproc
         let remaining = unprocessed;
         while (remaining > 0) {
           setMsg(`Identifying + pricing… ${remaining} left`);
-          const r = await (await fetch(`/api/admin/batches/${batchId}/process?limit=6`, { method: "POST" })).json();
+          const r = await (await fetch(`/api/admin/batches/${batchId}/process?limit=1`, { method: "POST" })).json();
           if (r.error) throw new Error(r.error);
           remaining = r.remaining;
           if (!r.processed) break;

@@ -1,21 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import sharp from "sharp";
-import { dataDir } from "./env";
 import { MIME_BY_EXT, sniffImage } from "./organize/pairing";
-
-export function imagesRoot() {
-  return path.resolve(process.cwd(), dataDir(), "images");
-}
-
-/** Resolve a stored relative path inside the images root; refuses traversal. */
-export function resolveImage(rel: string): string | null {
-  const root = imagesRoot();
-  const abs = path.resolve(root, rel);
-  if (!abs.startsWith(root + path.sep)) return null;
-  return abs;
-}
+import { getObject, putObject } from "./storage";
 
 export function sha256(buf: Uint8Array) {
   return createHash("sha256").update(buf).digest("hex");
@@ -65,39 +51,37 @@ export interface StoredImage {
 }
 
 /**
- * Store an upload under data/images/<batchId>/<sha>.<ext>.
- * TIFF scans are converted to JPEG so the browser can show them; HEIC is attempted, else kept as unreadable.
+ * Hash, sniff, and (for TIFF/HEIC) convert a scan. `existingRel` is set when the browser already
+ * uploaded the original straight to storage; otherwise the bytes are stored here.
  */
-export async function storeUpload(batchId: string, buf: Uint8Array): Promise<StoredImage> {
+export async function storeUpload(batchId: string, buf: Uint8Array, existingRel?: string): Promise<StoredImage> {
   const hash = sha256(buf);
   let sniff = sniffImage(buf);
   let out: Uint8Array = buf;
+  let converted = false;
   if (sniff.mime === "image/tiff" || sniff.mime === "image/heic") {
     try {
       out = await sharp(buf).rotate().jpeg({ quality: 90 }).toBuffer();
       sniff = { readable: true, mime: "image/jpeg", ext: "jpg" };
+      converted = true;
     } catch {
       /* keep original, stays unreadable */
     }
   }
-  const dir = path.join(imagesRoot(), batchId);
-  await mkdir(dir, { recursive: true });
-  const rel = `${batchId}/${hash.slice(0, 24)}.${sniff.ext}`;
-  await writeFile(path.join(imagesRoot(), rel), out);
+  let rel = existingRel ?? `${batchId}/${hash.slice(0, 24)}.${sniff.ext}`;
+  if (converted || !existingRel) {
+    rel = `${batchId}/${hash.slice(0, 24)}.${sniff.ext}`;
+    await putObject(rel, out, sniff.mime);
+  }
   const phash = sniff.readable ? await dHash(out) : null;
   return { rel, hash, phash, readable: sniff.readable && phash !== null, mime: sniff.mime };
 }
 
 export async function readStored(rel: string) {
-  const abs = resolveImage(rel);
-  if (!abs) return null;
-  try {
-    const buf = await readFile(abs);
-    const ext = rel.split(".").pop()!.toLowerCase();
-    return { buf, mime: MIME_BY_EXT[ext] ?? "application/octet-stream" };
-  } catch {
-    return null;
-  }
+  const buf = await getObject(rel);
+  if (!buf) return null;
+  const ext = rel.split(".").pop()!.toLowerCase();
+  return { buf, mime: MIME_BY_EXT[ext] ?? "application/octet-stream" };
 }
 
 /** JPEG <= ~1600px long edge for vision calls (keeps requests small and under provider limits). */

@@ -23,7 +23,7 @@ export async function queueWhere(p: QueueParams): Promise<Prisma.CardWhereInput>
   else if (p.pile && p.pile !== "all") and.push({ pile: p.pile });
   if (p.filter === "noprice") and.push({ listPrice: null, readable: true, status: { notIn: ["Sold", "Archived"] } });
   if (p.filter === "conflict") and.push({ OR: [{ priceConflict: true }, { identConflict: true }] });
-  if (p.q) and.push({ OR: [{ name: { contains: p.q } }, { player: { contains: p.q } }, { setName: { contains: p.q } }, { frontOrigName: { contains: p.q } }, { pairId: { contains: p.q } }] });
+  if (p.q) and.push({ OR: [{ name: { contains: p.q, mode: "insensitive" } }, { player: { contains: p.q, mode: "insensitive" } }, { setName: { contains: p.q, mode: "insensitive" } }, { frontOrigName: { contains: p.q, mode: "insensitive" } }, { pairId: { contains: p.q, mode: "insensitive" } }] });
   return { AND: and };
 }
 

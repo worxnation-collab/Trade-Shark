@@ -15,10 +15,10 @@ import { limiter, norm, normNumber, safeJson } from "./util";
 /* ------------------------------------------------------------------ ingest */
 
 /** Phase 1: store files as they stream in (chunked uploads). */
-export async function storeBatchFiles(batchId: string, files: { name: string; buf: Uint8Array }[]) {
+export async function storeBatchFiles(batchId: string, files: { name: string; buf: Uint8Array; rel?: string }[]) {
   const out = [];
   for (const f of files) {
-    const st = await storeUpload(batchId, f.buf);
+    const st = await storeUpload(batchId, f.buf, f.rel);
     out.push(
       await db.uploadFile.create({
         data: { batchId, name: f.name, rel: st.rel, hash: st.hash, phash: st.phash, mime: st.mime, size: f.buf.byteLength, readable: st.readable },
@@ -383,7 +383,7 @@ export async function processBatch(batchId: string, limit = 6) {
 }
 
 /** Refresh quotes older than staleHours for every card in a batch (chunked like processBatch). */
-export async function repriceBatch(batchId: string, cursor = 0, limit = 8) {
+export async function repriceBatch(batchId: string, cursor = 0, limit = 2) {
   const s = await getSettings();
   const cards = await db.card.findMany({
     where: { batchId, readable: true, status: { notIn: ["Sold", "Archived"] } },

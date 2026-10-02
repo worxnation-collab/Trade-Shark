@@ -8,3 +8,4 @@ next-env.d.ts
 !/data/.gitkeep
 prisma/*.db
 prisma/*.db-journal
+.netlify

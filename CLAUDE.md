@@ -8,4 +8,5 @@
 - Confidence threshold (default 0.8) gates auto-advancing. Don't lower it in code.
 - Scans are private: serve them only via `/api/admin/images/*` (auth) or `/api/shop/image/*` (for-sale cards only).
 - No league, Pokémon, Nintendo, Disney, or other third-party logos in the brand. Colors: navy `#0B1F3A`, teal `#1AA6A6`, sand `#F4EFE6`, coral `#E85D4C`, white.
-- Checks: `npm test` and `npm run lint` (tsc). Schema changes: edit `prisma/schema.prisma`, run `npx prisma db push`.
+- Data: Supabase Postgres, schema `trade_shark` (Prisma), and the private `trade-shark-scans` bucket via `lib/storage.ts`. Hosting: Netlify — keep each request short (one card per process call) and send large uploads straight to Storage.
+- Checks: `npm test` and `npm run lint` (tsc). Schema changes: edit `prisma/schema.prisma`, run `npx prisma db push` (uses `DIRECT_URL`).

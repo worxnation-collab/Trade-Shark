@@ -34,11 +34,11 @@ const esc = (s: string) => s.replace(/["\\]/g, "").trim();
 
 async function search(q: string) {
   const url = `${API}?q=${encodeURIComponent(q)}&pageSize=24&orderBy=-set.releaseDate`;
-  return run(() => fetchJson<{ data: PtcgCard[] }>(url, { headers: headers(), timeoutMs: 25000, retries: 3 }));
+  return run(() => fetchJson<{ data: PtcgCard[] }>(url, { headers: headers(), timeoutMs: 9000, retries: 1 }));
 }
 
 export async function getPtcgCard(id: string) {
-  return run(() => fetchJson<{ data: PtcgCard }>(`${API}/${encodeURIComponent(id)}`, { headers: headers(), timeoutMs: 25000, retries: 3 }));
+  return run(() => fetchJson<{ data: PtcgCard }>(`${API}/${encodeURIComponent(id)}`, { headers: headers(), timeoutMs: 9000, retries: 1 }));
 }
 
 export const pokemonTcgIdentify: IdentifyAdapter = {
