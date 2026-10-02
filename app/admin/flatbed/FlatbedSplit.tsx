@@ -105,7 +105,13 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
       const { mat, width, height, preview } = await loadMat(cv, file);
       mats.current[side]?.delete();
       mats.current[side] = mat;
-      const boxes = detectCards(cv, mat, { dpi });
+      let rot = 0 as CardBox["rotation"];
+      try {
+        rot = (Number(localStorage.getItem("ts-flatbed-rotation")) || 0) as CardBox["rotation"];
+      } catch {
+        /* ignore */
+      }
+      const boxes = detectCards(cv, mat, { dpi }).map((b) => ({ ...b, rotation: rot }));
       setSheets((s) => ({ ...s, [side]: { file, dpi, width, height, preview, boxes, thumbs: {} } }));
       setTab(side);
       setSelected(null);
@@ -300,6 +306,26 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
                 </button>
                 <button className="btn-ghost" disabled={!selected} onClick={() => selected && setBoxes(tab, (bs) => bs.map((b) => (b.id === selected ? { ...b, rotation: (((b.rotation + 90) % 360) as CardBox["rotation"]) } : b)))}>
                   ↻ Rotate
+                </button>
+                <button
+                  className="btn-ghost"
+                  title="Turn every crop on this sheet 90°; remembered for your next sheet"
+                  onClick={() => {
+                    let next = 0;
+                    setBoxes(tab, (bs) => {
+                      next = ((bs[0]?.rotation ?? 0) + 90) % 360;
+                      return bs.map((b) => ({ ...b, rotation: next as CardBox["rotation"] }));
+                    });
+                    setTimeout(() => {
+                      try {
+                        localStorage.setItem("ts-flatbed-rotation", String(next));
+                      } catch {
+                        /* ignore */
+                      }
+                    });
+                  }}
+                >
+                  ↻ Rotate all
                 </button>
                 <button className="btn-ghost text-coral" disabled={!selected} onClick={() => { setBoxes(tab, (bs) => bs.filter((b) => b.id !== selected)); setSelected(null); }}>
                   Delete box

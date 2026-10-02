@@ -232,6 +232,24 @@ export function detectCards(cv: CV, src: Mat, opts: Partial<DetectOptions> = {})
     (c) => !kept.some((o2) => o2 !== c && quadArea(o2.corners) > quadArea(c.corners) * 1.2 && pointInQuad(center(c.corners), o2.corners)),
   );
 
+  // Split boxes are estimates: give them the typical size of the cleanly detected cards on this sheet.
+  const clean = final.filter((c) => !c.split).map((c) => {
+    const { w, h } = quadSize(c.corners);
+    return { short: Math.min(w, h), long: Math.max(w, h) };
+  });
+  if (clean.length >= 2) {
+    const med = (xs: number[]) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const short = med(clean.map((x) => x.short));
+    const long = med(clean.map((x) => x.long));
+    for (const c of final) {
+      if (!c.split) continue;
+      const ctr = center(c.corners);
+      const { w, h } = quadSize(c.corners);
+      const ang = (Math.atan2(c.corners[1].y - c.corners[0].y, c.corners[1].x - c.corners[0].x) * 180) / Math.PI;
+      c.corners = orderCorners(rectCorners(ctr.x, ctr.y, w >= h ? long : short, w >= h ? short : long, ang));
+    }
+  }
+
   const boxes: CardBox[] = final.map((c) => ({
     id: newId(),
     corners: c.corners.map((p) => ({ x: p.x / scale, y: p.y / scale })) as Quad,

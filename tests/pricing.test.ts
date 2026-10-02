@@ -141,3 +141,56 @@ describe("exports", () => {
     expect(t.length).toBeLessThanOrEqual(80);
   });
 });
+
+describe("set size guards against other-language printings", () => {
+  it("a /151 card never confidently matches the /165 English printing", async () => {
+    const { scoreCandidate } = await import("@/lib/sources/score");
+    const same = scoreCandidate({ name: "Persian", number: "053/165" }, { name: "Persian", number: "53", setName: "151", printedTotal: 165 });
+    const other = scoreCandidate({ name: "Persian", number: "053/151" }, { name: "Persian", number: "53", setName: "151", printedTotal: 165 });
+    expect(same.score).toBeGreaterThan(0.85);
+    expect(other.score).toBeLessThan(0.8);
+    const m = mergeCandidates([
+      { source: "pasted", confidence: 0.7, fields: { name: "Persian", number: "053/151" } },
+      { source: "pokemontcg", confidence: other.score, fields: { name: "Persian", number: "53/165", setName: "151" }, catalogId: "sv3pt5-53" },
+    ]);
+    expect(m.confidence).toBeLessThan(0.8);
+  });
+});
+
+describe("retired catalog quotes", () => {
+  it("an excluded market price no longer drives the suggestion", () => {
+    const r = suggest([q({ source: "pokemontcg", kind: "market", label: "market", amount: 9, condition: "NM", excluded: true })], { condition: "NM", graded: null, manualPrice: null }, S);
+    expect(r.price).toBeNull();
+  });
+});
+
+describe("a confident read beats a disagreeing catalog guess", () => {
+  it("keeps the pasted line's number and flags the conflict", () => {
+    const m = mergeCandidates([
+      { source: "pasted", confidence: 0.65, fields: { game: "Pokemon", name: "Electrike", number: "037/063" } },
+      { source: "pokemontcg", confidence: 0.7, fields: { name: "Electrike", number: "49/132", setName: "Mega Evolution" }, catalogId: "me1-49" },
+    ]);
+    expect(m.winner?.source).toBe("pasted");
+    expect(m.fields.number).toBe("037/063");
+    expect(m.conflict).toBe(true);
+    expect(m.alternates.some((a) => a.catalogId === "me1-49")).toBe(true);
+  });
+  it("a weak filename guess still loses to the catalog", () => {
+    const m = mergeCandidates([
+      { source: "filename", confidence: 0.45, fields: { name: "Img Charizard Thing" } },
+      { source: "pokemontcg", confidence: 0.7, fields: { name: "Charizard", number: "4/102" }, catalogId: "base1-4" },
+    ]);
+    expect(m.winner?.catalogId).toBe("base1-4");
+  });
+});
+
+describe("rejected catalog guesses don't leak fields", () => {
+  it("a winning read doesn't borrow the set name from a catalog match it disagrees with", () => {
+    const m = mergeCandidates([
+      { source: "pasted", confidence: 0.7, fields: { game: "Pokemon", name: "Quaxly", number: "003/015" } },
+      { source: "pokemontcg", confidence: 0.65, fields: { name: "Quaxly", number: "3/215", setName: "Black Star Promos" }, catalogId: "svp-3" },
+    ]);
+    expect(m.winner?.source).toBe("pasted");
+    expect(m.fields.setName).toBeUndefined();
+  });
+});

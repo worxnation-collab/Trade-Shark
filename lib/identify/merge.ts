@@ -17,12 +17,18 @@ export interface MergeResult {
   conflict: boolean;
 }
 
+/** Reads at or above this beat a disagreeing catalog match (filename guesses sit below it). */
+const TRUSTED_READ = 0.6;
+
 const CATALOG = new Set(["pokemontcg", "scryfall", "sports_catalog"]);
 const READS = (c: IdentCandidate) => !CATALOG.has(c.source);
 
 function agrees(a: CardFields, b: CardFields) {
   const nameOk = !!a.name && !!b.name && (norm(a.name) === norm(b.name) || norm(a.name).includes(norm(b.name)) || norm(b.name).includes(norm(a.name)));
-  const numOk = !a.number || !b.number || normNumber(a.number) === normNumber(b.number);
+  const ta = a.number?.split("/")[1]?.trim();
+  const tb = b.number?.split("/")[1]?.trim();
+  const totalOk = !ta || !tb || Number(ta) === Number(tb);
+  const numOk = (!a.number || !b.number || normNumber(a.number) === normNumber(b.number)) && totalOk;
   return nameOk && numOk;
 }
 
@@ -44,12 +50,21 @@ export function mergeCandidates(cands: IdentCandidate[]): MergeResult {
       winner = topCatalog;
       const best = Math.max(...support.map((s) => s.confidence));
       confidence = Math.min(0.97, Math.max(topCatalog.confidence, 1 - (1 - topCatalog.confidence) * (1 - best)));
-    } else if (topCatalog.confidence >= (reads[0]?.confidence ?? 0)) {
-      winner = topCatalog;
-      confidence = topCatalog.confidence;
-      if (reads.some((r) => r.fields.name && r.confidence >= 0.5)) conflict = true;
     } else {
-      conflict = true;
+      // A confident read (pasted line, manifest, vision) that disagrees beats the catalog's guess:
+      // the card in hand is often a printing the catalog doesn't carry (other language, promo).
+      const strongRead = reads.find((r) => r.fields.name && r.confidence >= TRUSTED_READ);
+      if (strongRead) {
+        winner = strongRead;
+        confidence = strongRead.confidence;
+      } else if (topCatalog.confidence >= (reads[0]?.confidence ?? 0)) {
+        winner = topCatalog;
+        confidence = topCatalog.confidence;
+      } else if (reads[0]) {
+        winner = reads[0];
+        confidence = reads[0].confidence;
+      }
+      if (reads.some((r) => r.fields.name && r.confidence >= 0.5)) conflict = true;
     }
   }
 
@@ -64,7 +79,8 @@ export function mergeCandidates(cands: IdentCandidate[]): MergeResult {
       if (same.length) fc[k] = Math.min(0.97, Math.max(fc[k] ?? 0, confidence));
       continue;
     }
-    const donor = sorted.find((c) => c.fields[k]);
+    // Only borrow from sources that agree with the winner (a rejected catalog guess must not leak its set).
+    const donor = sorted.find((c) => c.fields[k] && (READS(c) || c === winner || agrees(c.fields, winner.fields)));
     if (donor) {
       (fields as Record<string, unknown>)[k] = donor.fields[k];
       fc[k] = Math.min(donor.fieldConfidence?.[k] ?? donor.confidence, 0.75);
@@ -72,7 +88,8 @@ export function mergeCandidates(cands: IdentCandidate[]): MergeResult {
   }
   for (const k of ["condition", "graded"] as const) {
     if (!fields[k]) {
-      const donor = sorted.find((c) => c.fields[k]);
+      // Only borrow from sources that agree with the winner (a rejected catalog guess must not leak its set).
+    const donor = sorted.find((c) => c.fields[k] && (READS(c) || c === winner || agrees(c.fields, winner.fields)));
       if (donor) fields[k] = donor.fields[k] as never;
     }
   }

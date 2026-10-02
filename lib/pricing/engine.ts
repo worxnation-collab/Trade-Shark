@@ -71,8 +71,8 @@ export function suggest(
     : null;
   const soldNM = sold.length > 0 && sold.every((q) => q.condition === "NM");
 
-  const market = quotes.find((q) => q.source === "pokemontcg" && q.label === "market" && usd(q));
-  const ask = quotes.find((q) => q.kind === "retail_ask" && q.source === "scryfall" && usd(q));
+  const market = quotes.find((q) => q.source === "pokemontcg" && q.label === "market" && usd(q) && !q.excluded);
+  const ask = quotes.find((q) => q.kind === "retail_ask" && q.source === "scryfall" && usd(q) && !q.excluded);
   const activeAsks = quotes.filter((q) => q.source === "ebay_active" && !q.excluded);
 
   const headlines: Suggestion["headlines"] = [];

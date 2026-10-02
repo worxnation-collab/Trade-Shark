@@ -125,7 +125,9 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
     if (line) {
       const p = parseText(line);
       bulkHint ||= p.bulkHint;
-      seeds.push({ source: "pasted", confidence: Math.min(0.75, p.confidence + 0.1), fields: p.fields, fieldConfidence: p.fieldConfidence, note: line });
+      // A line I typed with a name and a number is deliberate: trust it over a disagreeing catalog guess.
+      const conf = p.fields.name && p.fields.number ? 0.7 : Math.min(0.75, p.confidence + 0.1);
+      seeds.push({ source: "pasted", confidence: conf, fields: p.fields, fieldConfidence: p.fieldConfidence, note: line });
     }
     if (g.pile !== "unreadable") position++;
 
@@ -256,6 +258,8 @@ export async function identifyCard(card: Card, s: Settings) {
   const m = mergeCandidates(cands);
   const identOk = m.confidence >= s.confidenceThreshold;
   const w = m.winner;
+  // A different (or no) catalog match means the old catalog prices describe some other card.
+  if ((w?.catalogId ?? null) !== card.catalogId || !w?.catalogId) await retireCatalogQuotes(card.id);
   const f = m.fields;
   return db.card.update({
     where: { id: card.id },
@@ -283,6 +287,14 @@ export async function identifyCard(card: Card, s: Settings) {
       tcgplayerUrl: w?.tcgplayerUrl ?? null,
       status: card.status === "Inbox" && identOk ? "Identified" : card.status,
     },
+  });
+}
+
+/** Exclude prices that came from a catalog match the card no longer has. */
+export async function retireCatalogQuotes(cardId: string) {
+  await db.priceQuote.updateMany({
+    where: { cardId, source: { in: ["pokemontcg", "cardmarket", "scryfall"] }, excluded: false },
+    data: { excluded: true, excludeReason: "catalog match changed" },
   });
 }
 
@@ -465,11 +477,13 @@ export async function relinkCatalog(card: Card) {
     const best = r.data?.find(
       (c) => norm(c.fields.name) === norm(card.name) && (!card.number || normNumber(c.fields.number) === normNumber(card.number)),
     );
+    if (best && best.catalogId !== card.catalogId) await retireCatalogQuotes(card.id);
     if (best)
       return db.card.update({
         where: { id: card.id },
         data: { catalogId: best.catalogId, catalogImage: best.catalogImage, tcgplayerId: best.tcgplayerId ?? null, tcgplayerUrl: best.tcgplayerUrl ?? null, identSource: "manual" },
       });
   }
+  if (card.catalogId) await retireCatalogQuotes(card.id);
   return db.card.update({ where: { id: card.id }, data: { catalogId: null, catalogImage: null, identSource: "manual" } });
 }

@@ -28,9 +28,16 @@ export function scoreCandidate(
     const cc = norm(cand.setCode);
     set = (hs && cs && (hs === cs || cs.includes(hs) || hs.includes(cs))) || (hc && cc && hc === cc) ? 1 : 0.15;
   }
-  // "4/102" also tells us the set size.
-  const total = hints.number?.split("/")[1];
-  if (total && cand.printedTotal && /^\d+$/.test(total)) set = Math.max(set, Number(total) === cand.printedTotal ? 0.9 : set);
+  // "4/102" also tells us the set size. A different size means a different printing (often another
+  // language: Chinese 151 is /151, English 151 is /165), so it must not score as a match.
+  const total = hints.number?.split("/")[1]?.trim();
+  if (total && cand.printedTotal && /^\d+$/.test(total)) {
+    if (Number(total) === cand.printedTotal) set = Math.max(set, 0.9);
+    else {
+      set = 0.05;
+      number = Math.min(number, 0.4);
+    }
+  }
   let year = 0.5;
   if (hints.year && cand.year) year = hints.year === cand.year ? 1 : 0.3;
   const score = 0.5 * name + 0.25 * number + 0.17 * set + 0.08 * year;
