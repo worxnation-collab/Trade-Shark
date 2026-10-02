@@ -3,7 +3,7 @@ import { db } from "./db";
 import { mergeCandidates } from "./identify/merge";
 import { hamming, storeUpload } from "./images";
 import { matchManifest, parseManifest } from "./organize/manifest";
-import { pairFiles, type PairMode } from "./organize/pairing";
+import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
 import { statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
@@ -73,7 +73,13 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
     orderBy: { name: "asc" },
   });
 
-  const groups = pairFiles(stored, input.pairMode);
+  // Backs already in inventory teach Auto what a back looks like, even for a one-card batch.
+  const knownBacks = (
+    await db.card.findMany({ where: { backPhash: { not: null } }, select: { backPhash: true }, orderBy: { createdAt: "desc" }, take: 3000 })
+  ).map((c) => c.backPhash!);
+  let decision: BackDecision | undefined;
+  const groups = pairFiles(stored, input.pairMode, { knownBacks, onDecision: (d) => (decision = d) });
+  if (decision) await db.batch.update({ where: { id: batchId }, data: { pairDecision: JSON.stringify(decision) } });
   const manifest = input.manifest ? parseManifest(input.manifest) : [];
   const lines = (input.pastedLines ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
@@ -184,7 +190,7 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
     if (front && !seenHash.has(front.hash)) seenHash.set(front.hash, card.id);
     if (front?.phash) seenPhash.push({ ph: front.phash, id: card.id });
   }
-  return { batchId, cards: created.length, files: stored.length };
+  return { batchId, cards: created.length, files: stored.length, pairDecision: decision };
 }
 
 /* ---------------------------------------------------------------- identify */

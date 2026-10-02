@@ -1,3 +1,4 @@
+import { hamming } from "./hash";
 import { sideOf, stemOf } from "./parse";
 
 export interface InFile {
@@ -6,6 +7,8 @@ export interface InFile {
   /** Set by the flatbed split: crop N of the front sheet and crop N of the back sheet share a key. */
   pairKey?: string | null;
   side?: string | null;
+  /** 256-bit dHash; lets Auto tell whether a batch actually contains card backs. */
+  phash?: string | null;
 }
 
 export interface PairGroup<T extends InFile> {
@@ -22,6 +25,55 @@ export type PairMode = "auto" | "filename" | "order" | "fronts";
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 /**
+ * Card backs within a game print the same design, so their fingerprints sit close together.
+ * Measured on rendered scans (off-center, ±2° tilt, lighting and JPEG changes): backs ≤ 47 bits
+ * apart, fronts sharing one frame ≥ 62, back vs front ≥ 88. The cutoff sits in that gap.
+ */
+export const BACK_NEAR = 52;
+
+export interface BackDecision {
+  result: "pairs" | "pairs-backs-first" | "fronts";
+  reason: string;
+  files: number;
+  backLike: number;
+}
+
+/**
+ * Decide, for files with no side tokens, whether they alternate front/back.
+ * A file "looks like a back" when its fingerprint is near another file in this batch or near
+ * the back of a card already in inventory. We only pair when backs sit in alternating positions;
+ * a couple of matches (e.g. two copies of the same front) isn't enough.
+ */
+export function detectBacks<T extends InFile>(sorted: T[], knownBacks: string[] = []): { decision: BackDecision; looksBack: boolean[] } {
+  const n = sorted.length;
+  const near = (a: string, b: string) => hamming(a, b) <= BACK_NEAR;
+  const inBatch = sorted.map((f, i) => (f.phash ? sorted.filter((g, j) => j !== i && g.phash && near(f.phash!, g.phash)).length : 0));
+  const known = sorted.map((f) => !!f.phash && knownBacks.some((k) => near(f.phash!, k)));
+  const looksBack = sorted.map((_, i) => known[i] || inBatch[i] > 0);
+  const rate = (start: number) => {
+    const idx = Array.from({ length: n }, (_, i) => i).filter((i) => i % 2 === start);
+    return idx.length ? idx.filter((i) => looksBack[i]).length / idx.length : 0;
+  };
+  const odd = rate(1);
+  const even = rate(0);
+  const backLike = looksBack.filter(Boolean).length;
+  const base = { files: n, backLike };
+  if (n < 2) return { looksBack, decision: { ...base, result: "fronts", reason: "only one unlabeled file" } };
+  if (odd >= 0.6 && even <= 0.4)
+    return { looksBack, decision: { ...base, result: "pairs", reason: `every other file looks like a card back (${backLike} of ${n})` } };
+  if (even >= 0.6 && odd <= 0.4)
+    return { looksBack, decision: { ...base, result: "pairs-backs-first", reason: `backs come first in each pair (${backLike} of ${n} look like backs)` } };
+  return {
+    looksBack,
+    decision: {
+      ...base,
+      result: "fronts",
+      reason: backLike ? `no alternating backs (${backLike} of ${n} look back-like), treated as fronts` : "no card backs detected, treated as fronts",
+    },
+  };
+}
+
+/**
  * Pair fronts and backs.
  * - filename tokens: card001-front / card001-back, card001_f / card001_b
  * - order: sorted front, back, front, back...
@@ -29,7 +81,11 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
  * Auto = tokens first; untokened leftovers pair by order (odd one out goes to Unpaired).
  * Nothing is dropped: unreadable files and orphans land in review piles.
  */
-export function pairFiles<T extends InFile>(files: T[], mode: PairMode = "auto"): PairGroup<T>[] {
+export function pairFiles<T extends InFile>(
+  files: T[],
+  mode: PairMode = "auto",
+  opts: { knownBacks?: string[]; onDecision?: (d: BackDecision) => void } = {},
+): PairGroup<T>[] {
   const out: PairGroup<T>[] = [];
   // Flatbed crops arrive already paired by sheet position. Never re-pair them by name or order.
   const explicit = new Map<string, { front?: T; back?: T }>();
@@ -82,6 +138,32 @@ export function pairFiles<T extends InFile>(files: T[], mode: PairMode = "auto")
   }
 
   const sorted = [...plain].sort((a, b) => collator.compare(a.name, b.name));
+  if (mode === "auto" && sorted.length) {
+    const { decision, looksBack } = detectBacks(sorted, opts.knownBacks);
+    opts.onDecision?.(decision);
+    if (decision.result === "fronts") {
+      // Never let a stray back become its own card silently: if it matches a back already in
+      // inventory or a cluster of 3+ in this batch, park it in Unpaired for review.
+      const strong = sorted.map(
+        (f, i) =>
+          looksBack[i] &&
+          !!f.phash &&
+          ((opts.knownBacks ?? []).some((k) => hamming(f.phash!, k) <= BACK_NEAR) ||
+            sorted.filter((g) => g !== f && g.phash && hamming(f.phash!, g.phash) <= BACK_NEAR).length >= 2),
+      );
+      sorted.forEach((f, i) => out.push({ pairKey: stemOf(f.name), front: f, method: "single", pile: strong[i] ? "unpaired" : "none" }));
+      return out;
+    }
+    if (decision.result === "pairs-backs-first") {
+      for (let i = 0; i < sorted.length; i += 2) {
+        const back = sorted[i];
+        const front = sorted[i + 1];
+        if (front) out.push({ pairKey: `${stemOf(front.name)}+${stemOf(back.name)}`, front, back, method: "order", pile: "none" });
+        else out.push({ pairKey: stemOf(back.name), front: back, method: "single", pile: "unpaired" });
+      }
+      return out;
+    }
+  }
   for (let i = 0; i < sorted.length; i += 2) {
     const front = sorted[i];
     const back = sorted[i + 1];

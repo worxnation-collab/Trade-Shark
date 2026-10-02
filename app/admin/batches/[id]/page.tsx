@@ -33,6 +33,16 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
           <div className="text-sm text-navy/60">
             {batch._count.files} file(s) → {all.length} card(s) · pairing: {batch.pairMode} · {batch.createdAt.toLocaleString()}
           </div>
+          {batch.pairDecision &&
+            (() => {
+              const d = JSON.parse(batch.pairDecision) as { result: string; reason: string };
+              const label = d.result === "fronts" ? "Auto: fronts only" : d.result === "pairs-backs-first" ? "Auto: paired (backs first)" : "Auto: paired front/back";
+              return (
+                <div className="mt-1 text-xs">
+                  <span className="chip bg-teal/15 text-teal-2">{label}</span> <span className="text-navy/60">{d.reason}</span>
+                </div>
+              );
+            })()}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <BatchActions batchId={id} unprocessed={unprocessed} />

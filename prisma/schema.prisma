@@ -19,6 +19,7 @@ model Batch {
   name      String
   notes     String?
   pairMode  String   @default("auto") // auto | filename | order | fronts
+  pairDecision String? // JSON BackDecision from Auto pairing: did this batch contain backs?
   createdAt DateTime @default(now())
   cards     Card[]
   files     UploadFile[]

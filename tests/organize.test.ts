@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
 import { parseManifest, matchManifest } from "@/lib/organize/manifest";
 import { pairFiles, sniffImage } from "@/lib/organize/pairing";
@@ -20,8 +21,8 @@ describe("pairing", () => {
     expect(g.find((x) => x.front?.name === "junk.heic")!.pile).toBe("unreadable");
   });
 
-  it("pairs untokened files front-then-back in natural order", () => {
-    const g = pairFiles([f("IMG_10.jpg"), f("IMG_2.jpg"), f("IMG_1.jpg"), f("IMG_9.jpg"), f("IMG_11.jpg")]);
+  it("Order mode pairs untokened files front-then-back in natural order", () => {
+    const g = pairFiles([f("IMG_10.jpg"), f("IMG_2.jpg"), f("IMG_1.jpg"), f("IMG_9.jpg"), f("IMG_11.jpg")], "order");
     expect(g.map((x) => [x.front?.name, x.back?.name])).toEqual([
       ["IMG_1.jpg", "IMG_2.jpg"],
       ["IMG_9.jpg", "IMG_10.jpg"],
@@ -125,5 +126,89 @@ describe("flatbed explicit pairs", () => {
     ]);
     // Loose feeder files still pair the old way.
     expect(g.find((x) => x.front?.name === "loose-front.jpg")?.back?.name).toBe("loose-back.jpg");
+  });
+});
+
+// Synthetic 256-bit fingerprints: unrelated fronts are random; backs are small mutations of one design.
+// mulberry32: small, well-mixed, integer-safe PRNG.
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return (t ^ (t >>> 14)) >>> 0;
+  };
+}
+function randomHash(seed: number) {
+  const r = rng(seed);
+  return Array.from({ length: 64 }, () => (r() % 16).toString(16)).join("");
+}
+function mutate(hex: string, bits: number, seed: number) {
+  const r = rng(seed);
+  const arr = hex.split("").map((c) => parseInt(c, 16));
+  for (let k = 0; k < bits; k++) {
+    const i = r() % 64;
+    arr[i] ^= 1 << (r() % 4);
+  }
+  return arr.map((v) => v.toString(16)).join("");
+}
+const BACK = randomHash(999);
+const pf = (name: string, phash: string) => ({ name, readable: true, phash });
+
+describe("Auto detects whether a batch has backs", () => {
+  it("pairs when every other file is a back", () => {
+    const files = [1, 2, 3, 4].flatMap((n) => [pf(`IMG_${n * 2 - 1}.jpg`, randomHash(n)), pf(`IMG_${n * 2}.jpg`, mutate(BACK, 18, n))]);
+    let d: any;
+    const g = pairFiles(files, "auto", { onDecision: (x) => (d = x) });
+    expect(d.result).toBe("pairs");
+    expect(g.map((x) => [x.front?.name, x.back?.name])).toEqual([
+      ["IMG_1.jpg", "IMG_2.jpg"],
+      ["IMG_3.jpg", "IMG_4.jpg"],
+      ["IMG_5.jpg", "IMG_6.jpg"],
+      ["IMG_7.jpg", "IMG_8.jpg"],
+    ]);
+  });
+
+  it("treats a fronts-only batch as fronts, even with a duplicate front in it", () => {
+    const dupe = randomHash(42);
+    const files = [pf("one.jpg", randomHash(1)), pf("two.jpg", dupe), pf("three.jpg", randomHash(3)), pf("four.jpg", mutate(dupe, 6, 1)), pf("five.jpg", randomHash(5))];
+    let d: any;
+    const g = pairFiles(files, "auto", { onDecision: (x) => (d = x) });
+    expect(d.result).toBe("fronts");
+    expect(g).toHaveLength(5);
+    expect(g.every((x) => !x.back && x.pile === "none")).toBe(true);
+  });
+
+  it("swaps when backs come first", () => {
+    const files = [1, 2, 3].flatMap((n) => [pf(`s${n}a.jpg`, mutate(BACK, 15, n)), pf(`s${n}b.jpg`, randomHash(n + 10))]);
+    let d: any;
+    const g = pairFiles(files, "auto", { onDecision: (x) => (d = x) });
+    expect(d.result).toBe("pairs-backs-first");
+    expect(g.map((x) => [x.front?.name, x.back?.name])).toEqual([
+      ["s1b.jpg", "s1a.jpg"],
+      ["s2b.jpg", "s2a.jpg"],
+      ["s3b.jpg", "s3a.jpg"],
+    ]);
+  });
+
+  it("recognizes a one-card front+back upload from backs already in inventory", () => {
+    const files = [pf("IMG_1.jpg", randomHash(7)), pf("IMG_2.jpg", mutate(BACK, 20, 3))];
+    let d: any;
+    const g = pairFiles(files, "auto", { knownBacks: [BACK], onDecision: (x) => (d = x) });
+    expect(d.result).toBe("pairs");
+    expect(g[0].back?.name).toBe("IMG_2.jpg");
+    // Without that history the same two files stay two fronts.
+    expect(pairFiles(files, "auto").length).toBe(2);
+  });
+
+  it("parks a stray back in Unpaired instead of making it a card", () => {
+    const files = [pf("one.jpg", randomHash(1)), pf("two.jpg", randomHash(2)), pf("three.jpg", mutate(BACK, 12, 9)), pf("four.jpg", randomHash(4)), pf("five.jpg", randomHash(5))];
+    let d: any;
+    const g = pairFiles(files, "auto", { knownBacks: [BACK], onDecision: (x) => (d = x) });
+    expect(d.result).toBe("fronts");
+    expect(g.find((x) => x.front?.name === "three.jpg")?.pile).toBe("unpaired");
+    expect(g.filter((x) => x.pile === "none")).toHaveLength(4);
   });
 });

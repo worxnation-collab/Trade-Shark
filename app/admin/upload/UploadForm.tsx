@@ -150,7 +150,7 @@ export function UploadForm() {
         <div>
           <label className="label">Pair fronts & backs</label>
           <select className="input" value={pairMode} onChange={(e) => setPairMode(e.target.value)}>
-            <option value="auto">Auto — filename tokens, then front-then-back order</option>
+            <option value="auto">Auto — filename tokens, then detect backs (fronts only if none)</option>
             <option value="filename">Filename tokens only (-front/-back, _f/_b)</option>
             <option value="order">Front-then-back order (ignore names)</option>
             <option value="fronts">Fronts only — no backs</option>

@@ -32,7 +32,7 @@ How it fits Netlify's limits:
 
 1. **Upload** (`/admin/upload`): drop a folder or a pile of files, plus an optional CSV manifest and/or pasted lines (one card per line, in order). Files go up in small chunks, so big scanner dumps are fine.
 2. **Organize** runs automatically:
-   - Pairs fronts and backs by filename (`card001-front`/`card001-back`, `card001_f`/`card001_b`) or front-then-back order. Pick *Fronts only* for phone batches with no backs.
+   - Pairs fronts and backs by filename (`card001-front`/`card001-back`, `card001_f`/`card001_b`). For files without those tokens, **Auto** checks whether the batch actually contains backs: card backs in a game share one design, so their image fingerprints sit close together (and close to backs already in inventory). It pairs front-then-back only when backs show up in alternating positions, swaps if backs come first, and otherwise treats every file as a front. A file that clearly looks like a back but has no front goes to Unpaired instead of becoming a card. The decision and reason show on the batch page. *Order* forces front-then-back; *Fronts only* never pairs.
    - Dedupes against existing inventory by exact image hash (SHA-256), near-identical image (256-bit dHash, catches rescans), and name + set + number. Fronts only — card backs look the same across a game.
    - Splits **Unreadable** (not an image, HEIC that can't be decoded), **Unpaired**, **Likely bulk** (`bulk`, `common`, `energy` in the name or `bulk` in the manifest) and **Duplicate** files into review piles. Nothing is dropped.
    - Parses year, set, number, name, variant, and grade from the filename, manifest, or pasted line. Detects game: Pokemon, Sports, Magic, Other.
