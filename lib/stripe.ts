@@ -57,10 +57,21 @@ interface LinkSpec {
   metadata: Record<string, string>;
   redirect: string;
   inactiveMessage: string;
+  /** Its own line on the checkout ("Tracked bubble mailer" / "Stamped envelope"). Free = no line, noted in the description. */
+  shipping?: ShipLine;
+}
+
+export interface ShipLine {
+  label: string;
+  amount: number; // dollars; 0 = free
+  method: string;
 }
 
 /** Quantity 1, one completed checkout, US shipping. Retries once without the image if Stripe refuses it. */
 async function createLink(api: PaymentLinkApi, spec: LinkSpec) {
+  const ship = spec.shipping;
+  const shipCents = ship ? Math.round(ship.amount * 100) : 0;
+  const description = [spec.description, ship && shipCents === 0 ? `Shipping: free ${ship.label.toLowerCase()}.` : null].filter(Boolean).join("\n\n");
   const params = (withImage: boolean): Stripe.PaymentLinkCreateParams => ({
     line_items: [
       {
@@ -70,19 +81,22 @@ async function createLink(api: PaymentLinkApi, spec: LinkSpec) {
           unit_amount: spec.amount,
           product_data: {
             name: spec.name,
-            ...(spec.description ? { description: spec.description } : {}),
+            ...(description ? { description: description.slice(0, 1000) } : {}),
             ...(withImage && spec.image ? { images: [spec.image] } : {}),
             metadata: spec.metadata,
           },
         },
       },
+      ...(ship && shipCents > 0
+        ? [{ quantity: 1, price_data: { currency: "usd", unit_amount: shipCents, product_data: { name: ship.label, metadata: { shipping: ship.method } } } }]
+        : []),
     ],
     // One of one: Stripe deactivates the link after the first completed checkout.
     restrictions: { completed_sessions: { limit: 1 } },
     inactive_message: spec.inactiveMessage,
     after_completion: { type: "redirect", redirect: { url: spec.redirect } },
     shipping_address_collection: { allowed_countries: ["US"] },
-    metadata: spec.metadata,
+    metadata: { ...spec.metadata, ...(ship ? { ship_method: ship.method, ship_amount: ship.amount.toFixed(2) } : {}) },
   });
   try {
     const link = await api.paymentLinks.create(params(true));
@@ -97,7 +111,7 @@ async function createLink(api: PaymentLinkApi, spec: LinkSpec) {
   }
 }
 
-export async function createPaymentLink(api: PaymentLinkApi, card: LinkCard, base = siteUrl()): Promise<CreatedLink> {
+export async function createPaymentLink(api: PaymentLinkApi, card: LinkCard, base = siteUrl(), shipping?: ShipLine): Promise<CreatedLink> {
   if (!base) throw new Error("SITE_URL is not set, so Stripe has nowhere to send buyers after checkout.");
   if (!(card.listPrice > 0)) throw new Error("No list price to charge.");
   const amount = Math.round(card.listPrice * 100);
@@ -110,6 +124,7 @@ export async function createPaymentLink(api: PaymentLinkApi, card: LinkCard, bas
     metadata: { card_id: card.id, sku: card.id },
     redirect: thankYouUrl(base, card.id),
     inactiveMessage: "This card has sold. Thanks for stopping by Trade Shark.",
+    shipping,
   });
   return { ...link, amount: amount / 100 };
 }
@@ -118,7 +133,12 @@ export const PACK_PRODUCT_NAME = "Lil\u2019 Stack, Trade Shark";
 export const packThankYouUrl = (base: string, id: string) => `${base}/shop/thank-you?stack=${encodeURIComponent(id)}`;
 
 /** One link for a whole Lil' Stack: the description lists every card in it. */
-export async function createPackLink(api: PaymentLinkApi, pack: { id: string; price: number; cardNames: string[]; image?: string | null }, base = siteUrl()): Promise<CreatedLink> {
+export async function createPackLink(
+  api: PaymentLinkApi,
+  pack: { id: string; price: number; cardNames: string[]; image?: string | null },
+  base = siteUrl(),
+  shipping?: ShipLine,
+): Promise<CreatedLink> {
   if (!base) throw new Error("SITE_URL is not set, so Stripe has nowhere to send buyers after checkout.");
   if (!(pack.price > 0)) throw new Error("No pack price to charge.");
   const amount = Math.round(pack.price * 100);
@@ -130,6 +150,7 @@ export async function createPackLink(api: PaymentLinkApi, pack: { id: string; pr
     metadata: { lil_stack_id: pack.id, sku: `stack-${pack.id}` },
     redirect: packThankYouUrl(base, pack.id),
     inactiveMessage: "This Lil' Stack has sold. Thanks for stopping by Trade Shark.",
+    shipping,
   });
   return { ...link, amount: amount / 100 };
 }

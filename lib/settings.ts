@@ -29,6 +29,8 @@ export interface Settings {
   ebayLocation: string;
   /** Characters people already chase. A card whose name/player contains one gets +25 wow. */
   chaseNames: string[];
+  /** What the buyer pays for shipping, on top of the card or pack price. */
+  buyerShipping: { pwe: number; bubble: number; freeAt: number };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayPaymentProfileName: "",
   ebayLocation: "Florida",
   chaseNames: ["Pikachu", "Charizard", "Umbreon"],
+  buyerShipping: { pwe: 1.5, bubble: 6, freeAt: 35 },
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

@@ -29,11 +29,42 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     if (!res.ok) return setMsg(j.error ?? "Failed");
     setS(j);
     setMsg("Saved. Suggested prices recomputed from stored quotes.");
+    // New shipping rates have to reach the live pay links (old links are expired and replaced).
+    const before = initial.buyerShipping;
+    if (before.pwe !== j.buyerShipping.pwe || before.bubble !== j.buyerShipping.bubble || before.freeAt !== j.buyerShipping.freeAt) {
+      let total = 0;
+      for (let i = 0; i < 100; i++) {
+        setMsg(`Saved. Updating pay links to the new shipping… ${total} done`);
+        const r = await fetch("/api/admin/paylinks/refresh", { method: "POST" });
+        const k = await r.json().catch(() => ({ remaining: 0, done: 0, errors: ["refresh failed"] }));
+        total += k.done ?? 0;
+        if (k.errors?.length) {
+          setMsg(`Saved. ${total} pay links updated; problems: ${k.errors.join("; ")}`);
+          break;
+        }
+        if (!k.remaining || !k.done) {
+          setMsg(`Saved. ${total} pay link${total === 1 ? "" : "s"} updated to the new shipping.`);
+          break;
+        }
+      }
+    }
     router.refresh();
   }
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Shipping the buyer pays</h2>
+        <div className="grid grid-cols-3 gap-2">
+          <N label="Stamped envelope ($)" value={s.buyerShipping.pwe} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, pwe: v } })} hint="One raw card under $20, no tracking" />
+          <N label="Tracked bubble mailer ($)" value={s.buyerShipping.bubble} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, bubble: v } })} hint="Graded, $20+, every Lil' Stack" />
+          <N label="Free shipping at ($)" value={s.buyerShipping.freeAt} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, freeAt: v } })} hint="Single cards only, never a Lil' Stack" />
+        </div>
+        <p className="text-[11px] text-navy/50">
+          Added on top of the price as its own checkout line. Set a card&apos;s shipping profile to bubble or slab to send it in a mailer under $20. Saving new rates replaces the live pay links.
+        </p>
+      </section>
+
       <section className="card space-y-3 p-4">
         <h2 className="font-bold">Home feature</h2>
         <div>

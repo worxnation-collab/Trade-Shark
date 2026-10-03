@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { db } from "@/lib/db";
 import { CONDITION_LONG } from "@/lib/listing/templates";
-import { cardLabel, mailtoFor, PUBLIC_CARD_SELECT } from "@/lib/shop";
+import { getSettings } from "@/lib/settings";
+import { checkoutLine } from "@/lib/shipping";
+import { cardLabel, cardShipQuote, mailtoFor, PUBLIC_CARD_SELECT } from "@/lib/shop";
 import { FOR_SALE } from "@/lib/types";
 import { money } from "@/lib/util";
 
@@ -19,6 +21,7 @@ export default async function CardPage({ params }: { params: Promise<{ id: strin
     return <ShopUnavailable />;
   }
   if (!c || !FOR_SALE.includes(c.status as never) || c.listPrice == null) notFound();
+  const ship = cardShipQuote(c, await getSettings());
   const ebay = c.listedChannel === "ebay" && c.listedUrl ? c.listedUrl : null;
   const pay = c.paymentLinkActive && c.paymentLinkUrl ? c.paymentLinkUrl : null;
   return (
@@ -44,7 +47,14 @@ export default async function CardPage({ params }: { params: Promise<{ id: strin
             <dt className="text-navy/60">Condition</dt><dd>{c.graded ? `Graded ${c.graded}` : CONDITION_LONG[c.condition]}</dd>
             <dt className="text-navy/60">Quantity</dt><dd>{c.quantity}</dd>
           </dl>
-          <p className="text-sm text-navy/70">Photos are of this card. Ships from Florida with tracking.</p>
+          <p className="text-sm text-navy/70">Photos are of this card.</p>
+          <div className="rounded-lg bg-sand-2/60 px-3 py-2 text-sm">
+            <div className="font-semibold">{checkoutLine(c.listPrice, ship, "Card")}</div>
+            <div className="text-xs text-navy/60">
+              {ship.free ? `Free ${ship.label.toLowerCase()}` : ship.label}
+              {ship.tracked ? ", tracked, ships from Florida" : ", no tracking"}
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             {pay ? (
               <a href={pay} className="btn-coral px-6 py-3 text-base" data-pop>

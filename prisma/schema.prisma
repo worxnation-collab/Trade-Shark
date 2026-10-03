@@ -125,13 +125,21 @@ model Card {
   pricedAt        DateTime?
 
   // Stripe Payment Link (direct buy). Created before a card can become Ready.
-  paymentLinkId        String?
-  paymentLinkUrl       String?
-  paymentLinkCreatedAt DateTime?
-  paymentLinkAmount    Float? // price baked into the link; a different list price means regenerate
-  paymentLinkActive    Boolean   @default(false)
-  stripeSessionId      String? // checkout session that sold it (webhook)
-  paymentLinkHistory   String    @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
+  paymentLinkId         String?
+  paymentLinkUrl        String?
+  paymentLinkCreatedAt  DateTime?
+  paymentLinkAmount     Float? // price baked into the link; a different list price means regenerate
+  paymentLinkActive     Boolean   @default(false)
+  stripeSessionId       String? // checkout session that sold it (webhook)
+  paymentLinkHistory    String    @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
+  // Shipping baked into the live link (added on top of the merchandise price), and the order once sold.
+  paymentLinkShipping   Float? // what the shipping line charges; 0 = free
+  paymentLinkShipMethod String? // pwe | bubble
+  shippingCharged       Float?
+  shipMethod            String? // pwe | bubble
+  shipTo                String? // JSON name + address from Stripe checkout
+  trackingNumber        String?
+  shippedAt             DateTime?
 
   // listing
   title         String?
@@ -170,16 +178,24 @@ model LilStack {
   createdAt DateTime @default(now())
 
   // One Stripe Payment Link for the whole pack. Price = sum of card list prices, rounded up, min $3.
-  price              Float?
-  paymentLinkId      String?
-  paymentLinkUrl     String?
-  paymentLinkAmount  Float?
-  paymentLinkActive  Boolean   @default(false)
-  paymentLinkHistory String    @default("")
-  linkError          String?
-  soldAt             DateTime?
-  soldPrice          Float?
-  stripeSessionId    String?
+  price                 Float?
+  paymentLinkId         String?
+  paymentLinkUrl        String?
+  paymentLinkAmount     Float?
+  paymentLinkActive     Boolean   @default(false)
+  paymentLinkHistory    String    @default("")
+  linkError             String?
+  soldAt                DateTime?
+  soldPrice             Float?
+  stripeSessionId       String?
+  // Shipping baked into the live link (added on top of the merchandise price), and the order once sold.
+  paymentLinkShipping   Float? // what the shipping line charges; 0 = free
+  paymentLinkShipMethod String? // pwe | bubble
+  shippingCharged       Float?
+  shipMethod            String? // pwe | bubble
+  shipTo                String? // JSON name + address from Stripe checkout
+  trackingNumber        String?
+  shippedAt             DateTime?
 
   @@unique([batchId, seq])
   @@index([paymentLinkId])

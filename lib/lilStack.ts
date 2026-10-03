@@ -4,6 +4,7 @@ import { db } from "./db";
 import { siteUrl } from "./env";
 import { LIL_STACK_UNDER, statusAfterPricing } from "./pricing/engine";
 import { getSettings } from "./settings";
+import { shipForStack, shipFromLink } from "./shipping";
 import { createPackLink, deactivatePaymentLink, stripe, stripeErrorMessage, type PaymentLinkApi } from "./stripe";
 import { PACK_MIN_PRICE, packLabel, packMath, packPrice } from "./lilStackMath";
 import { round2 } from "./util";
@@ -70,7 +71,9 @@ export async function syncPackLink(packId: string, opts: { force?: boolean; api?
   const byId = new Map(pack.cards.map((c) => [c.id, c]));
   const cards = pack.cardIds.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c);
   const price = packPrice(cards.map((c) => c.listPrice));
-  const fresh = pack.paymentLinkActive && pack.paymentLinkAmount === price && !opts.force;
+  const ship = shipForStack((await getSettings()).buyerShipping);
+  const fresh =
+    pack.paymentLinkActive && pack.paymentLinkAmount === price && pack.paymentLinkShipMethod === ship.method && pack.paymentLinkShipping === ship.amount && !opts.force;
   if (fresh) return pack.price === price ? pack : db.lilStack.update({ where: { id: pack.id }, data: { price } });
 
   const api = opts.api !== undefined ? opts.api : linkApi();
@@ -80,10 +83,24 @@ export async function syncPackLink(packId: string, opts: { force?: boolean; api?
     const history = [...new Set([...pack.paymentLinkHistory.split(",").filter(Boolean), ...(pack.paymentLinkId ? [pack.paymentLinkId] : [])])].join(",");
     const art = await artUrls().catch(() => ({}) as Record<string, string>);
     const image = "closed" in art && art.closed ? `${siteUrl()}${art.closed}` : null;
-    const link = await createPackLink(api, { id: pack.id, price, cardNames: cards.map(displayName), image });
+    const link = await createPackLink(api, { id: pack.id, price, cardNames: cards.map(displayName), image }, undefined, {
+      label: ship.label,
+      amount: ship.amount,
+      method: ship.method,
+    });
     return db.lilStack.update({
       where: { id: pack.id },
-      data: { price, paymentLinkId: link.id, paymentLinkUrl: link.url, paymentLinkAmount: link.amount, paymentLinkActive: true, paymentLinkHistory: history, linkError: null },
+      data: {
+        price,
+        paymentLinkId: link.id,
+        paymentLinkUrl: link.url,
+        paymentLinkAmount: link.amount,
+        paymentLinkActive: true,
+        paymentLinkHistory: history,
+        paymentLinkShipping: ship.amount,
+        paymentLinkShipMethod: ship.method,
+        linkError: null,
+      },
     });
   } catch (e) {
     return db.lilStack.update({ where: { id: pack.id }, data: { price, paymentLinkActive: false, linkError: stripeErrorMessage(e) } });
@@ -211,7 +228,19 @@ export function splitSale(total: number, prices: number[]) {
  * Mark a pack and every card in it Sold. Called by the signed Stripe webhook, or by me by hand.
  * Idempotent: an already-sold pack changes nothing.
  */
-export async function markPackSold(packId: string, sale: { amount?: number | null; at?: Date; sessionId?: string | null; channel: string; byHand?: boolean }) {
+export async function markPackSold(
+  packId: string,
+  sale: {
+    amount?: number | null; // merchandise only; shipping is its own field
+    at?: Date;
+    sessionId?: string | null;
+    channel: string;
+    byHand?: boolean;
+    shippingCharged?: number | null;
+    shipMethod?: string | null;
+    shipTo?: string | null;
+  },
+) {
   const pack = await db.lilStack.findUnique({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true, status: true } } } });
   if (!pack) return { ok: false as const, note: "no such pack" };
   if (pack.status === "sold") return { ok: true as const, note: "already sold" };
@@ -224,7 +253,16 @@ export async function markPackSold(packId: string, sale: { amount?: number | nul
   await db.$transaction([
     db.lilStack.update({
       where: { id: pack.id },
-      data: { status: "sold", soldAt: at, soldPrice: total, stripeSessionId: sale.sessionId ?? null, paymentLinkActive: false },
+      data: {
+        status: "sold",
+        soldAt: at,
+        soldPrice: total,
+        stripeSessionId: sale.sessionId ?? null,
+        paymentLinkActive: false,
+        shippingCharged: sale.shippingCharged ?? null,
+        shipMethod: sale.shipMethod ?? pack.paymentLinkShipMethod ?? "bubble",
+        shipTo: sale.shipTo ?? null,
+      },
     }),
     ...cards.map((c, i) =>
       db.card.update({
@@ -264,6 +302,8 @@ export interface PublicPack {
   /** What Stripe charges for the whole pack; null when there's no live link (opening still works). */
   price: number | null;
   buyUrl: string | null;
+  /** Shipping line on that link (always a tracked bubble mailer, never free). */
+  ship: { amount: number; label: string; free: boolean };
   wow: number;
   cards: { id: string; name: string; setName: string | null }[];
 }
@@ -272,6 +312,7 @@ export type PackSort = "default" | "price-asc" | "price-desc";
 
 /** Open packs for the shop. Labels follow the default order so "Lil' Stack 2" means the same pack under any sort. */
 export async function publicPacks(sort: PackSort = "default"): Promise<PublicPack[]> {
+  const fallbackShip = shipForStack((await getSettings()).buyerShipping);
   const packs = await db.lilStack.findMany({
     where: { status: "open" },
     orderBy: [{ batch: { createdAt: "asc" } }, { seq: "asc" }],
@@ -281,6 +322,8 @@ export async function publicPacks(sort: PackSort = "default"): Promise<PublicPac
       paymentLinkActive: true,
       paymentLinkUrl: true,
       paymentLinkAmount: true,
+      paymentLinkShipping: true,
+      paymentLinkShipMethod: true,
       cards: { where: { status: "LilStack", readable: true }, select: LIL_STACK_CARD_SELECT },
     },
   });
@@ -293,6 +336,7 @@ export async function publicPacks(sort: PackSort = "default"): Promise<PublicPac
         id: p.id,
         price: live ? p.paymentLinkAmount : null,
         buyUrl: live ? p.paymentLinkUrl : null,
+        ship: (live && shipFromLink(p.paymentLinkShipMethod, p.paymentLinkShipping)) || fallbackShip,
         wow: cards.reduce((n, c) => Math.max(n, c.wowScore), 0),
         cards: cards.map((c) => ({ id: c.id, name: displayName(c), setName: [c.year, c.setName].filter(Boolean).join(" ") || null })),
       };

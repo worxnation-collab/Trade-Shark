@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/SharkFin";
 import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { homeFeed, type HomeItem } from "@/lib/home";
 import { packMath } from "@/lib/lilStack";
+import { checkoutLine, SHIP_LABEL } from "@/lib/shipping";
 import { money } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
@@ -127,7 +128,16 @@ function Hero({ item }: { item: HomeItem }) {
           <h1 className="mt-2 text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">{item.name}</h1>
           {item.setLine && <p className="mt-1 text-sand/70">{item.setLine}</p>}
           <p className="mt-4 text-lg font-semibold text-teal">{item.hype}</p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 md:justify-start">
+          {item.price != null && (
+            <p className="mt-5 text-sm font-semibold text-sand/85">
+              {checkoutLine(item.price, item.ship, stack ? "Cards" : "Card")}
+              <span className="block text-xs font-normal text-sand/55">
+                {item.ship.free ? `Free ${item.ship.label.toLowerCase()}` : item.ship.label}
+                {item.ship.label === SHIP_LABEL.pwe ? ", no tracking" : ", ships from Florida"}
+              </span>
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3 md:justify-start">
             {item.buyUrl ? (
               <a href={item.buyUrl} className="btn-coral px-6 py-3 text-base" data-pop>
                 {stack ? "Buy this stack" : "Buy this card"} · {price(item.price)}

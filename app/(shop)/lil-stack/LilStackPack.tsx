@@ -6,6 +6,7 @@ import { SharkFin } from "@/components/SharkFin";
 import { confetti, pop } from "@/lib/client/feel";
 import type { PublicPack } from "@/lib/lilStack";
 import { packMath } from "@/lib/lilStackMath";
+import { checkoutLine } from "@/lib/shipping";
 
 /** A swipe has to cross the pack: start on the left side, reach the right edge. */
 const START_ZONE = 0.35;
@@ -243,6 +244,8 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
           {/* Only after the pack is open: you've seen every card before you can buy it. */}
           {pack.buyUrl && pack.price != null && (
             <div className="ls-buy mt-8 flex flex-col items-center gap-1.5">
+              <p className="text-sm font-semibold text-white">{checkoutLine(pack.price, pack.ship, "Cards")}</p>
+              <p className="-mt-1 mb-1 text-xs text-sand/60">{pack.ship.label}, ships from Florida</p>
               <a href={pack.buyUrl} className="btn-coral px-7 py-3 text-base" data-pop>
                 Buy this stack
               </a>

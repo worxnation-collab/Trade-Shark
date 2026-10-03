@@ -87,7 +87,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
     status = before.status === "LilStack" && card.lilStackId ? "LilStack" : card.listPrice < s.minListPrice ? "BulkHold" : "Priced";
   }
   // A card only goes up for sale with a working pay link: create it before the status flips.
-  else if (FOR_SALE.includes(status as never) && needsLink(card)) {
+  else if (FOR_SALE.includes(status as never) && needsLink(card, s)) {
     const r = await issuePaymentLink(card, s);
     card = r.card;
     if (!r.ok) {

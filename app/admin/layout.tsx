@@ -12,6 +12,7 @@ const NAV = [
   ["/admin/batches", "Batches"],
   ["/admin/cards", "Inventory"],
   ["/admin/lil-stack", "Lil' Stack"],
+  ["/admin/orders", "Orders"],
   ["/admin/export", "Export"],
   ["/admin/settings", "Settings"],
 ] as const;
@@ -42,11 +43,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-2.5">
           <Link href="/admin" className="flex items-center gap-3">
             <Wordmark light />
-            <span className="hidden text-xs font-semibold uppercase tracking-widest text-sand/50 sm:inline">Listing desk</span>
+            <span className="hidden text-xs font-semibold uppercase tracking-widest text-sand/50 2xl:inline">Listing desk</span>
           </Link>
           <nav className="flex flex-wrap items-center gap-1 text-sm font-semibold">
             {NAV.map(([href, label]) => (
-              <Link key={href} href={href} className="rounded px-2.5 py-1 text-sand hover:bg-white/10 hover:text-white">
+              <Link key={href} href={href} className="rounded px-2 py-1 text-sand hover:bg-white/10 hover:text-white">
                 {label}
               </Link>
             ))}

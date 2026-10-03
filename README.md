@@ -144,6 +144,21 @@ The home page leads with the most eye-catching live item, never the most expensi
 - **On the hunt:** the next 6 by wow, price as secondary text. A sold item drops out and the next one moves up.
 - **`/shop`** has the full grid with search, game filter and price sort.
 
+## Shipping
+
+The buyer pays shipping on top of the price. It's its own line on the Stripe checkout, never baked into a card or pack price. Rates live in **Settings → Shipping the buyer pays**:
+
+| Method | Default | When |
+|---|---|---|
+| Stamped envelope | $1.50 | A raw single under $20. No tracking promise. |
+| Tracked bubble mailer | $6.00 | Any graded card, any card $20+, every Lil' Stack, or a card whose shipping profile I set to bubble/slab. Ships from Florida. |
+| Free | $0 | A single card at or over **$35**. I eat the postage. **Never on a Lil' Stack.** |
+
+- Every buy button has the math above it: "Cards $4 · Shipping $6 · Total $10".
+- Changing a rate in Settings replaces the live pay links (chunked, a few per request).
+- The webhook splits the checkout into merchandise (`soldPrice`) and shipping (`shippingCharged`), and keeps the method and the ship-to address Stripe collected.
+- **Admin → Orders** lists sold cards and Lil' Stacks, unshipped first, with the method and address. Mailers take a tracking number before **Mark shipped**; envelopes say "no tracking".
+
 ## Exports
 
 - **eBay** (`trade-shark-ebay-*.csv`): Seller Hub Reports / File Exchange format, `Action=Draft`. Upload under Seller Hub → Reports → Uploads; the drafts stay drafts until you publish them. Category ids and business-policy names are in Settings. The ungraded "Card Condition" descriptor codes come from eBay's trading-card condition policy; check them against a fresh Seller Hub template before a large upload.

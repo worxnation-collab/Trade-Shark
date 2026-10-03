@@ -1,4 +1,6 @@
 import { shopEmail } from "./env";
+import type { Settings } from "./settings";
+import { shipForCard, shipFromLink, type ShipQuote } from "./shipping";
 
 export function cardLabel(c: { name: string | null; player?: string | null; setName: string | null; number: string | null; year: string | null }) {
   return [c.year, c.setName, c.player || c.name, c.number && `#${c.number}`].filter(Boolean).join(" ");
@@ -35,7 +37,18 @@ export const PUBLIC_CARD_SELECT = {
   paymentLinkActive: true,
   title: true,
   rarity: true,
+  shippingProfile: true,
+  paymentLinkShipping: true,
+  paymentLinkShipMethod: true,
   wowScore: true,
   wowTags: true,
   updatedAt: true,
 } as const;
+
+/** Shipping the buyer sees: what the live link charges, else what the rules would charge. */
+export function cardShipQuote(
+  c: { listPrice: number | null; graded: string | null; shippingProfile: string; paymentLinkActive: boolean; paymentLinkShipping: number | null; paymentLinkShipMethod: string | null },
+  s: Pick<Settings, "buyerShipping">,
+): ShipQuote {
+  return (c.paymentLinkActive && shipFromLink(c.paymentLinkShipMethod, c.paymentLinkShipping)) || shipForCard({ price: c.listPrice ?? 0, graded: c.graded, profile: c.shippingProfile }, s.buyerShipping);
+}
