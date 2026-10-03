@@ -27,8 +27,9 @@ export function latestPerSource(quotes: QuoteRow[]): QuoteRow[] {
 }
 
 export interface Suggestion {
+  /** Unrounded median of the sources (or the manual price). null = no source returned a number. */
   price: number | null;
-  basis: "manual" | "sold_median" | "tcg_market" | "retail_ask" | null;
+  basis: "manual" | "median" | "single" | null;
   basisLabel: string;
   basisAmount: number | null;
   multiplier: number;
@@ -50,6 +51,11 @@ const SOURCE_NAME: Record<string, string> = {
 };
 export const sourceName = (s: string) => SOURCE_NAME[s] ?? s;
 
+/**
+ * Cute-shop pricing: one headline per source (sold-comp median, TCGplayer market, Scryfall ask,
+ * eBay active-ask median), then the median of those. One source = that number. None = null
+ * (the shop then lists a named card at $1). Disagreement is recorded, never a reason to hold a card.
+ */
 export function suggest(
   allQuotes: QuoteRow[],
   card: { condition: string; graded?: string | null; manualPrice?: number | null; variant?: string | null },
@@ -69,54 +75,37 @@ export function suggest(
         last5: [...sold].sort((a, b) => (b.soldAt?.getTime() ?? 0) - (a.soldAt?.getTime() ?? 0)).slice(0, 5),
       }
     : null;
-  const soldNM = sold.length > 0 && sold.every((q) => q.condition === "NM");
-
   const market = quotes.find((q) => q.source === "pokemontcg" && q.label === "market" && usd(q) && !q.excluded);
   const ask = quotes.find((q) => q.kind === "retail_ask" && q.source === "scryfall" && usd(q) && !q.excluded);
-  const activeAsks = quotes.filter((q) => q.source === "ebay_active" && !q.excluded);
+  const activeAsks = quotes.filter((q) => q.source === "ebay_active" && !q.excluded && usd(q));
 
-  const headlines: Suggestion["headlines"] = [];
-  if (soldStats) headlines.push({ source: "sold", label: `Sold median (${soldStats.n})`, amount: soldStats.median });
-  if (market) headlines.push({ source: "pokemontcg", label: "TCGplayer market", amount: market.amount });
-  if (ask) headlines.push({ source: "scryfall", label: `Scryfall ${ask.label}`, amount: ask.amount });
-  if (activeAsks.length >= 3)
-    headlines.push({ source: "ebay_active", label: `eBay active median (${activeAsks.length})`, amount: round2(median(activeAsks.map((q) => q.amount))!) });
+  const headlines: (Suggestion["headlines"][number] & { nm: boolean })[] = [];
+  if (soldStats) headlines.push({ source: "sold", label: `Sold median (${soldStats.n})`, amount: soldStats.median, nm: sold.every((q) => q.condition === "NM") });
+  if (market) headlines.push({ source: "pokemontcg", label: "TCGplayer market", amount: market.amount, nm: market.condition === "NM" });
+  if (ask) headlines.push({ source: "scryfall", label: `Scryfall ${ask.label}`, amount: ask.amount, nm: ask.condition === "NM" });
+  if (activeAsks.length)
+    headlines.push({ source: "ebay_active", label: `eBay active median (${activeAsks.length})`, amount: round2(median(activeAsks.map((q) => q.amount))!), nm: false });
 
   const amts = headlines.map((h) => h.amount).filter((a) => a > 0);
   const conflict = amts.length >= 2 && Math.max(...amts) / Math.min(...amts) > s.conflictRatio;
-  if (conflict) notes.push(`Sources disagree by more than ${s.conflictRatio}x — check before trusting the suggestion.`);
+  if (conflict) notes.push(`Sources disagree by more than ${s.conflictRatio}x; using the median anyway.`);
 
   let basis: Suggestion["basis"] = null;
   let basisAmount: number | null = null;
-  let basisLabel = "No price";
-  let basisNM = false;
-  if (soldStats && soldStats.n >= s.minComps) {
-    basis = "sold_median";
-    basisAmount = soldStats.median;
-    basisLabel = `Median of ${soldStats.n} sold comps`;
-    basisNM = soldNM;
-  } else if (s.useTcgMarket && market) {
-    basis = "tcg_market";
-    basisAmount = market.amount;
-    basisLabel = "TCGplayer market";
-    basisNM = market.condition === "NM";
-    if (soldStats) notes.push(`Only ${soldStats.n} clean sold comp(s); need ${s.minComps} to use sold median.`);
-  } else if (s.useRetailAskFallback && ask) {
-    basis = "retail_ask";
-    basisAmount = ask.amount;
-    basisLabel = `Scryfall ${ask.label} (retail ask)`;
-    basisNM = ask.condition === "NM";
-  } else if (soldStats) {
-    notes.push(`Only ${soldStats.n} clean sold comp(s); need ${s.minComps}. No market fallback available.`);
-  }
+  let basisLabel = "No price source";
+  if (amts.length) {
+    basisAmount = round2(median(amts)!);
+    basis = amts.length === 1 ? "single" : "median";
+    basisLabel = amts.length === 1 ? headlines.find((h) => h.amount > 0)!.label : `Median of ${amts.length} sources`;
+  } else notes.push("No source returned a price.");
 
+  // Condition only discounts when every source priced NM copies.
   let multiplier = 1;
   const cond = (card.condition || "NM") as Condition;
-  if (basisAmount != null && basisNM && !card.graded && cond !== "NM") {
+  const allNM = headlines.length > 0 && headlines.every((h) => h.nm);
+  if (basisAmount != null && allNM && !card.graded && cond !== "NM") {
     multiplier = s.conditionMultipliers[cond] ?? 1;
-    notes.push(`${cond} multiplier ${multiplier} applied to an NM source price.`);
-  } else if (basisAmount != null && !basisNM && cond !== "NM") {
-    notes.push(`Source price condition unknown — ${cond} multiplier not applied.`);
+    notes.push(`${cond} multiplier ${multiplier} applied to NM source prices.`);
   }
 
   let price = basisAmount != null ? round2(basisAmount * multiplier) : null;
@@ -134,10 +123,22 @@ export function suggest(
     multiplier,
     compCount: soldStats?.n ?? 0,
     soldStats,
-    headlines,
+    headlines: headlines.map(({ nm: _nm, ...h }) => h),
     conflict,
     notes,
   };
+}
+
+/**
+ * The shop price of a card from its suggestion.
+ * - Under $1 stays exact: it's a Lil' Stack card, and the pack price adds those up.
+ * - Otherwise round to the nearest dollar, minimum $1. No source at all = $1.
+ */
+export function shopPrice(raw: number | null, manual?: number | null): number {
+  if (manual != null) return manual;
+  if (raw == null) return 1;
+  if (raw < LIL_STACK_UNDER) return round2(raw);
+  return Math.max(1, Math.round(raw));
 }
 
 export type Channel = "ebay" | "tcgplayer" | "stripe" | "local";

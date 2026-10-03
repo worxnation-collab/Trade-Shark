@@ -73,8 +73,9 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   // LilStack is only set by packing (a card needs a pack to be in one).
   if (typeof b.status === "string" && (STATUSES as readonly string[]).includes(b.status) && (b.status !== "LilStack" || card.lilStackId)) status = b.status;
   // An unreadable file has no photo to sell; it can be confirmed but stays out of Ready.
-  else if (b.confirm && card.readable && ["Inbox", "Identified", "Priced", "BulkHold"].includes(card.status)) {
-    status = card.listPrice == null ? "Identified" : card.listPrice < s.minListPrice ? "BulkHold" : "Ready";
+  // Saving a card I'm looking at approves it: $1+ goes live (pay link first), under $1 joins a Lil' Stack.
+  else if (b.confirm && card.readable && ["Inbox", "Identified", "Priced", "BulkHold", "NeedsLook", "Pulled"].includes(card.status)) {
+    status = card.listPrice == null ? "Identified" : card.listPrice < LIL_STACK_UNDER ? "BulkHold" : "Ready";
   }
   const extra: Prisma.CardUpdateInput = {};
   if (card.listedUrl && card.listedUrl !== before.listedUrl && ["Ready", "Priced"].includes(status)) status = "Listed";
@@ -84,7 +85,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   let linkError: string | undefined;
   if (FOR_SALE.includes(status as never) && card.listPrice != null && card.listPrice < LIL_STACK_UNDER) {
     linkError = `Under $${LIL_STACK_UNDER.toFixed(2)} goes in a Lil' Stack, not the shop. Price it at $${LIL_STACK_UNDER.toFixed(2)}+ to sell it as a single.`;
-    status = before.status === "LilStack" && card.lilStackId ? "LilStack" : card.listPrice < s.minListPrice ? "BulkHold" : "Priced";
+    status = before.status === "LilStack" && card.lilStackId ? "LilStack" : "BulkHold";
   }
   // A card only goes up for sale with a working pay link: create it before the status flips.
   else if (FOR_SALE.includes(status as never) && needsLink(card, s)) {
@@ -93,7 +94,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
     if (!r.ok) {
       linkError = r.error;
       // Stay out of the shop: back to Priced (or Bulk Hold if it's under the minimum).
-      status = before.status === "Listed" || before.status === "Ready" ? "Priced" : card.listPrice != null && card.listPrice < s.minListPrice ? "BulkHold" : "Priced";
+      status = "NeedsLook";
     }
   } else if (!FOR_SALE.includes(status as never) && card.paymentLinkActive) {
     card = (await retirePaymentLink(card)).card;

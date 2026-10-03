@@ -60,20 +60,35 @@ Lot of 10 Pokemon cards Charizard $25.00`;
 
 describe("suggested price rule", () => {
   const card = { condition: "NM", graded: null, manualPrice: null };
-  it("uses sold median with 3+ comps", () => {
-    const r = suggest([q({ amount: 10 }), q({ amount: 12 }), q({ amount: 30 }), q({ source: "pokemontcg", kind: "market", label: "market", amount: 50, condition: "NM" })], card, S);
-    expect(r.basis).toBe("sold_median");
-    expect(r.price).toBe(12);
-    expect(r.conflict).toBe(true);
+  it("takes the median of every source that has a number", () => {
+    const sold = [q({ amount: 10 }), q({ amount: 12 }), q({ amount: 30 })]; // sold median 12
+    const market = q({ source: "pokemontcg", kind: "market", label: "market", amount: 50, condition: "NM" });
+    const ask = q({ source: "scryfall", kind: "retail_ask", label: "usd", amount: 4, condition: "NM" });
+    const r = suggest([...sold, market, ask], card, S);
+    expect(r.basis).toBe("median");
+    expect(r.basisLabel).toBe("Median of 3 sources");
+    expect(r.price).toBe(12); // median of 12, 50, 4
+    expect(r.conflict).toBe(true); // recorded, never a reason to hold
   });
-  it("falls back to TCGplayer market, then blank", () => {
+  it("one source = that number; even a single comp counts; none = null", () => {
     const m = q({ source: "pokemontcg", kind: "market", label: "market", amount: 8, condition: "NM" });
-    expect(suggest([q({ amount: 10 }), m], card, S).basis).toBe("tcg_market");
-    expect(suggest([q({ amount: 10 })], card, S).price).toBeNull();
-    // Scryfall ask is not used unless enabled
-    const ask = q({ source: "scryfall", kind: "retail_ask", label: "usd", amount: 3, condition: "NM" });
-    expect(suggest([ask], card, S).price).toBeNull();
-    expect(suggest([ask], card, { ...S, useRetailAskFallback: true }).price).toBe(3);
+    expect(suggest([m], card, S)).toMatchObject({ basis: "single", price: 8, basisLabel: "TCGplayer market" });
+    expect(suggest([q({ amount: 7 })], card, S).price).toBe(7);
+    expect(suggest([q({ source: "scryfall", kind: "retail_ask", label: "usd", amount: 3, condition: "NM" })], card, S).price).toBe(3);
+    expect(suggest([], card, S)).toMatchObject({ price: null, basis: null });
+    // Two sources: the median is their average
+    expect(suggest([m, q({ amount: 12 })], card, S).price).toBe(10);
+  });
+  it("shop price: nearest dollar, minimum $1, $1 with no source, exact under $1 (Lil' Stack)", async () => {
+    const { shopPrice } = await import("@/lib/pricing/engine");
+    expect(shopPrice(4.49)).toBe(4);
+    expect(shopPrice(4.5)).toBe(5);
+    expect(shopPrice(5.4)).toBe(5);
+    expect(shopPrice(5.5)).toBe(6);
+    expect(shopPrice(1.2)).toBe(1);
+    expect(shopPrice(null)).toBe(1);
+    expect(shopPrice(0.37)).toBe(0.37);
+    expect(shopPrice(3.2, 9.99)).toBe(9.99); // manual wins as typed
   });
   it("applies condition multiplier only to NM-source prices", () => {
     const m = q({ source: "pokemontcg", kind: "market", label: "market", amount: 10, condition: "NM" });

@@ -21,13 +21,14 @@ describe("Lil' Stack", () => {
     expect(qualifies(card({ listPrice: null }))).toBe(false);
   });
 
-  it("only packs priced cards with a photo, never owner decisions or rescans", () => {
+  it("only packs priced cards with a photo, never owner decisions", () => {
     expect(qualifies(card({ status: "Priced" }))).toBe(true);
     expect(qualifies(card({ status: "LilStack" }))).toBe(true);
     for (const status of ["Inbox", "Identified", "Ready", "Listed", "Sold", "Archived"]) expect(qualifies(card({ status }))).toBe(false);
     expect(qualifies(card({ readable: false }))).toBe(false);
     expect(qualifies(card({ frontImage: null }))).toBe(false);
-    expect(qualifies(card({ pile: "duplicate" }))).toBe(false);
+    // A near-duplicate scan (a second copy) can be packed; exact re-uploads never reach a packable status.
+    expect(qualifies(card({ pile: "duplicate" }))).toBe(true);
   });
 
   it("packs hold up to 12, extras make pack 2, 3…", () => {

@@ -86,15 +86,15 @@ export function SettingsForm({ initial }: { initial: Settings }) {
       </section>
 
       <section className="card space-y-3 p-4">
-        <h2 className="font-bold">Suggested list price rule</h2>
+        <h2 className="font-bold">Price rule</h2>
+        <p className="text-sm text-navy/70">
+          Median of every source that returns a price (one source = that price), rounded to the nearest dollar, minimum $1. No source = $1. Under $1 goes in a
+          Lil&apos; Stack. $5 and under goes live on upload; over $5 waits in Needs a look.
+        </p>
         <div className="grid grid-cols-2 gap-2">
-          <N label="Min sold comps for median" step="1" value={s.minComps} onChange={(v) => setS({ ...s, minComps: v })} />
-          <N label="Minimum list price ($)" value={s.minListPrice} onChange={(v) => setS({ ...s, minListPrice: v })} hint="Below this → Bulk Hold" />
           <N label="Stale after (hours)" step="1" value={s.staleHours} onChange={(v) => setS({ ...s, staleHours: v })} />
-          <N label="Conflict ratio" step="0.1" value={s.conflictRatio} onChange={(v) => setS({ ...s, conflictRatio: v })} hint="Flag when sources differ by more than this ×" />
+          <N label="Conflict ratio" step="0.1" value={s.conflictRatio} onChange={(v) => setS({ ...s, conflictRatio: v })} hint="Noted on the card when sources differ by more than this ×; never holds a card" />
         </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={s.useTcgMarket} onChange={(e) => setS({ ...s, useTcgMarket: e.target.checked })} /> Fall back to TCGplayer market when comps &lt; minimum</label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={s.useRetailAskFallback} onChange={(e) => setS({ ...s, useRetailAskFallback: e.target.checked })} /> Then fall back to Scryfall retail ask (off by default — asks aren&apos;t sales)</label>
         <div>
           <label className="label">Condition multipliers (applied only to NM source prices)</label>
           <div className="grid grid-cols-5 gap-2">

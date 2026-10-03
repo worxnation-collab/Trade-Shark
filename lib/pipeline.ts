@@ -6,7 +6,8 @@ import { matchManifest, parseManifest } from "./organize/manifest";
 import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
 import { buildLilStacks, releaseFromPack } from "./lilStack";
-import { statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
+import { autoPublish, publishLeftovers } from "./publish";
+import { shopPrice, statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
 import { appliesTo, CATALOG_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sources";
 import type { RunStatus } from "./sources/types";
@@ -395,14 +396,16 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
   const sug = suggest(quotes, card, s);
   const identOk = !!card.confirmedAt || card.sourceConfidence >= s.confidenceThreshold;
   // A live pay link fixes the price buyers see; only a manual save may change it (and regenerates the link).
-  const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : (card.manualPrice ?? sug.price);
+  // Shop price: nearest dollar (min $1, $1 when no source), exact under $1 for Lil' Stack cards; manual wins.
+  const raw = sug.basis === "manual" ? sug.basisAmount : sug.price;
+  const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : shopPrice(raw, card.manualPrice);
   const status = statusAfterPricing(card.status, listPrice, identOk, s);
   // Repriced to $1 or more: out of its Lil' Stack and back on the normal path.
   if (card.status === "LilStack" && status !== "LilStack") await releaseFromPack(card);
   return db.card.update({
     where: { id: cardId },
     data: {
-      suggestedPrice: sug.basis === "manual" ? card.suggestedPrice : sug.price,
+      suggestedPrice: raw != null ? shopPrice(raw) : null,
       suggestedSource: sug.basisLabel,
       priceConflict: sug.conflict,
       listPrice,
@@ -423,6 +426,7 @@ export async function processBatch(batchId: string, limit = 6) {
     take: limit,
   });
   const run = limiter(3);
+  const decisions: string[] = [];
   await Promise.all(
     todo.map((c) =>
       run(async () => {
@@ -430,8 +434,10 @@ export async function processBatch(batchId: string, limit = 6) {
           if (c.readable) {
             let card = await identifyCard(c, s);
             card = await flagNameDuplicate(card);
-            await priceCard(card, s);
-          }
+            card = await priceCard(card, s);
+            // Straight to the shop: publish $5 and under, flag over $5, stack under $1, hold the unnamed.
+            decisions.push(await autoPublish(card, s));
+          } else decisions.push("hold");
         } catch (e) {
           await db.sourceRun.create({
             data: { cardId: c.id, source: "pipeline", phase: "identify", status: "error", reason: e instanceof Error ? e.message : String(e) },
@@ -446,7 +452,8 @@ export async function processBatch(batchId: string, limit = 6) {
   if (todo.length && !remaining) await recomputeBatchWow(batchId, s);
   // The batch is identified and priced: pile every sub-$1 card into Lil' Stacks.
   const lilStack = todo.length && !remaining ? await buildLilStacks(batchId).catch((e) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
-  return { processed: todo.length, remaining, lilStack };
+  if (todo.length && !remaining) await publishLeftovers(batchId, s).catch(() => 0);
+  return { processed: todo.length, remaining, decisions, lilStack };
 }
 
 /** Refresh quotes older than staleHours for every card in a batch (chunked like processBatch). */
@@ -462,7 +469,10 @@ export async function repriceBatch(batchId: string, cursor = 0, limit = 2) {
   await Promise.all(cards.map((c) => run(() => priceCard(c, s, { onlyStale: true }))));
   const total = await db.card.count({ where: { batchId, readable: true, status: { notIn: ["Sold", "Archived"] } } });
   const next = cursor + cards.length;
-  if (next >= total) await recomputeBatchWow(batchId, s);
+  if (next >= total) {
+    await recomputeBatchWow(batchId, s);
+    await publishLeftovers(batchId, s).catch(() => 0);
+  }
   return { next, total, done: next >= total };
 }
 

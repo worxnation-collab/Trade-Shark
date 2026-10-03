@@ -47,7 +47,7 @@ How it fits Netlify's limits:
 5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
 6. **Shop** (`/`): grid + card page for For Sale cards (Ready or Listed). "Buy on eBay" once a URL is pasted; otherwise a mailto to `SHOP_EMAIL`.
 
-Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Archived`, plus `Bulk Hold` and `Lil' Stack`.
+Statuses: `Inbox` (held) → `For Sale` (internally `Ready`) / `Needs a look` / `Lil' Stack` → `Sold`, plus `Pulled`, `Listed` (exported to a marketplace) and `Archived`.
 
 ## Environment keys
 
@@ -121,6 +121,23 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0
 **Price conflict** is flagged when source headlines disagree by more than 1.5×.
 
 **Reprice batch** refreshes quotes older than 24 hours (configurable). **Refresh all sources** on a card ignores the window.
+
+## Upload → shop, no review step
+
+A fresh batch runs straight through on its batch page (it starts by itself): identify, price, publish.
+
+| Result | What happens |
+|---|---|
+| No name (identification failed) or no usable photo | **Held** in Inbox for me. Names are never invented; a filename guess doesn't count. |
+| Under $1 | Goes into a **Lil' Stack**, which publishes with its own pay link. |
+| $1 to $5 | **For Sale** right away. The pay link (with its shipping line) is created first. |
+| Over $5 | **Needs a look** (admin only) with the suggested price and source. |
+
+**Price rule:** one number per source (sold-comp median, TCGplayer market, Scryfall, eBay active median), then the median of those. One source = that number. No source = **$1**. Rounded to the nearest dollar, minimum $1 (under $1 stays exact for Lil' Stacks). Uncertain or disagreeing prices still publish; the sources are stored on the card, and the shop shows the small-print disclaimers instead of warnings.
+
+**Admin → Needs a look** (`/admin/queue`): sorted by suggested price. **Approve** sends a card live (pay link first). **Correct** changes the name or price, then sends it live. Below it, everything on the shop has a one-click **Pull** (link expired, card waits as Pulled).
+
+Every card and pack page carries the small print: *For fun, not a grade. Photos are of the cards in the pack or listing. / Prices are a cute-shop estimate, not a market quote. / A Lil’ Stack shows every card before you pay. / Shipping is calculated at checkout.*
 
 ## Lil' Stack
 

@@ -10,6 +10,8 @@ const STATUS_STYLE: Record<string, string> = {
   Archived: "bg-navy/5 text-navy/50",
   BulkHold: "bg-sand-2 text-navy/70",
   LilStack: "bg-navy/80 text-sand",
+  NeedsLook: "bg-coral/15 text-coral",
+  Pulled: "bg-navy/10 text-navy/60",
 };
 
 export function StatusChip({ status }: { status: string }) {

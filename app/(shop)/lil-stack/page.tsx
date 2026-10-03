@@ -1,3 +1,4 @@
+import { Disclaimer } from "@/components/Disclaimer";
 import { artUrls } from "@/lib/brandArt";
 import { publicPacks, type PackSort } from "@/lib/lilStack";
 import { LilStackPack } from "./LilStackPack";
@@ -37,6 +38,7 @@ export default async function LilStackPage({ searchParams }: { searchParams: Pro
         )}
       </div>
       <LilStackPack key={sort} packs={packs} art={art} startId={pack} />
+      <Disclaimer dark className="mx-auto mt-10 max-w-md text-center" />
     </section>
   );
 }

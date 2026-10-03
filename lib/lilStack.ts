@@ -30,7 +30,6 @@ export function qualifies(c: PackCandidate) {
     PACKABLE.includes(c.status) &&
     c.readable &&
     !!c.frontImage &&
-    c.pile !== "duplicate" &&
     c.listPrice != null &&
     c.listPrice < LIL_STACK_UNDER
   );

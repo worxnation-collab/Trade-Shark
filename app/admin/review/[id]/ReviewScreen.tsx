@@ -482,8 +482,8 @@ export function ReviewScreen(p: Props) {
           <button className="btn-ghost" onClick={() => go(p.nextId)}>J</button>
         </div>
         <p className="text-[11px] text-navy/50">
-          Saving confirms this card. Priced ≥ {money(s.minListPrice)} → Ready with a Stripe pay link (if Stripe fails it stays Priced); under → Bulk
-          Hold. eBay/TCGplayer listings still only go up when you export and publish them yourself.
+          Saving approves this card: $1 and up goes live on the shop with its pay link (if Stripe fails it waits in Needs a look); under $1 joins a
+          Lil&apos; Stack. eBay/TCGplayer listings still only go up when you export and publish them yourself.
         </p>
       </div>
 
@@ -503,7 +503,8 @@ export function ReviewScreen(p: Props) {
             {p.suggestion.multiplier !== 1 && f.manualPrice === "" && ` × ${p.suggestion.multiplier} (${c.condition})`}
             {c.pricedAt && ` · ${new Date(c.pricedAt).toLocaleString()}`}
           </div>
-          {price != null && price < s.minListPrice && <div className="mt-1 text-xs font-semibold text-coral">Under {money(s.minListPrice)} minimum → Bulk Hold</div>}
+          {price != null && price < 1 && <div className="mt-1 text-xs font-semibold text-teal-2">Under $1 → Lil&apos; Stack</div>}
+          {price != null && price > 5 && <div className="mt-1 text-xs font-semibold text-coral">Over $5 → only goes live when you approve it</div>}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>

@@ -16,7 +16,7 @@ export const POST = guarded(async (_req: Request, { params }: { params: Promise<
   const r = await issuePaymentLink(card, await getSettings());
   if (!r.ok) {
     // The old link is already off; keep the card out of the shop until a new one exists.
-    const c = await db.card.update({ where: { id }, data: { status: "Priced" } });
+    const c = await db.card.update({ where: { id }, data: { status: "NeedsLook" } });
     return NextResponse.json({ ok: false, error: r.error, card: c }, { status: 422 });
   }
   return NextResponse.json({ ok: true, card: r.card });

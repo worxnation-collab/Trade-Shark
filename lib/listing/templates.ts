@@ -38,7 +38,10 @@ function vars(c: ListingCard, s: Settings): Record<string, string> {
     condition: c.graded ? "" : c.condition,
     condition_long: c.graded ? `Graded ${c.graded}` : CONDITION_LONG[c.condition] ?? c.condition,
     grade_line: "",
-    variant_line: c.variant ? `Variant: ${c.variant}` : "",
+    condition_line: c.graded
+      ? `It comes in its ${c.graded} slab.`
+      : `Looks ${CONDITION_LONG[c.condition] ?? c.condition} to me, but that's just my eyeball, not a grade.`,
+    variant_line: c.variant ? `This one's the ${c.variant}.` : "",
     shop_note: s.shopNote,
   };
 }
@@ -54,10 +57,26 @@ export function renderTitle(c: ListingCard, s: Settings, max = 80) {
   return t.slice(0, max);
 }
 
-export function renderDescription(c: ListingCard, s: Settings) {
-  return fill(s.descriptionTemplate, vars(c, s))
+/** Words a friendly collector shop never uses: no investment talk, no gem/grade promises. */
+const NOT_OUR_VIBE = /\b(invest(ment|ing|or)?s?|gem[\s-]?mint|graded gem|guaranteed?|appreciat\w*|roi|blue[\s-]?chip|grail)\b/i;
+
+/** Drop any sentence that slips into investment or grading-promise language. */
+export function friendly(text: string) {
+  return text
     .split("\n")
-    .map((l) => l.replace(/\s+/g, " ").trim())
+    .map((line) =>
+      line
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => !NOT_OUR_VIBE.test(sentence))
+        .join(" "),
+    )
+    .join("\n");
+}
+
+export function renderDescription(c: ListingCard, s: Settings) {
+  return friendly(fill(s.descriptionTemplate, vars(c, s)))
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").replace(/\s+from\s*\./, ".").replace(/\s+([.,!?])/g, "$1").trim())
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

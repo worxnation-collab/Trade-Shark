@@ -13,7 +13,7 @@ const PER_CALL = 4; // Stripe calls per request, to stay well under the function
 
 /**
  * Bring live pay links in line with the current price and shipping rules (after a rate change).
- * The UI calls this until remaining is 0. A card whose new link fails drops to Priced (its old link is
+ * The UI calls this until remaining is 0. A card whose new link fails drops to Needs a look (its old link is
  * already expired), the same as any failed link.
  */
 export const POST = guarded(async () => {
@@ -31,7 +31,7 @@ export const POST = guarded(async () => {
     const r = await issuePaymentLink(c, s);
     if (!r.ok) {
       errors.push(`${c.name ?? c.id}: ${r.error}`);
-      await db.card.update({ where: { id: c.id }, data: { status: "Priced" } });
+      await db.card.update({ where: { id: c.id }, data: { status: "NeedsLook" } });
     }
     done++;
   }

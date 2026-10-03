@@ -36,6 +36,7 @@ export const PUBLIC_CARD_SELECT = {
   paymentLinkUrl: true,
   paymentLinkActive: true,
   title: true,
+  description: true,
   rarity: true,
   shippingProfile: true,
   paymentLinkShipping: true,
