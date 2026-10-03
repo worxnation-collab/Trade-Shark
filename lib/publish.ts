@@ -31,10 +31,17 @@ export function decide(c: Pick<Card, "name" | "player" | "identSource" | "readab
   return c.listPrice <= AUTO_PUBLISH_MAX ? "publish" : "review";
 }
 
+/**
+ * The exact same image file was uploaded before (same front hash on an earlier card that isn't archived).
+ * The first upload of a scan publishes; later copies wait for me instead of selling one card twice.
+ */
 async function isSameScanTwice(c: Card) {
-  if (!c.duplicateOfId || !c.frontHash) return false;
-  const other = await db.card.findUnique({ where: { id: c.duplicateOfId }, select: { frontHash: true } });
-  return other?.frontHash === c.frontHash;
+  if (!c.frontHash) return false;
+  const earlier = await db.card.findFirst({
+    where: { id: { not: c.id }, frontHash: c.frontHash, status: { not: "Archived" }, createdAt: { lt: c.createdAt } },
+    select: { id: true },
+  });
+  return !!earlier;
 }
 
 /** Decide one card and act on it. Returns the decision for the batch summary. */

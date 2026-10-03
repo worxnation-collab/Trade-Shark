@@ -33,10 +33,18 @@ export function BatchActions({ batchId, unprocessed }: { batchId: string; unproc
           ]
             .filter(Boolean)
             .join(" · ");
+        let misses = 0;
         while (remaining > 0) {
           setMsg(`Identifying, pricing and publishing… ${remaining} left${line() ? ` · ${line()}` : ""}`);
-          const r = await (await fetch(`/api/admin/batches/${batchId}/process?limit=1`, { method: "POST" })).json();
-          if (r.error) throw new Error(r.error);
+          // A slow card can time out a request; the card stays unprocessed, so just ask again (a few times).
+          const r = await fetch(`/api/admin/batches/${batchId}/process?limit=1`, { method: "POST" })
+            .then((res) => res.json())
+            .catch(() => null);
+          if (!r || r.error) {
+            if (++misses >= 4) throw new Error(r?.error ?? "The server kept timing out. Reload this page to pick up where it stopped.");
+            continue;
+          }
+          misses = 0;
           for (const d of (r.decisions ?? []) as string[]) tally[d] = (tally[d] ?? 0) + 1;
           remaining = r.remaining;
           if (!r.processed) break;

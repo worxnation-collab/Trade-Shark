@@ -33,7 +33,7 @@ describe("auto-publish on upload", () => {
     expect(isIdentified({ name: null, player: "Shohei Ohtani", identSource: "manifest" })).toBe(true);
   });
 
-  it("a card with no usable photo is held; the exact same scan twice waits for me", () => {
+  it("a card with no usable photo is held; a later copy of the exact same scan waits for me", () => {
     expect(decide(c({ readable: false }))).toBe("hold");
     expect(decide(c({ frontImage: null }))).toBe("hold");
     expect(decide(c(), true)).toBe("review");
