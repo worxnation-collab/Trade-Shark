@@ -190,7 +190,7 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
         ) : (
           <>
             {art.closed ? <img src={art.closed} alt="" draggable={false} className="w-full rounded-lg shadow-2xl" /> : <CssPack progress={progress} />}
-            {!reduced && <TearGuide progress={progress} />}
+            {!reduced && <TearGuide progress={progress} top={art.closed ? "27%" : "9%"} />}
           </>
         )}
       </div>
@@ -260,9 +260,9 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
 }
 
 /** The dashed tear line along the top, filling teal as the swipe crosses it. */
-function TearGuide({ progress }: { progress: number }) {
+function TearGuide({ progress, top }: { progress: number; top: string }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[9%]" aria-hidden>
+    <div className="pointer-events-none absolute inset-x-0" style={{ top }} aria-hidden>
       <div className="mx-[6%] h-0.5 border-t-2 border-dashed border-sand/50" />
       <div className="absolute left-[6%] top-[-3px] h-2 rounded-full bg-teal shadow-[0_0_12px_#1AA6A6]" style={{ width: `${progress * 88}%` }} />
       <div
