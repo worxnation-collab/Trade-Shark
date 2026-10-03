@@ -57,7 +57,9 @@ export default async function QueuePage() {
                 suggested: c.suggestedPrice,
                 source: c.suggestedSource,
                 status: c.status,
-                note: c.runs[0]?.reason ?? null,
+                note: c.holdReason === "rotation" ? "Rotation: still sideways after auto-rotate. Turn it, then approve." : (c.runs[0]?.reason ?? (c.holdReason ? `Waiting: ${c.holdReason}` : null)),
+                rotation: c.holdReason === "rotation",
+                v: c.updatedAt.getTime(),
               }}
             />
           ))}
@@ -73,7 +75,7 @@ export default async function QueuePage() {
         ) : (
           <ul className="grid gap-2 md:grid-cols-2">
             {live.map((c) => (
-              <LiveRow key={c.id} card={{ id: c.id, label: cardLabel(c), image: c.frontImage, price: c.listPrice }} />
+              <LiveRow key={c.id} card={{ id: c.id, label: cardLabel(c), image: c.frontImage, price: c.listPrice, v: c.updatedAt.getTime() }} />
             ))}
           </ul>
         )}

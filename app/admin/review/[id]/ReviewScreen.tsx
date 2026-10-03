@@ -225,7 +225,7 @@ export function ReviewScreen(p: Props) {
         <div className="card relative flex items-center justify-center overflow-hidden bg-navy/5 p-2" style={{ minHeight: 420 }}>
           {img && c.readable ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/api/admin/images/${img}`} alt={side} className="max-h-[72vh] w-auto object-contain" />
+            <img src={`/api/admin/images/${img}?v=${encodeURIComponent(String(c.updatedAt))}`} alt={side} className="max-h-[72vh] w-auto object-contain" />
           ) : (
             <div className="p-10 text-center text-sm text-navy/60">
               <div className="font-semibold text-coral">Unreadable file</div>

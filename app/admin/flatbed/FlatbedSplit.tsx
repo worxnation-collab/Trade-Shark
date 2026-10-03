@@ -105,13 +105,8 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
       const { mat, width, height, preview } = await loadMat(cv, file);
       mats.current[side]?.delete();
       mats.current[side] = mat;
-      let rot = 0 as CardBox["rotation"];
-      try {
-        rot = (Number(localStorage.getItem("ts-flatbed-rotation")) || 0) as CardBox["rotation"];
-      } catch {
-        /* ignore */
-      }
-      const boxes = detectCards(cv, mat, { dpi }).map((b) => ({ ...b, rotation: rot }));
+      // Crops go up as scanned; the server stands every card upright on its own (lib/orient.ts).
+      const boxes = detectCards(cv, mat, { dpi }).map((b) => ({ ...b, rotation: 0 as CardBox["rotation"] }));
       setSheets((s) => ({ ...s, [side]: { file, dpi, width, height, preview, boxes, thumbs: {} } }));
       setTab(side);
       setSelected(null);
@@ -304,33 +299,32 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
                 <button className={addMode ? "btn-coral" : "btn-ghost"} onClick={() => setAddMode((x) => !x)}>
                   {addMode ? "Drawing… (Esc)" : "+ Add missed card"}
                 </button>
+                <button className="btn-ghost text-coral" disabled={!selected} onClick={() => { setBoxes(tab, (bs) => bs.filter((b) => b.id !== selected)); setSelected(null); }}>
+                  Delete box
+                </button>
+              </div>
+              <details className="text-xs text-navy/60">
+                <summary className="cursor-pointer select-none">Fallback: turn crops by hand</summary>
+                <p className="mt-1">Not needed normally: every card is stood upright automatically after upload.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
                 <button className="btn-ghost" disabled={!selected} onClick={() => selected && setBoxes(tab, (bs) => bs.map((b) => (b.id === selected ? { ...b, rotation: (((b.rotation + 90) % 360) as CardBox["rotation"]) } : b)))}>
                   ↻ Rotate
                 </button>
                 <button
                   className="btn-ghost"
-                  title="Turn every crop on this sheet 90°; remembered for your next sheet"
+                  title="Turn every crop on this sheet 90°"
                   onClick={() => {
                     let next = 0;
                     setBoxes(tab, (bs) => {
                       next = ((bs[0]?.rotation ?? 0) + 90) % 360;
                       return bs.map((b) => ({ ...b, rotation: next as CardBox["rotation"] }));
                     });
-                    setTimeout(() => {
-                      try {
-                        localStorage.setItem("ts-flatbed-rotation", String(next));
-                      } catch {
-                        /* ignore */
-                      }
-                    });
                   }}
                 >
                   ↻ Rotate all
                 </button>
-                <button className="btn-ghost text-coral" disabled={!selected} onClick={() => { setBoxes(tab, (bs) => bs.filter((b) => b.id !== selected)); setSelected(null); }}>
-                  Delete box
-                </button>
-              </div>
+                </div>
+              </details>
               <p className="text-xs text-navy/50">
                 Click a box to select it, drag its corners to adjust. <kbd>Del</kbd> delete · <kbd>R</kbd> rotate · <kbd>A</kbd> add (drag a rectangle, or
                 click once for a card-size box).

@@ -101,6 +101,8 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   }
 
   if (status !== "LilStack" && card.lilStackId) await releaseFromPack(card);
+  // Approving it (live on the shop) clears why it was waiting, including a rotation hold.
+  if (FOR_SALE.includes(status as never) && card.holdReason) extra.holdReason = null;
   if (status === "Listed" && !card.listedAt) extra.listedAt = new Date();
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();
   card = await db.card.update({ where: { id }, data: { status, ...extra } });

@@ -6,6 +6,7 @@ import { matchManifest, parseManifest } from "./organize/manifest";
 import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
 import { buildLilStacks, releaseFromPack } from "./lilStack";
+import { orientCard } from "./orient";
 import { autoPublish, publishLeftovers } from "./publish";
 import { shopPrice, statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
@@ -420,6 +421,25 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
 
 export async function processBatch(batchId: string, limit = 6) {
   const s = await getSettings();
+  // Step 1 for every card: stand it upright (its own request, so each call stays short).
+  const unoriented = await db.card.findMany({
+    where: { batchId, processedAt: null, orientedAt: null, readable: true, frontImage: { not: null } },
+    orderBy: { pairId: "asc" },
+    take: limit,
+  });
+  if (unoriented.length) {
+    for (const c of unoriented) {
+      try {
+        await orientCard(c);
+      } catch (e) {
+        // Never block the batch on it: mark it so the card waits in Needs a look instead of publishing sideways.
+        await db.card.update({ where: { id: c.id }, data: { orientedAt: new Date(), rotationNote: "unsure", holdReason: "rotation" } });
+        await db.sourceRun.create({ data: { cardId: c.id, source: "orient", phase: "identify", status: "error", reason: (e instanceof Error ? e.message : String(e)).slice(0, 500) } });
+      }
+    }
+    const remaining = await db.card.count({ where: { batchId, processedAt: null } });
+    return { processed: unoriented.length, oriented: unoriented.length, remaining, decisions: [] as string[] };
+  }
   const todo = await db.card.findMany({
     where: { batchId, processedAt: null },
     orderBy: { pairId: "asc" },

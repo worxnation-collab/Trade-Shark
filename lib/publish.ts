@@ -24,9 +24,13 @@ export function isIdentified(c: Pick<Card, "name" | "player" | "identSource">) {
   return !!(c.name?.trim() || c.player?.trim()) && c.identSource !== "filename";
 }
 
-export function decide(c: Pick<Card, "name" | "player" | "identSource" | "readable" | "frontImage" | "listPrice">, sameScanTwice = false): Decision {
+export function decide(
+  c: Pick<Card, "name" | "player" | "identSource" | "readable" | "frontImage" | "listPrice"> & Partial<Pick<Card, "holdReason">>,
+  sameScanTwice = false,
+): Decision {
   if (!c.readable || !c.frontImage || !isIdentified(c) || c.listPrice == null) return "hold";
   if (sameScanTwice) return "review"; // the exact same file uploaded again: don't sell one card twice
+  if (c.holdReason === "rotation") return "review"; // never publish a card sideways
   if (c.listPrice < LIL_STACK_UNDER) return "stack";
   return c.listPrice <= AUTO_PUBLISH_MAX ? "publish" : "review";
 }
@@ -47,19 +51,21 @@ async function isSameScanTwice(c: Card) {
 /** Decide one card and act on it. Returns the decision for the batch summary. */
 export async function autoPublish(card: Card, s: Settings): Promise<Decision | "kept"> {
   if (!UNDECIDED.includes(card.status)) return "kept";
-  const d = decide(card, await isSameScanTwice(card));
+  const same = await isSameScanTwice(card);
+  const d = decide(card, same);
   if (d === "hold") {
     await db.card.update({ where: { id: card.id }, data: { status: "Inbox" } });
   } else if (d === "stack") {
     await db.card.update({ where: { id: card.id }, data: { status: "BulkHold" } }); // the packer takes it from here
   } else if (d === "review") {
-    await db.card.update({ where: { id: card.id }, data: { status: "NeedsLook" } });
+    const why = card.holdReason ?? (same ? "same scan uploaded twice" : null);
+    await db.card.update({ where: { id: card.id }, data: { status: "NeedsLook", holdReason: why } });
   } else {
     // The pay link (price + shipping line) exists before the card shows on the shop.
     const r = await issuePaymentLink(card, s);
     if (r.ok) await db.card.update({ where: { id: card.id }, data: { status: "Ready", confirmedAt: card.confirmedAt ?? new Date() } });
     else {
-      await db.card.update({ where: { id: card.id }, data: { status: "NeedsLook" } });
+      await db.card.update({ where: { id: card.id }, data: { status: "NeedsLook", holdReason: "pay link failed" } });
       await db.sourceRun.create({ data: { cardId: card.id, source: "stripe", phase: "price", status: "error", reason: `Pay link failed, so it waits in Needs a look: ${r.error}`.slice(0, 500) } });
       return "review";
     }

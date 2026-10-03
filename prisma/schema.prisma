@@ -89,6 +89,14 @@ model Card {
   frontPhash    String? // 64-bit dHash (hex) for near-duplicate rescans
   backPhash     String?
   readable      Boolean @default(true)
+
+  // Auto-orientation on upload (lib/orient.ts). Images are fixed in place; originals kept only for a guess.
+  orientedAt    DateTime?
+  rotation      Int       @default(0) // degrees clockwise applied to front and back
+  rotationNote  String? // vision | layout guess | upright | unsure
+  frontOriginal String?
+  backOriginal  String?
+  holdReason    String? // why a card waits in Needs a look: rotation, pay link, same scan twice
   sheetInfo     String? // JSON: { front: { sheet, rel, index, box }, back: {...} } for flatbed crops
   duplicateOfId String?
 

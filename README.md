@@ -124,7 +124,9 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0
 
 ## Upload → shop, no review step
 
-A fresh batch runs straight through on its batch page (it starts by itself): identify, price, publish.
+A fresh batch runs straight through on its batch page (it starts by itself): **stand upright**, identify, price, publish.
+
+**Upright first.** Every crop is turned upright on its own before anything else: the vision model names the edge where the card's title sits, the card is turned, and the turned image is checked again. The front and its back get the same turn, saved over the crop. On real flatbed crops turned every which way this got 32/32. Without `ANTHROPIC_API_KEY`, sideways crops get a layout guess (original kept) and wait in Needs a look; portrait crops are left as scanned. A card that's still sideways is never published: it waits in **Needs a look** marked "rotation", with ↻ buttons. Flatbed's hand-rotate controls now live in a collapsed "Fallback" panel.
 
 | Result | What happens |
 |---|---|

@@ -13,16 +13,33 @@ async function patch(id: string, body: Record<string, unknown>) {
   return j as { wentLive?: boolean };
 }
 
-function Thumb({ image }: { image: string | null }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return image ? <img src={`/api/admin/images/${image}`} alt="" className="h-20 w-14 shrink-0 rounded object-cover" loading="lazy" /> : <div className="h-20 w-14 shrink-0 rounded bg-sand-2" />;
+function Thumb({ image, v }: { image: string | null; v?: number }) {
+  // ?v= busts the browser cache after a card is turned.
+  return image ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={`/api/admin/images/${image}${v ? `?v=${v}` : ""}`} alt="" className="h-20 w-14 shrink-0 rounded object-cover" loading="lazy" />
+  ) : (
+    <div className="h-20 w-14 shrink-0 rounded bg-sand-2" />
+  );
 }
 
 /** Approve sends it live (pay link first). Correct lets me fix the name or price, then sends it live. */
 export function LookRow({
   card,
 }: {
-  card: { id: string; name: string; label: string; image: string | null; price: number | null; suggested: number | null; source: string | null; status: string; note: string | null };
+  card: {
+    id: string;
+    name: string;
+    label: string;
+    image: string | null;
+    price: number | null;
+    suggested: number | null;
+    source: string | null;
+    status: string;
+    note: string | null;
+    rotation: boolean;
+    v: number;
+  };
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -46,7 +63,7 @@ export function LookRow({
 
   return (
     <li className="card flex flex-wrap items-center gap-3 p-3">
-      <Thumb image={card.image} />
+      <Thumb image={card.image} v={card.v} />
       <div className="min-w-0 flex-1">
         <Link href={`/admin/review/${card.id}`} className="font-semibold hover:text-teal-2">
           {card.label || "Unnamed"}
@@ -57,6 +74,27 @@ export function LookRow({
           {card.status === "Pulled" && <span className="chip ml-2 bg-navy/10 text-navy/60">pulled</span>}
         </div>
         {card.note && <p className="text-xs text-coral">{card.note}</p>}
+        {card.rotation && (
+          <div className="mt-1 flex gap-1">
+            {([270, 90, 180] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                data-nopop
+                className="btn-ghost px-2 py-0.5 text-xs"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  await fetch(`/api/admin/cards/${card.id}/rotate?deg=${d}`, { method: "POST" });
+                  setBusy(false);
+                  router.refresh();
+                }}
+              >
+                {d === 270 ? "↺ 90°" : d === 90 ? "↻ 90°" : "180°"}
+              </button>
+            ))}
+          </div>
+        )}
         {editing && (
           <div className="mt-2 flex flex-wrap items-end gap-2">
             <label className="text-xs">
@@ -101,13 +139,13 @@ export function LookRow({
 }
 
 /** One button off the shop: the pay link is expired and the card waits in Needs a look as Pulled. */
-export function LiveRow({ card }: { card: { id: string; label: string; image: string | null; price: number | null } }) {
+export function LiveRow({ card }: { card: { id: string; label: string; image: string | null; price: number | null; v?: number } }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   return (
     <li className="card flex items-center gap-3 p-2">
-      <Thumb image={card.image} />
+      <Thumb image={card.image} v={card.v} />
       <div className="min-w-0 flex-1">
         <Link href={`/card/${card.id}`} target="_blank" className="line-clamp-2 text-sm font-semibold hover:text-teal-2">
           {card.label}
