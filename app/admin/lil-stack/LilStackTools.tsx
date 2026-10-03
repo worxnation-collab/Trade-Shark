@@ -1,0 +1,100 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+
+type Kind = "closed" | "open";
+
+export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; geminiReady: boolean; art: Partial<Record<Kind, string>> }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [artMsg, setArtMsg] = useState("");
+  const [artBusy, setArtBusy] = useState(false);
+  const autoTried = useRef(false);
+
+  async function rebuild() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/admin/lil-stack/rebuild", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      setMsg(`Rebuilt: ${j.cards} cards in ${j.packs} pack${j.packs === 1 ? "" : "s"}${j.released ? `, ${j.released} pulled out (now $1+)` : ""}.`);
+      router.refresh();
+    } catch (e) {
+      setMsg(`Rebuild failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generate(kinds: Kind[]) {
+    setArtBusy(true);
+    const notes: string[] = [];
+    for (const kind of kinds) {
+      setArtMsg(`Drawing the ${kind} pack…`);
+      try {
+        const r = await fetch(`/api/admin/lil-stack/art?kind=${kind}`, { method: "POST" });
+        const j = await r.json();
+        notes.push(j.ok ? `${kind} pack ready` : `${kind}: ${j.reason || j.error}`);
+      } catch (e) {
+        notes.push(`${kind}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    setArtMsg(notes.join(" · "));
+    setArtBusy(false);
+    router.refresh();
+  }
+
+  // First visit with a key and no art yet: draw the missing images once.
+  useEffect(() => {
+    if (autoTried.current || !geminiReady) return;
+    const missing = (["closed", "open"] as Kind[]).filter((k) => !art[k]);
+    if (!missing.length) return;
+    autoTried.current = true;
+    void generate(missing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geminiReady]);
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="card space-y-2 p-4">
+        <h2 className="font-bold">Packs</h2>
+        <p className="text-sm text-navy/70">
+          Packs build on their own when a batch finishes. After a reprice, rebuild: cards now $1+ come out, new sub-$1 cards go in.
+          {waiting > 0 && <strong className="text-coral"> {waiting} card{waiting === 1 ? " is" : "s are"} waiting.</strong>}
+        </p>
+        <button className="btn-primary" disabled={busy} onClick={rebuild}>
+          {busy ? "Rebuilding…" : "Rebuild packs"}
+        </button>
+        {msg && <p className="text-sm">{msg}</p>}
+      </div>
+      <div className="card space-y-2 p-4">
+        <h2 className="font-bold">Pack art</h2>
+        <div className="flex gap-3">
+          {(["closed", "open"] as Kind[]).map((k) => (
+            <figure key={k} className="w-24 text-center text-xs text-navy/60">
+              {art[k] ? (
+                <img src={art[k]} alt={`${k} pack`} className="aspect-[3/4] w-full rounded bg-navy object-cover" />
+              ) : (
+                <div className="flex aspect-[3/4] w-full items-center justify-center rounded bg-navy/10">CSS pack</div>
+              )}
+              <figcaption>{k}</figcaption>
+            </figure>
+          ))}
+        </div>
+        {geminiReady ? (
+          <button className="btn-ghost" disabled={artBusy} onClick={() => generate(["closed", "open"])}>
+            {artBusy ? "Drawing…" : art.closed || art.open ? "Redraw with Gemini" : "Draw with Gemini"}
+          </button>
+        ) : (
+          <p className="text-sm text-navy/70">
+            Add <code className="rounded bg-sand-2 px-1">GEMINI_API_KEY</code> on Netlify to draw branded pack art. Until then the shop uses the CSS pack.
+          </p>
+        )}
+        {artMsg && <p className="text-sm">{artMsg}</p>}
+      </div>
+    </div>
+  );
+}

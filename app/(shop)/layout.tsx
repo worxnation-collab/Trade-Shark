@@ -7,11 +7,12 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen flex-col">
       <header className="bg-navy">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link href="/">
-            <Wordmark light />
+          <Link href="/" aria-label="Trade Shark home">
+            <Wordmark light compact />
           </Link>
-          <nav className="flex items-center gap-5 text-sm font-semibold text-sand">
+          <nav className="flex items-center gap-3 whitespace-nowrap text-xs font-semibold text-sand sm:gap-5 sm:text-sm">
             <Link href="/" className="hover:text-teal">Shop</Link>
+            <Link href="/lil-stack" className="hover:text-teal">Lil&apos; Stack</Link>
             <Link href="/about" className="hover:text-teal">About</Link>
             <Link href="/contact" className="hover:text-teal">Contact</Link>
             <MuteToggle className="-my-1" />

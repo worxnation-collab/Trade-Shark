@@ -11,6 +11,7 @@ const NAV = [
   ["/admin/flatbed", "Flatbed"],
   ["/admin/batches", "Batches"],
   ["/admin/cards", "Inventory"],
+  ["/admin/lil-stack", "Lil' Stack"],
   ["/admin/export", "Export"],
   ["/admin/settings", "Settings"],
 ] as const;

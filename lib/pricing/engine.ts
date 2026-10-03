@@ -149,9 +149,16 @@ export function netAfterFees(price: number, channel: Channel, profile: ShippingP
   return { fees, ship, net: round2(price - fees - ship) };
 }
 
-/** Status after pricing. Never moves a card past Priced on its own. */
+/** Lil' Stack threshold: list price under this goes in a free pack instead of selling as a single. */
+export const LIL_STACK_UNDER = 1;
+
+/**
+ * Status after pricing. Never moves a card past Priced on its own.
+ * A Lil' Stack card stays packed while it's under $1; repriced to $1+ it falls back to the normal path.
+ */
 export function statusAfterPricing(current: string, price: number | null, identOk: boolean, s: Settings): string {
-  if (!["Inbox", "Identified", "Priced", "BulkHold"].includes(current)) return current;
+  if (current === "LilStack" && price != null && price < LIL_STACK_UNDER) return "LilStack";
+  if (!["Inbox", "Identified", "Priced", "BulkHold", "LilStack"].includes(current)) return current;
   if (!identOk) return "Inbox";
   if (price == null) return "Identified";
   if (price < s.minListPrice) return "BulkHold";

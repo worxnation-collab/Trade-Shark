@@ -4,13 +4,14 @@ import { signedUrl, usingSupabase } from "@/lib/storage";
 import { FOR_SALE } from "@/lib/types";
 
 /**
- * Public image route: serves a scan ONLY while its card is for sale.
+ * Public image route: serves a scan ONLY while its card is for sale or sits in a free Lil' Stack.
  * The raw image store is never exposed; Inbox/Sold/Archived cards 404 here.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; side: string }> }) {
   const { id, side } = await params;
-  const c = await db.card.findUnique({ where: { id }, select: { status: true, frontImage: true, backImage: true, readable: true } });
-  if (!c || !c.readable || !FOR_SALE.includes(c.status as never)) return new Response("not found", { status: 404 });
+  const c = await db.card.findUnique({ where: { id }, select: { status: true, frontImage: true, backImage: true, readable: true, lilStackId: true } });
+  const shown = FOR_SALE.includes(c?.status as never) || (c?.status === "LilStack" && !!c.lilStackId && side === "front");
+  if (!c || !c.readable || !shown) return new Response("not found", { status: 404 });
   const rel = side === "back" ? c.backImage : c.frontImage;
   if (rel && usingSupabase()) {
     // Signed URL expires in an hour; the redirect itself is cached briefly so a sold card disappears fast.

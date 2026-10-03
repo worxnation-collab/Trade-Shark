@@ -9,11 +9,12 @@ export function SharkFin({ size = 28, className = "", mono = false }: { size?: n
   );
 }
 
-export function Wordmark({ light = false }: { light?: boolean }) {
+/** compact: just the fin on phones (the shop header needs the room for its links). */
+export function Wordmark({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
   return (
     <span className="flex items-center gap-2">
       <SharkFin />
-      <span className={`text-lg font-extrabold tracking-tight ${light ? "text-white" : "text-navy"}`}>
+      <span className={`${compact ? "hidden sm:inline" : ""} whitespace-nowrap text-lg font-extrabold tracking-tight ${light ? "text-white" : "text-navy"}`}>
         Trade <span className="text-teal">Shark</span>
       </span>
     </span>

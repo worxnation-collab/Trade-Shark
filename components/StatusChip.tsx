@@ -9,6 +9,7 @@ const STATUS_STYLE: Record<string, string> = {
   Sold: "bg-coral text-white",
   Archived: "bg-navy/5 text-navy/50",
   BulkHold: "bg-sand-2 text-navy/70",
+  LilStack: "bg-navy/80 text-sand",
 };
 
 export function StatusChip({ status }: { status: string }) {

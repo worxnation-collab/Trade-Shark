@@ -5,6 +5,7 @@ import { hamming, storeUpload } from "./images";
 import { matchManifest, parseManifest } from "./organize/manifest";
 import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
+import { buildLilStacks, releaseFromPack } from "./lilStack";
 import { statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
 import { appliesTo, CATALOG_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sources";
@@ -394,6 +395,9 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
   const identOk = !!card.confirmedAt || card.sourceConfidence >= s.confidenceThreshold;
   // A live pay link fixes the price buyers see; only a manual save may change it (and regenerates the link).
   const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : (card.manualPrice ?? sug.price);
+  const status = statusAfterPricing(card.status, listPrice, identOk, s);
+  // Repriced to $1 or more: out of its Lil' Stack and back on the normal path.
+  if (card.status === "LilStack" && status !== "LilStack") await releaseFromPack(card);
   return db.card.update({
     where: { id: cardId },
     data: {
@@ -402,7 +406,7 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
       priceConflict: sug.conflict,
       listPrice,
       pricedAt: new Date(),
-      status: statusAfterPricing(card.status, listPrice, identOk, s),
+      status,
     },
   });
 }
@@ -437,7 +441,9 @@ export async function processBatch(batchId: string, limit = 6) {
     ),
   );
   const remaining = await db.card.count({ where: { batchId, processedAt: null } });
-  return { processed: todo.length, remaining };
+  // The batch is identified and priced: pile every sub-$1 card into Lil' Stacks.
+  const lilStack = todo.length && !remaining ? await buildLilStacks(batchId).catch((e) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
+  return { processed: todo.length, remaining, lilStack };
 }
 
 /** Refresh quotes older than staleHours for every card in a batch (chunked like processBatch). */

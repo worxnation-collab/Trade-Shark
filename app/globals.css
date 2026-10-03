@@ -75,6 +75,78 @@ kbd {
   }
 }
 
+/* ---------- Lil' Stack pack ---------- */
+.ls-pack {
+  filter: drop-shadow(0 18px 28px rgb(0 0 0 / 0.45));
+}
+.ls-body {
+  background: linear-gradient(160deg, #14305a 0%, #0b1f3a 55%, #081629 100%);
+  border-left: 1px solid rgb(244 239 230 / 0.12);
+  border-right: 1px solid rgb(244 239 230 / 0.12);
+}
+.ls-crimp {
+  background:
+    repeating-linear-gradient(90deg, rgb(244 239 230 / 0.28) 0 3px, transparent 3px 7px),
+    linear-gradient(#138585, #0e6e6e);
+  border-radius: 4px;
+  transition: transform 120ms ease-out;
+}
+.ls-sheen {
+  background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.16) 45%, transparent 60%);
+  background-size: 250% 100%;
+  animation: ls-sheen 3.5s ease-in-out infinite;
+}
+@keyframes ls-sheen {
+  0% { background-position: 120% 0; }
+  60%, 100% { background-position: -40% 0; }
+}
+/* Torn: the top strip is gone and the edge is ragged. */
+.ls-torn .ls-body {
+  top: 0;
+  clip-path: polygon(0 6%, 6% 2%, 12% 7%, 19% 1%, 26% 6%, 33% 2%, 41% 8%, 49% 1%, 57% 6%, 64% 2%, 72% 7%, 80% 1%, 87% 6%, 94% 2%, 100% 5%, 100% 100%, 0 100%);
+}
+.ls-nudge {
+  animation: ls-nudge 420ms ease;
+}
+@keyframes ls-nudge {
+  20% { transform: translateX(-6px); }
+  45% { transform: translateX(5px); }
+  70% { transform: translateX(-3px); }
+}
+.ls-arrow {
+  animation: ls-arrow 1.4s ease-in-out infinite;
+}
+@keyframes ls-arrow {
+  50% { transform: translateX(6px); }
+}
+/* Cards fly out of the pack, flip face up and settle into a fan. */
+.ls-card {
+  transform: rotate(var(--rot)) translateY(var(--lift));
+  animation: ls-deal 560ms cubic-bezier(0.2, 0.8, 0.25, 1.15) both;
+  animation-delay: calc(var(--i) * 70ms);
+}
+@keyframes ls-deal {
+  from {
+    opacity: 0;
+    transform: translateY(-160px) scale(0.35) rotate(0deg);
+  }
+}
+.ls-flip {
+  transform-style: preserve-3d;
+  animation: ls-flip 520ms ease-out both;
+  animation-delay: calc(var(--i) * 70ms + 220ms);
+}
+@keyframes ls-flip {
+  from { transform: rotateY(180deg); }
+  to { transform: rotateY(0deg); }
+}
+.ls-face {
+  backface-visibility: hidden;
+}
+.ls-back {
+  transform: rotateY(180deg);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -89,5 +161,11 @@ kbd {
   .btn-coral:active,
   .lift:hover {
     transform: none !important;
+  }
+  .ls-card,
+  .ls-flip,
+  .ls-sheen,
+  .ls-arrow {
+    animation: none !important;
   }
 }

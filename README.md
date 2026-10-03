@@ -47,7 +47,7 @@ How it fits Netlify's limits:
 5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
 6. **Shop** (`/`): grid + card page for For Sale cards (Ready or Listed). "Buy on eBay" once a URL is pasted; otherwise a mailto to `SHOP_EMAIL`.
 
-Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Archived`, plus `Bulk Hold`.
+Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Archived`, plus `Bulk Hold` and `Lil' Stack`.
 
 ## Environment keys
 
@@ -74,6 +74,8 @@ Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Arc
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
 | `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, cards can't be marked Ready (the save explains why). Use a restricted key with Payment Links write access if you like. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
+| `GEMINI_API_KEY` | no | Draws the Lil' Stack pack art (closed + torn open) once, server-side, from a text prompt. Without it `/lil-stack` uses the CSS pack. |
+| `GEMINI_IMAGE_MODEL` | no (default `gemini-2.5-flash-image`) | Gemini image model for the pack art. |
 | `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
 
 Missing keys skip that source and record why (`Source log` on each card, `Sources` on the dashboard). They never crash a batch.
@@ -112,12 +114,24 @@ Suggested list price (editable in Settings):
 4. **Condition multipliers** (NM 1, LP 0.85, MP 0.7, HP 0.5, DMG 0.3) apply only when the source price is NM. TCGplayer market and Scryfall are treated as NM; sold comps count as NM only if every kept title says NM.
 5. **Manual override always wins** and is labeled Manual.
 6. Under the **minimum list price ($2)** → **Bulk Hold**.
+7. Under **$1.00** → **Lil' Stack** (below).
 
 Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0.30, Local 0. Shipping profiles: standard $1.00, bubble mailer $4.50, slab $6.00. The panel shows net after fees and shipping for each channel.
 
 **Price conflict** is flagged when source headlines disagree by more than 1.5×.
 
 **Reprice batch** refreshes quotes older than 24 hours (configurable). **Refresh all sources** on a card ignores the window.
+
+## Lil' Stack (free packs)
+
+Cards priced under $1.00 never sell as singles. When a batch finishes identifying and pricing, every card under $1 (Priced or Bulk Hold, with a photo, not a rescan) piles into free packs:
+
+- One batch per pack, up to 12 cards: **Lil' Stack**, **Lil' Stack 2**, 3, … Each pack stores its card ids; a card is in at most one pack and its status is **Lil' Stack**.
+- Repricing a card to $1+ (refresh or manual) pulls it out of its pack and back to Bulk Hold / Priced. A card under $1 can't be saved to Ready.
+- **Admin → Lil' Stack** shows the pile, the counts, cards waiting to be packed, and **Rebuild packs** (run it after a reprice).
+- **`/lil-stack`** (public): "Take a bite." A sealed pack opens only on a full left-to-right swipe (or four right-arrow presses); a short drag snaps back. Opening plays the pop, a small confetti burst and deals the cards out in a fan (front, name, set). **Shuffle** closes it and deals the next pack, or restacks the only pack in a new order. Reduced motion gets a **Tap to open** button and no confetti.
+- No price, buy button or checkout anywhere on it, and the page reads only id, name and set (`publicPacks()` in `lib/lilStack.ts`). The public image route serves a packed card's **front only**.
+- Pack art: with `GEMINI_API_KEY`, the admin page draws a closed and a torn-open pack once (text prompt only, never card photos) and caches them in `DATA_DIR/brand` (or `brand/` in the bucket). Without it, the CSS pack.
 
 ## Exports
 
@@ -127,7 +141,7 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0
 ## Images and privacy
 
 - Scans live in the private Supabase bucket (or `DATA_DIR/images` locally). `/api/admin/images/*` requires the password.
-- The public shop uses `/api/shop/image/:cardId/:side`, which serves a scan **only while its card is Ready or Listed**. Inbox, Sold, and Archived cards 404.
+- The public shop uses `/api/shop/image/:cardId/:side`, which serves a scan **only while its card is Ready or Listed** (or the front of a card in a Lil' Stack). Inbox, Sold, and Archived cards 404.
 - The `trade_shark` tables have RLS on and no grants for Supabase's `anon`/`authenticated` roles; only the app's server connection reads them.
 - TIFF scans are converted to JPEG on upload so browsers can show them.
 

@@ -15,14 +15,15 @@ datasource db {
 }
 
 model Batch {
-  id        String   @id @default(cuid())
-  name      String
-  notes     String?
-  pairMode  String   @default("auto") // auto | filename | order | fronts
+  id           String       @id @default(cuid())
+  name         String
+  notes        String?
+  pairMode     String       @default("auto") // auto | filename | order | fronts
   pairDecision String? // JSON BackDecision from Auto pairing: did this batch contain backs?
-  createdAt DateTime @default(now())
-  cards     Card[]
-  files     UploadFile[]
+  createdAt    DateTime     @default(now())
+  cards        Card[]
+  files        UploadFile[]
+  lilStacks    LilStack[]
 }
 
 // Every file I dropped, kept even if it never becomes a card.
@@ -51,7 +52,7 @@ model UploadFile {
   @@index([batchId])
 }
 
-// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold
+// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold | LilStack
 // pile:   none | unpaired | unreadable | likely_bulk | duplicate
 model Card {
   id      String @id @default(cuid())
@@ -79,27 +80,31 @@ model Card {
   notes     String?
 
   // images + provenance
-  frontImage     String?
-  backImage      String?
-  frontOrigName  String?
-  backOrigName   String?
-  frontHash      String?
-  backHash       String?
-  frontPhash     String? // 64-bit dHash (hex) for near-duplicate rescans
-  backPhash      String?
-  readable       Boolean @default(true)
-  sheetInfo      String? // JSON: { front: { sheet, rel, index, box }, back: {...} } for flatbed crops
-  duplicateOfId  String?
+  frontImage    String?
+  backImage     String?
+  frontOrigName String?
+  backOrigName  String?
+  frontHash     String?
+  backHash      String?
+  frontPhash    String? // 64-bit dHash (hex) for near-duplicate rescans
+  backPhash     String?
+  readable      Boolean @default(true)
+  sheetInfo     String? // JSON: { front: { sheet, rel, index, box }, back: {...} } for flatbed crops
+  duplicateOfId String?
+
+  // Lil' Stack: a free pack of sub-$1 cards from one batch. A card sits in at most one pack.
+  lilStackId String?
+  lilStack   LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
 
   // identification
   identSource      String? // filename | manifest | pasted | pokemontcg | scryfall | vision:anthropic | vision:openai | manual
-  sourceConfidence Float   @default(0)
-  fieldConfidence  String  @default("{}") // JSON: { name: 0.9, number: 0.4, ... }
-  identAlternates  String  @default("[]") // JSON: IdentCandidate[]
-  seedCandidates   String  @default("[]") // JSON: what the upload itself said (filename / manifest / pasted line)
+  sourceConfidence Float     @default(0)
+  fieldConfidence  String    @default("{}") // JSON: { name: 0.9, number: 0.4, ... }
+  identAlternates  String    @default("[]") // JSON: IdentCandidate[]
+  seedCandidates   String    @default("[]") // JSON: what the upload itself said (filename / manifest / pasted line)
   processedAt      DateTime?
   confirmedAt      DateTime? // set when I save the card in review
-  identConflict    Boolean @default(false)
+  identConflict    Boolean   @default(false)
   catalogId        String? // pokemontcg id or scryfall id
   catalogImage     String?
   tcgplayerId      String?
@@ -110,9 +115,9 @@ model Card {
   suggestedSource String?
   manualPrice     Float?
   listPrice       Float?
-  priceConflict   Boolean @default(false)
+  priceConflict   Boolean   @default(false)
   pastedComps     String?
-  shippingProfile String  @default("standard") // standard | bubble | slab
+  shippingProfile String    @default("standard") // standard | bubble | slab
   pricedAt        DateTime?
 
   // Stripe Payment Link (direct buy). Created before a card can become Ready.
@@ -120,9 +125,9 @@ model Card {
   paymentLinkUrl       String?
   paymentLinkCreatedAt DateTime?
   paymentLinkAmount    Float? // price baked into the link; a different list price means regenerate
-  paymentLinkActive    Boolean  @default(false)
+  paymentLinkActive    Boolean   @default(false)
   stripeSessionId      String? // checkout session that sold it (webhook)
-  paymentLinkHistory   String   @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
+  paymentLinkHistory   String    @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
 
   // listing
   title         String?
@@ -146,25 +151,39 @@ model Card {
   @@index([frontHash])
   @@index([paymentLinkId])
   @@index([backHash])
+  @@index([lilStackId])
+}
+
+// A free pack (never sold) of up to 12 sub-$1 cards from one batch. cardIds keeps the pack's order.
+model LilStack {
+  id        String   @id @default(cuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  seq       Int // 1, 2, 3… within the batch
+  cardIds   String[]
+  cards     Card[]
+  createdAt DateTime @default(now())
+
+  @@unique([batchId, seq])
 }
 
 // Every price we ever saw. Never overwritten; the panel shows the latest per source.
 model PriceQuote {
-  id        String   @id @default(cuid())
-  cardId    String
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  source    String // pokemontcg | cardmarket | scryfall | ebay_sold | ebay_active | pasted | manual
-  kind      String // market | retail_ask | sold_comp | manual | summary
-  label     String? // market | low | mid | high | usd | usd_foil | comp | median
-  amount    Float
-  currency  String   @default("USD")
-  condition String? // NM when the source price is NM; null when unknown
-  rawTitle  String?
-  url       String?
-  soldAt    DateTime?
-  excluded  Boolean  @default(false)
+  id            String    @id @default(cuid())
+  cardId        String
+  card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source        String // pokemontcg | cardmarket | scryfall | ebay_sold | ebay_active | pasted | manual
+  kind          String // market | retail_ask | sold_comp | manual | summary
+  label         String? // market | low | mid | high | usd | usd_foil | comp | median
+  amount        Float
+  currency      String    @default("USD")
+  condition     String? // NM when the source price is NM; null when unknown
+  rawTitle      String?
+  url           String?
+  soldAt        DateTime?
+  excluded      Boolean   @default(false)
   excludeReason String?
-  fetchedAt DateTime @default(now())
+  fetchedAt     DateTime  @default(now())
 
   @@index([cardId, source])
 }
