@@ -12,6 +12,7 @@ import { appliesTo, CATALOG_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sou
 import type { RunStatus } from "./sources/types";
 import type { CardFields, Game, IdentCandidate, IdentField, Pile } from "./types";
 import { limiter, norm, normNumber, safeJson } from "./util";
+import { newestYear, recomputeBatchWow, wowData } from "./wow";
 
 /* ------------------------------------------------------------------ ingest */
 
@@ -407,6 +408,7 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
       listPrice,
       pricedAt: new Date(),
       status,
+      ...wowData(card, s, await newestYear(card.batchId)),
     },
   });
 }
@@ -441,6 +443,7 @@ export async function processBatch(batchId: string, limit = 6) {
     ),
   );
   const remaining = await db.card.count({ where: { batchId, processedAt: null } });
+  if (todo.length && !remaining) await recomputeBatchWow(batchId, s);
   // The batch is identified and priced: pile every sub-$1 card into Lil' Stacks.
   const lilStack = todo.length && !remaining ? await buildLilStacks(batchId).catch((e) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
   return { processed: todo.length, remaining, lilStack };
@@ -459,6 +462,7 @@ export async function repriceBatch(batchId: string, cursor = 0, limit = 2) {
   await Promise.all(cards.map((c) => run(() => priceCard(c, s, { onlyStale: true }))));
   const total = await db.card.count({ where: { batchId, readable: true, status: { notIn: ["Sold", "Archived"] } } });
   const next = cursor + cards.length;
+  if (next >= total) await recomputeBatchWow(batchId, s);
   return { next, total, done: next >= total };
 }
 

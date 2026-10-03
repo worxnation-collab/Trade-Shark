@@ -23,7 +23,7 @@ export default async function CardPage({ params }: { params: Promise<{ id: strin
   const pay = c.paymentLinkActive && c.paymentLinkUrl ? c.paymentLinkUrl : null;
   return (
     <div className="space-y-4">
-      <Link href="/" className="text-sm font-semibold text-teal">← Back to the shop</Link>
+      <Link href="/shop" className="text-sm font-semibold text-teal">← Back to the shop</Link>
       <div className="grid gap-8 md:grid-cols-2">
         <div className="space-y-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}

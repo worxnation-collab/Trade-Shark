@@ -98,3 +98,54 @@ export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; 
     </div>
   );
 }
+
+/** Per-pack: pay link, pin to home, mark sold by hand, fresh link. */
+export function PackActions({ id, linkUrl, linkError, featured, price }: { id: string; linkUrl: string | null; linkError: string | null; featured: boolean; price: number | null }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  async function act(action: string, extra: Record<string, unknown> = {}) {
+    setBusy(action);
+    setErr("");
+    try {
+      const r = await fetch(`/api/admin/lil-stack/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) setErr(j.error || j.note || r.statusText);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy("");
+      router.refresh();
+    }
+  }
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+      {linkUrl ? (
+        <a href={linkUrl} target="_blank" rel="noreferrer" className="chip bg-teal/15 text-teal-2 underline">
+          Pay link ↗
+        </a>
+      ) : (
+        <span className="chip bg-coral/15 text-coral" title={linkError ?? ""}>
+          No pay link{linkError ? `: ${linkError.slice(0, 80)}` : ""}
+        </span>
+      )}
+      <button className="btn-ghost px-2 py-1 text-xs" disabled={!!busy} onClick={() => act(featured ? "unfeature" : "feature")}>
+        {featured ? "★ Featured on home" : "☆ Feature on home"}
+      </button>
+      <button className="btn-ghost px-2 py-1 text-xs" disabled={!!busy} onClick={() => act("relink")}>
+        {busy === "relink" ? "Linking…" : linkUrl ? "New link" : "Create link"}
+      </button>
+      <button
+        className="btn-ghost px-2 py-1 text-xs text-coral"
+        disabled={!!busy}
+        onClick={() => {
+          const v = prompt("Sold by hand. Amount received ($)?", price != null ? String(price) : "");
+          if (v !== null) void act("sold", { amount: v });
+        }}
+      >
+        Mark sold
+      </button>
+      {err && <span className="text-xs text-coral">{err}</span>}
+    </div>
+  );
+}

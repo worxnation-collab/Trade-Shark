@@ -29,6 +29,7 @@ interface Props {
   qs: string;
   defaultTitle: string;
   defaultDescription: string;
+  featured: boolean;
 }
 
 const FIELDS: { k: keyof Form; label: string; conf?: IdentField; wide?: boolean }[] = [
@@ -275,6 +276,16 @@ export function ReviewScreen(p: Props) {
               <StatusChip status={c.status} />
               <PileChip pile={c.pile} />
               <ConfidenceChip value={c.sourceConfidence} threshold={s.confidenceThreshold} confirmed={confirmed} />
+              <button
+                type="button"
+                data-nopop
+                className={`chip ${p.featured ? "bg-coral text-white" : "bg-navy/5 text-navy/70 hover:bg-navy/10"}`}
+                title="Pin to the home hero (beats the wow score)"
+                onClick={() => action(`/api/admin/cards/${c.id}/feature?on=${p.featured ? 0 : 1}`, "Pinning")}
+              >
+                {p.featured ? "★ Featured on home" : "☆ Feature on home"}
+              </button>
+              {c.wowScore > 0 && <span className="chip bg-teal/15 text-teal-2" title={c.wowTags}>wow {c.wowScore}</span>}
             </div>
           </div>
         </div>

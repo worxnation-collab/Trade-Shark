@@ -72,9 +72,9 @@ Statuses: `Inbox → Identified → Priced → Ready → Listed → Sold → Arc
 | `VISION_CONCURRENCY` | no (default `2`) | Max simultaneous vision calls. |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
-| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, cards can't be marked Ready (the save explains why). Use a restricted key with Payment Links write access if you like. |
+| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, cards can't be marked Ready (the save explains why) and Lil' Stacks open but have no Buy button. Use a restricted key with Payment Links write access if you like. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
-| `GEMINI_API_KEY` | no | Draws the Lil' Stack pack art (closed + torn open) once, server-side, from a text prompt. Without it `/lil-stack` uses the CSS pack. |
+| `GEMINI_API_KEY` | no | Server-only. Draws the Lil' Stack pack art (closed + torn open) once, server-side, from a text prompt. Without it `/lil-stack` uses the CSS pack. |
 | `GEMINI_IMAGE_MODEL` | no (default `gemini-2.5-flash-image`) | Gemini image model for the pack art. |
 | `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
 
@@ -122,16 +122,27 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0
 
 **Reprice batch** refreshes quotes older than 24 hours (configurable). **Refresh all sources** on a card ignores the window.
 
-## Lil' Stack (free packs)
+## Lil' Stack
 
-Cards priced under $1.00 never sell as singles. When a batch finishes identifying and pricing, every card under $1 (Priced or Bulk Hold, with a photo, not a rescan) piles into free packs:
+Cards priced under $1.00 never sell as singles. When a batch finishes identifying and pricing, every card under $1 (Priced or Bulk Hold, with a photo, not a rescan) piles into packs:
 
 - One batch per pack, up to 12 cards: **Lil' Stack**, **Lil' Stack 2**, 3, … Each pack stores its card ids; a card is in at most one pack and its status is **Lil' Stack**.
-- Repricing a card to $1+ (refresh or manual) pulls it out of its pack and back to Bulk Hold / Priced. A card under $1 can't be saved to Ready.
-- **Admin → Lil' Stack** shows the pile, the counts, cards waiting to be packed, and **Rebuild packs** (run it after a reprice).
-- **`/lil-stack`** (public): "Take a bite." A sealed pack opens only on a full left-to-right swipe (or four right-arrow presses); a short drag snaps back. Opening plays the pop, a small confetti burst and deals the cards out in a fan (front, name, set). **Shuffle** closes it and deals the next pack, or restacks the only pack in a new order. Reduced motion gets a **Tap to open** button and no confetti.
-- No price, buy button or checkout anywhere on it, and the page reads only id, name and set (`publicPacks()` in `lib/lilStack.ts`). The public image route serves a packed card's **front only**.
+- Repricing a card to $1+ pulls it out of its pack (back to Bulk Hold / Priced) and the pack gets a new link at its new price. A card under $1 can't be saved to Ready.
+- **Rebuild packs** (Admin → Lil' Stack) is stable: cards stay where they are, new sub-$1 cards fill open packs first, and unchanged packs keep their link.
+- **Buying:** each pack gets one Stripe Payment Link when it's built: product `Lil’ Stack, Trade Shark`, the card names in the description, quantity 1, one checkout. Price = sum of the cards' list prices, **rounded up to the dollar, minimum $3**. The pack id and link are stored on the pack.
+- **`/lil-stack`** ("Take a bite."): a sealed pack opens only on a full left-to-right swipe (or four right-arrow presses); a short drag snaps back. Opening is free: pop, small confetti, the cards fan out (front, name, set). Only then does **Buy this stack** appear, with the math under it ("6 cards, $4."). **Shuffle** deals the next unsold pack (it re-checks which are still open) or restacks the only one. Reduced motion: **Tap to open**, no confetti. Sort by price with the menu; `?pack=<id>` opens on a given pack.
+- **Sold:** only the signed webhook (`checkout.session.completed` on the pack's link) or **Mark sold** on the admin page. The pack and every card in it become Sold (the sale is split across the cards by list price), the pack leaves `/lil-stack`, and the thank-you page (`/shop/thank-you?stack=<id>`) fires confetti once.
 - Pack art: with `GEMINI_API_KEY`, the admin page draws a closed and a torn-open pack once (text prompt only, never card photos) and caches them in `DATA_DIR/brand` (or `brand/` in the bucket). Without it, the CSS pack.
+
+## Home: wow first
+
+The home page leads with the most eye-catching live item, never the most expensive.
+
+- **Wow score** (computed when a card is identified or repriced, stored on the card): full art / illustration rare / special illustration rare / alt art / numbered parallel **+40**; a name on the **chase list** (Settings → Home feature; Pikachu, Charizard, Umbreon by default) **+25**; graded **9 or 10** **+20**; from the **newest set in its batch** (by release year) **+10**. A Lil' Stack scores as its best card.
+- **Featured:** pin one card (review screen) or one pack (Lil' Stack page) and it takes the hero while it's live.
+- **Hero:** big image, name, set and a one-line hype; the price sits on the button (**Buy this card · $18** / **Buy this stack · $4**). A stack hero shows every card in it.
+- **On the hunt:** the next 6 by wow, price as secondary text. A sold item drops out and the next one moves up.
+- **`/shop`** has the full grid with search, game filter and price sort.
 
 ## Exports
 

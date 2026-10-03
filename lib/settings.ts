@@ -27,6 +27,8 @@ export interface Settings {
   ebayReturnProfileName: string;
   ebayPaymentProfileName: string;
   ebayLocation: string;
+  /** Characters people already chase. A card whose name/player contains one gets +25 wow. */
+  chaseNames: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayReturnProfileName: "",
   ebayPaymentProfileName: "",
   ebayLocation: "Florida",
+  chaseNames: ["Pikachu", "Charizard", "Umbreon"],
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

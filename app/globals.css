@@ -140,6 +140,16 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
+.ls-buy {
+  animation: ls-rise 420ms ease-out both;
+  animation-delay: 700ms;
+}
+@keyframes ls-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
 .ls-face {
   backface-visibility: hidden;
 }
@@ -163,6 +173,7 @@ kbd {
     transform: none !important;
   }
   .ls-card,
+  .ls-buy,
   .ls-flip,
   .ls-sheen,
   .ls-arrow {

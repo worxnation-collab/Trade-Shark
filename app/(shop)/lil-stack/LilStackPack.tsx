@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CssPack } from "@/components/PackArt";
 import { SharkFin } from "@/components/SharkFin";
 import { confetti, pop } from "@/lib/client/feel";
 import type { PublicPack } from "@/lib/lilStack";
+import { packMath } from "@/lib/lilStackMath";
 
 /** A swipe has to cross the pack: start on the left side, reach the right edge. */
 const START_ZONE = 0.35;
@@ -52,11 +54,13 @@ function useColumns() {
   return cols;
 }
 
-export function LilStackPack({ packs, art }: { packs: PublicPack[]; art: Art }) {
+export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art: Art; startId?: string }) {
   const reduced = useReducedMotion();
   const cols = useColumns();
-  const [idx, setIdx] = useState(0);
-  const [order, setOrder] = useState(() => packs[0]?.cards ?? []);
+  const start = Math.max(0, packs.findIndex((p) => p.id === startId));
+  const [idx, setIdx] = useState(start);
+  const [order, setOrder] = useState(() => packs[start]?.cards ?? []);
+  const [soldIds, setSoldIds] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const [nudge, setNudge] = useState(false);
@@ -64,7 +68,7 @@ export function LilStackPack({ packs, art }: { packs: PublicPack[]; art: Art }) 
   const packRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; left: number; width: number } | null>(null);
 
-  const pack = packs[idx];
+  const pack = idx >= 0 ? packs[idx] : undefined;
 
   const tearOpen = useCallback(() => {
     if (open) return;
@@ -120,13 +124,27 @@ export function LilStackPack({ packs, art }: { packs: PublicPack[]; art: Art }) 
     }
   }
 
-  function shuffle() {
+  async function shuffle() {
     setOpen(false);
     setProgress(0);
-    if (packs.length > 1) {
-      const next = (idx + 1) % packs.length;
-      setIdx(next);
-      setOrder(packs[next].cards);
+    // Skip packs that sold while this page was open.
+    let sold = soldIds;
+    try {
+      const r = await fetch("/api/shop/lil-stack", { cache: "no-store" });
+      if (r.ok) {
+        const open = new Set<string>(((await r.json()) as { open: string[] }).open);
+        sold = new Set(packs.filter((p) => !open.has(p.id)).map((p) => p.id));
+        setSoldIds(sold);
+      }
+    } catch {
+      /* offline: shuffle through what we have */
+    }
+    const live = packs.map((p, i) => ({ p, i })).filter(({ p }) => !sold.has(p.id));
+    if (!live.length) return setIdx(-1);
+    if (live.length > 1 || live[0].i !== idx) {
+      const next = live.find(({ i }) => i > idx) ?? live[0];
+      setIdx(next.i);
+      setOrder(next.p.cards);
     } else setOrder((o) => shuffled(o));
   }
 
@@ -145,7 +163,11 @@ export function LilStackPack({ packs, art }: { packs: PublicPack[]; art: Art }) 
     <div className="mt-8 flex flex-col items-center">
       <p className="mb-3 text-sm font-semibold text-sand/80">
         {pack.label} · {pack.cards.length} card{pack.cards.length === 1 ? "" : "s"}
-        {packs.length > 1 && <span className="text-sand/50"> · pack {idx + 1} of {packs.length}</span>}
+        {packs.length - soldIds.size > 1 && (
+          <span className="text-sand/50">
+            {" "}· pack {packs.filter((p, i) => i <= idx && !soldIds.has(p.id)).length} of {packs.length - soldIds.size}
+          </span>
+        )}
       </p>
 
       <div
@@ -218,10 +240,19 @@ export function LilStackPack({ packs, art }: { packs: PublicPack[]; art: Art }) 
               );
             })}
           </ul>
-          <button type="button" className="btn-primary mt-8" onClick={shuffle}>
+          {/* Only after the pack is open: you've seen every card before you can buy it. */}
+          {pack.buyUrl && pack.price != null && (
+            <div className="ls-buy mt-8 flex flex-col items-center gap-1.5">
+              <a href={pack.buyUrl} className="btn-coral px-7 py-3 text-base" data-pop>
+                Buy this stack
+              </a>
+              <p className="text-sm text-sand/75">{packMath(pack.cards.length, pack.price)}</p>
+            </div>
+          )}
+          <button type="button" className="btn-ghost mt-6" onClick={shuffle}>
             Shuffle
           </button>
-          <p className="mt-2 text-xs text-sand/50">{packs.length > 1 ? "Closes this one and deals the next pack." : "Restacks this pack in a new order."}</p>
+          <p className="mt-2 text-xs text-sand/50">{packs.length - soldIds.size > 1 ? "Closes this one and deals the next pack." : "Restacks this pack in a new order."}</p>
         </>
       )}
     </div>
@@ -238,28 +269,6 @@ function TearGuide({ progress }: { progress: number }) {
         className="absolute top-[-11px] h-6 w-6 rounded-full border-2 border-white bg-teal shadow-lg"
         style={{ left: `calc(${4 + progress * 88}% - 2px)` }}
       />
-    </div>
-  );
-}
-
-/** Drawn pack used when there's no generated art (or no GEMINI_API_KEY). */
-function CssPack({ progress = 0, torn = false }: { progress?: number; torn?: boolean }) {
-  return (
-    <div className={`ls-pack relative aspect-[5/7] w-full ${torn ? "ls-torn" : ""}`}>
-      {!torn && (
-        <div className="ls-crimp absolute inset-x-0 top-0 h-[7%] origin-left" style={{ transform: `rotate(${-progress * 7}deg) translateY(${-progress * 8}px)` }} />
-      )}
-      <div className="ls-body absolute inset-x-0 bottom-0 top-[7%] overflow-hidden">
-        <div className="absolute inset-x-0 top-[24%] flex justify-center">
-          <SharkFin size={torn ? 40 : 84} />
-        </div>
-        <div className="absolute inset-x-0 top-[58%] bg-sand py-[5%] text-center">
-          <span className={`font-extrabold uppercase tracking-[0.25em] text-navy ${torn ? "text-[9px]" : "text-sm"}`}>Lil&apos; Stack</span>
-        </div>
-        {!torn && <div className="absolute inset-x-0 bottom-[9%] text-center text-[10px] font-semibold uppercase tracking-[0.3em] text-teal">Trade Shark</div>}
-        <div className="ls-sheen absolute inset-0" />
-      </div>
-      <div className="ls-crimp absolute inset-x-0 bottom-0 h-[6%]" />
     </div>
   );
 }

@@ -34,5 +34,8 @@ export const PUBLIC_CARD_SELECT = {
   paymentLinkUrl: true,
   paymentLinkActive: true,
   title: true,
+  rarity: true,
+  wowScore: true,
+  wowTags: true,
   updatedAt: true,
 } as const;

@@ -35,6 +35,21 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="card space-y-3 p-4">
+        <h2 className="font-bold">Home feature</h2>
+        <div>
+          <label className="label">Chase list (comma separated)</label>
+          <input
+            className="input"
+            defaultValue={(s.chaseNames ?? []).join(", ")}
+            onBlur={(e) => setS({ ...s, chaseNames: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })}
+          />
+          <p className="mt-0.5 text-[11px] text-navy/50">
+            Names people already chase: +25 wow. Full/illustration/alt art or numbered +40, graded 9–10 +20, newest set in the batch +10. Pin a card or a Lil&apos; Stack as Featured to beat the score.
+          </p>
+        </div>
+      </section>
+
+      <section className="card space-y-3 p-4">
         <h2 className="font-bold">Identification</h2>
         <N label="Confidence threshold" step="0.05" value={s.confidenceThreshold} onChange={(v) => setS({ ...s, confidenceThreshold: v })} hint="Cards under this never auto-advance past Inbox; their shaky fields are highlighted." />
       </section>

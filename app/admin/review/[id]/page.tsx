@@ -7,6 +7,7 @@ import { QUEUE_ORDER, queueQuery, queueWhere, type QueueParams } from "@/lib/que
 import { getSettings } from "@/lib/settings";
 import type { IdentCandidate, IdentField } from "@/lib/types";
 import { safeJson } from "@/lib/util";
+import { getFeatured, isFeatured } from "@/lib/featured";
 import { ReviewScreen } from "./ReviewScreen";
 
 export const metadata = { title: "Review" };
@@ -69,6 +70,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
         qs={queueQuery(queue)}
         defaultTitle={renderTitle(card, s)}
         defaultDescription={renderDescription(card, s)}
+        featured={isFeatured(await getFeatured(), "card", card.id)}
       />
     </div>
   );

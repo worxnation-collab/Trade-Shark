@@ -93,6 +93,10 @@ model Card {
   duplicateOfId String?
 
   // Lil' Stack: a free pack of sub-$1 cards from one batch. A card sits in at most one pack.
+  // Wow score for the home hero (never price). Recomputed whenever the card is identified or repriced.
+  wowScore Int    @default(0)
+  wowTags  String @default("") // comma list: art, chase, graded, newest
+
   lilStackId String?
   lilStack   LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
 
@@ -154,7 +158,7 @@ model Card {
   @@index([lilStackId])
 }
 
-// A free pack (never sold) of up to 12 sub-$1 cards from one batch. cardIds keeps the pack's order.
+// A pack of up to 12 sub-$1 cards from one batch. Opening it is free; buying it is one Payment Link. cardIds keeps the pack's order.
 model LilStack {
   id        String   @id @default(cuid())
   batchId   String
@@ -162,9 +166,23 @@ model LilStack {
   seq       Int // 1, 2, 3… within the batch
   cardIds   String[]
   cards     Card[]
+  status    String   @default("open") // open | sold | retired (emptied; kept so an old pay link still matches)
   createdAt DateTime @default(now())
 
+  // One Stripe Payment Link for the whole pack. Price = sum of card list prices, rounded up, min $3.
+  price              Float?
+  paymentLinkId      String?
+  paymentLinkUrl     String?
+  paymentLinkAmount  Float?
+  paymentLinkActive  Boolean   @default(false)
+  paymentLinkHistory String    @default("")
+  linkError          String?
+  soldAt             DateTime?
+  soldPrice          Float?
+  stripeSessionId    String?
+
   @@unique([batchId, seq])
+  @@index([paymentLinkId])
 }
 
 // Every price we ever saw. Never overwritten; the panel shows the latest per source.
