@@ -6,7 +6,8 @@ import { matchManifest, parseManifest } from "./organize/manifest";
 import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
 import { categorize } from "./categories";
-import { rebuildAllPacks, releaseFromPack } from "./lilStack";
+import { releasePack } from "./game/packs";
+import { refreshPacks } from "./lilStack";
 import { orientCard } from "./orient";
 import { autoPublish } from "./publish";
 import { shopPrice, statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
@@ -397,14 +398,20 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
   const quotes = (await db.priceQuote.findMany({ where: { cardId } })) as QuoteRow[];
   const sug = suggest(quotes, card, s);
   const identOk = !!card.confirmedAt || card.sourceConfidence >= s.confidenceThreshold;
-  // A live pay link fixes the price buyers see; only a manual save may change it (and regenerates the link).
-  // Shop price: nearest dollar (min $1, $1 when no source), exact under $1 for Lil' Stack cards; manual wins.
+  // A card a player is looking at (or bought) keeps the price they saw. An old live pay link does too, unless I save by hand.
+  // Shop price: nearest dollar (min $1, $1 when no source), exact under $1; manual wins.
+  const pack = card.gamePackId ? await db.gamePack.findUnique({ where: { id: card.gamePackId }, select: { id: true, status: true } }) : null;
+  const frozen = !!pack && pack.status !== "available";
   const raw = sug.basis === "manual" ? sug.basisAmount : sug.price;
-  const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : shopPrice(raw, card.manualPrice);
-  const status = statusAfterPricing(card.status, listPrice, identOk, s);
-  // Which pack it belongs in comes from what identification read; a category I set by hand sticks.
-  const category = card.categorySource === "manual" ? card.category : categorize(card);
-  if (card.status === "LilStack" && (status !== "LilStack" || category !== card.category)) await releaseFromPack(card);
+  const listPrice = frozen || (card.paymentLinkActive && !opts.allowLivePriceChange) ? card.listPrice : shopPrice(raw, card.manualPrice);
+  let status = statusAfterPricing(card.status, listPrice, identOk, s);
+  // Which bin and category it belongs in comes from what identification read; a category I set by hand sticks.
+  const category = frozen ? card.category : card.categorySource === "manual" ? card.category : categorize(card);
+  // A built pack's value was checked against the band: if a card in it changes, the pack is drawn again.
+  if (pack?.status === "available" && (listPrice !== card.listPrice || category !== card.category || status !== "LilStack")) {
+    await releasePack(pack.id, "dissolved", ["available"]);
+    status = statusAfterPricing("Priced", listPrice, identOk, s);
+  }
   return db.card.update({
     where: { id: cardId },
     data: {
@@ -474,8 +481,8 @@ export async function processBatch(batchId: string, limit = 6) {
   );
   const remaining = await db.card.count({ where: { batchId, processedAt: null } });
   if (todo.length && !remaining) await recomputeBatchWow(batchId, s);
-  // The batch is identified and priced: fill 12-card packs per category (across batches).
-  const packs = todo.length && !remaining ? await rebuildAllPacks().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
+  // The batch is identified and priced: draw new game packs from each category's bins.
+  const packs = todo.length && !remaining ? await refreshPacks().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
   return { processed: todo.length, remaining, decisions, packs };
 }
 
@@ -494,7 +501,7 @@ export async function repriceBatch(batchId: string, cursor = 0, limit = 2) {
   const next = cursor + cards.length;
   if (next >= total) {
     await recomputeBatchWow(batchId, s);
-    await rebuildAllPacks().catch(() => null); // pack prices follow the new card prices
+    await refreshPacks().catch(() => null); // repriced cards left their packs; draw again
   }
   return { next, total, done: next >= total };
 }

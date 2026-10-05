@@ -70,15 +70,15 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
         qs={queueQuery(queue)}
         defaultTitle={renderTitle(card, s)}
         defaultDescription={renderDescription(card, s)}
-        pack={await packOf(card.lilStackId)}
+        pack={await packOf(card.gamePackId)}
       />
     </div>
   );
 }
 
-/** The pack a card sits in, for the admin: "Pokemon Pack · #3". */
+/** The game pack a card sits in, for the admin: "Pokemon Pack · ready · $2.10". */
 async function packOf(id: string | null) {
   if (!id) return null;
-  const p = await db.lilStack.findUnique({ where: { id }, select: { id: true, seq: true, status: true, category: true } });
-  return p ? { id: p.id, label: `${p.category ? productName(p.category) : "Lil' Stack"} · #${p.seq}${p.status === "open" ? "" : ` (${p.status})`}` } : null;
+  const p = await db.gamePack.findUnique({ where: { id }, select: { id: true, status: true, category: true, value: true } });
+  return p ? { id: p.id, label: `${productName(p.category)} · ${p.status === "available" ? "ready" : p.status} · $${p.value.toFixed(2)}` } : null;
 }

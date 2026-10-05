@@ -2,52 +2,46 @@ import { notFound } from "next/navigation";
 import { Disclaimer } from "@/components/Disclaimer";
 import { artUrls } from "@/lib/brandArt";
 import { categoryOf, isCategory } from "@/lib/categories";
-import { publicPacks, type PackSort } from "@/lib/lilStack";
-import { PackOpener } from "./PackOpener";
+import { currentBuyer } from "@/lib/game/buyer";
+import { playState } from "@/lib/game/play";
+import { oddsLines } from "@/lib/game/rules";
+import { Game } from "./Game";
 
 export const dynamic = "force-dynamic";
-
-const SORTS: Record<PackSort, string> = { default: "Oldest first", "price-asc": "Price: low to high", "price-desc": "Price: high to low" };
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const c = categoryOf((await params).category);
   return { title: c ? `${c.product} · Trade Shark` : "Packs" };
 }
 
-/**
- * One product: Baseball Pack, Football Pack or Pokemon Pack. Each pack is 12 real cards.
- * Opening one is free and shows all 12; only then does Buy this pack appear.
- * Reads cards through publicPacks() (front, name, set). Sold packs aren't listed.
- */
-export default async function PackPage({ params, searchParams }: { params: Promise<{ category: string }>; searchParams: Promise<{ sort?: string; pack?: string }> }) {
+/** The reveal game for one category. Rules and odds are on screen before the first $1. */
+export default async function PackPage({ params }: { params: Promise<{ category: string }> }) {
   const { category } = await params;
   if (!isCategory(category)) notFound();
   const cat = categoryOf(category)!;
-  const { sort: sortParam, pack } = await searchParams;
-  const sort = (sortParam && sortParam in SORTS ? sortParam : "default") as PackSort;
-  const [packs, art] = await Promise.all([publicPacks(category, sort), artUrls().catch(() => ({}))]);
+  const [state, art] = await Promise.all([playState(await currentBuyer(), category), artUrls().catch(() => ({}))]);
   return (
     <section className="-mx-4 -my-8 bg-navy px-4 py-10 text-sand sm:mx-0 sm:my-0 sm:rounded-2xl sm:px-8">
-      <div className="mx-auto max-w-4xl text-center">
+      <div className="text-center">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-teal">{cat.name}</p>
         <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-white sm:text-5xl">{cat.product}</h1>
-        <p className="mx-auto mt-3 max-w-md text-sm text-sand/75">
-          12 {cat.name} cards from my shop in every pack. Tearing one open is free and shows all 12. Like what you see? Buy the pack.
-        </p>
-        {packs.length > 1 && (
-          <form className="mt-4 flex justify-center gap-2">
-            <select name="sort" defaultValue={sort} className="input max-w-[12rem] text-navy" aria-label="Pack order">
-              {Object.entries(SORTS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <button className="btn-ghost">Sort</button>
-          </form>
-        )}
       </div>
-      <PackOpener key={sort} packs={packs} art={art} startId={pack} product={cat.product} />
+      <Game
+        category={category}
+        product={cat.product}
+        odds={oddsLines(state.chaseOn)}
+        open={state.open}
+        hasCard={state.hasCard}
+        cardLabel={state.signedIn ? state.cardLabel : null}
+        lockedUntil={state.lockedUntil ? new Date(state.lockedUntil).toISOString() : null}
+        revealing={
+          state.revealing && state.revealing.category === category
+            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack }
+            : null
+        }
+        serverNow={new Date().toISOString()}
+        art={art}
+      />
       <Disclaimer dark className="mx-auto mt-10 max-w-md text-center" />
     </section>
   );

@@ -2,6 +2,6 @@
 export const DISCLAIMERS = [
   "For fun, not a grade. Photos are of the cards in the pack.",
   "Prices are a cute-shop estimate, not a market quote.",
-  "Every pack shows all 12 cards before you pay.",
-  "Shipping is calculated at checkout.",
+  "You see all 12 cards before you keep a pack. A blind pack is shown after you pay.",
+  "Packs you keep ship from Florida in a tracked mailer.",
 ] as const;

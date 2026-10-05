@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { applySuggestion, priceCard, relinkCatalog } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
 import { isCategory } from "@/lib/categories";
-import { buildPacks, releaseFromPack } from "@/lib/lilStack";
+import { buildGamePacks, releaseCardFromGame } from "@/lib/game/packs";
 import { retirePaymentLink } from "@/lib/payLink";
 import { CONDITIONS, FOR_SALE, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
 
@@ -81,7 +81,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
     linkError = "Cards sell only in packs now. Approve it and it joins its category's next pack.";
   }
   // LilStack is only set by packing (a card needs a pack to be in one).
-  else if (typeof b.status === "string" && (STATUSES as readonly string[]).includes(b.status) && (b.status !== "LilStack" || card.lilStackId)) status = b.status;
+  else if (typeof b.status === "string" && (STATUSES as readonly string[]).includes(b.status) && (b.status !== "LilStack" || card.gamePackId)) status = b.status;
   // Saving a card I'm looking at approves it: back to stock, and the packer takes it from there.
   else if (b.confirm && card.readable && ["Inbox", "Identified", "Priced", "BulkHold", "NeedsLook", "Pulled"].includes(card.status)) {
     status = card.listPrice == null ? "Identified" : "Priced";
@@ -91,15 +91,16 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   // Old single-card pay links never stay up.
   if (card.paymentLinkActive) card = (await retirePaymentLink(card)).card;
 
-  if (status !== "LilStack" && card.lilStackId) await releaseFromPack(card);
+  // Out of an available pack (that pack is drawn again). A pack a player holds or bought is left alone.
+  if (status !== "LilStack" && card.gamePackId) await releaseCardFromGame(card);
   // Approving it clears why it was waiting, including a rotation hold.
   if (b.confirm && status === "Priced" && card.holdReason) extra.holdReason = null;
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();
   card = await db.card.update({ where: { id }, data: { status, ...extra } });
 
-  // Refill the packs this card could touch (its category, and the one it left). Pack prices follow card prices.
+  // Draw new packs in the categories this card touched (its bins may now fill one).
   const cats = new Set([before.category, card.category].filter(isCategory));
-  for (const c of cats) await buildPacks(c).catch((e) => console.error("pack build failed", e));
+  for (const c of cats) await buildGamePacks(c).catch((e) => console.error("pack build failed", e));
   card = await db.card.findUniqueOrThrow({ where: { id } });
 
   if (linkError) return NextResponse.json({ ok: false, error: linkError, card }, { status: 422 });
@@ -110,7 +111,7 @@ export const DELETE = guarded(async (_req: Request, { params }: { params: Promis
   const { id } = await params;
   const card = await db.card.findUniqueOrThrow({ where: { id } });
   await retirePaymentLink(card);
-  await releaseFromPack(card);
+  await releaseCardFromGame(card);
   await db.card.update({ where: { id }, data: { status: "Archived" } });
   return NextResponse.json({ ok: true });
 });

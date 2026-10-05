@@ -12,7 +12,7 @@ export const STATUS_LABEL: Record<Status, string> = {
   Sold: "Sold",
   Archived: "Archived",
   BulkHold: "Bulk Hold",
-  LilStack: "Lil' Stack",
+  LilStack: "In a pack",
   NeedsLook: "Needs a look",
   Pulled: "Pulled",
 };

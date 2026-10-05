@@ -109,6 +109,9 @@ model Card {
 
   lilStackId String?
   lilStack   LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
+  // The reveal game: the built pack this card sits in (available / reserved / kept / sold-blind).
+  gamePackId String?
+  gamePack   GamePack? @relation(fields: [gamePackId], references: [id], onDelete: SetNull)
 
   // identification
   identSource      String? // filename | manifest | pasted | pokemontcg | scryfall | vision:anthropic | vision:openai | manual
@@ -174,6 +177,7 @@ model Card {
   @@index([paymentLinkId])
   @@index([backHash])
   @@index([lilStackId])
+  @@index([gamePackId])
 }
 
 // A pack of exactly 12 cards from one category (the only thing the shop sells). Opening it is free; buying it is one Payment Link. cardIds keeps the pack's order.
@@ -259,4 +263,96 @@ model VisionCache {
 model Setting {
   key   String @id
   value String
+}
+
+/// A player: a Stripe customer with a saved card. No password; the browser holds a signed cookie.
+model Buyer {
+  id               String       @id @default(cuid())
+  createdAt        DateTime     @default(now())
+  email            String
+  name             String
+  shipTo           String // JSON name + address, for fulfillment
+  tz               String // IANA zone from their browser at signup; locks end at its local midnight
+  stripeCustomerId String       @unique
+  paymentMethodId  String?
+  cardFingerprint  String? // locks follow the card too, so a fresh cookie doesn't reset them
+  cardLabel        String? // "Visa ·· 4242"
+  cycles           GameCycle[]
+  charges          GameCharge[]
+  locks            GameLock[]
+
+  @@index([cardFingerprint])
+}
+
+/// A built pack for the reveal game: 12 cards of one category, 8 bulk + 3 mid + 1 top, value $1.80–$2.40.
+model GamePack {
+  id             String    @id @default(cuid())
+  category       String // baseball | football | pokemon
+  cardIds        String[]
+  cards          Card[]
+  value          Float // summed engine prices of the 12 cards
+  status         String    @default("available") // available | reserved | kept | expired | sold-blind | dissolved
+  chase          Boolean   @default(false) // top slot swapped for a $10+ chase card (flag on only)
+  chaseCardId    String?
+  builtAt        DateTime  @default(now())
+  reservedBy     String? // Buyer id; nobody else ever sees a reserved pack
+  reservedAt     DateTime?
+  closedAt       DateTime?
+  // Fulfillment once kept or sold blind.
+  charged        Float? // what the player paid in total for this pack ($3.99 keep, $4.99 blind)
+  shipTo         String?
+  trackingNumber String?
+  shippedAt      DateTime?
+
+  @@index([category, status])
+  @@index([reservedBy])
+}
+
+/// One play: $1 reveal → keep ($2.99) / pass → optional blind ($4.99). Or a blind buy after a pass.
+model GameCycle {
+  id         String       @id @default(cuid())
+  buyerId    String
+  buyer      Buyer        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  category   String
+  kind       String // peek | blind
+  status     String // revealing | kept | passed | expired | blind-bought | failed
+  packId     String?
+  revealedAt DateTime?
+  deadline   DateTime? // reveal + 30 s; keep is refused after it
+  endedAt    DateTime?
+  createdAt  DateTime     @default(now())
+  charges    GameCharge[]
+
+  @@index([buyerId, status])
+}
+
+/// Every charge the game makes (and any refund), for the books and for support.
+model GameCharge {
+  id              String     @id @default(cuid())
+  buyerId         String
+  buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  cycleId         String?
+  cycle           GameCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  kind            String // reveal | keep | blind | refund
+  amount          Float
+  paymentIntentId String?
+  status          String // succeeded | failed
+  error           String?
+  createdAt       DateTime   @default(now())
+
+  @@index([buyerId])
+}
+
+/// "$1 reveal with no purchase": that category is closed for this buyer (and their card) until local midnight.
+model GameLock {
+  id          String   @id @default(cuid())
+  buyerId     String
+  buyer       Buyer    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  fingerprint String?
+  category    String
+  until       DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([buyerId, category])
+  @@index([fingerprint, category])
 }

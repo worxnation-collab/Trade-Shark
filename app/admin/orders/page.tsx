@@ -11,7 +11,7 @@ export const metadata = { title: "Orders" };
 export const dynamic = "force-dynamic";
 
 interface Order {
-  kind: "card" | "stack";
+  kind: "card" | "stack" | "game";
   id: string;
   title: string;
   href: string;
@@ -27,10 +27,15 @@ interface Order {
 
 /** Sold packs (and any older sold singles), unshipped first. */
 export default async function OrdersPage() {
-  const [cards, packs] = await Promise.all([
+  const [cards, packs, games] = await Promise.all([
     // A card sold inside a pack belongs to the pack's order.
-    db.card.findMany({ where: { status: "Sold", OR: [{ lilStackId: null }, { lilStack: { status: { not: "sold" } } }] }, orderBy: { soldAt: "desc" }, take: 200 }),
+    db.card.findMany({
+      where: { status: "Sold", gamePackId: null, OR: [{ lilStackId: null }, { lilStack: { status: { not: "sold" } } }] },
+      orderBy: { soldAt: "desc" },
+      take: 200,
+    }),
     db.lilStack.findMany({ where: { status: "sold" }, orderBy: { soldAt: "desc" }, take: 200, include: { batch: { select: { name: true } } } }),
+    db.gamePack.findMany({ where: { status: { in: ["kept", "sold-blind"] } }, orderBy: { closedAt: "desc" }, take: 200 }),
   ]);
   const orders: Order[] = [
     ...cards.map((c) => ({
@@ -57,6 +62,20 @@ export default async function OrdersPage() {
       shipping: p.shippingCharged,
       method: p.shipMethod,
       channel: p.stripeSessionId ? "stripe" : "local",
+      shipTo: safeJson<Order["shipTo"]>(p.shipTo ?? "null", null),
+      tracking: p.trackingNumber,
+      shippedAt: p.shippedAt,
+    })),
+    ...games.map((p) => ({
+      kind: "game" as const,
+      id: p.id,
+      title: `${productName(p.category)} · ${p.status === "kept" ? "kept after reveal" : "blind"} · 12 cards`,
+      href: `/admin/lil-stack`,
+      soldAt: p.closedAt,
+      merch: p.charged,
+      shipping: null, // the game prices don't add a shipping line
+      method: "bubble",
+      channel: "game",
       shipTo: safeJson<Order["shipTo"]>(p.shipTo ?? "null", null),
       tracking: p.trackingNumber,
       shippedAt: p.shippedAt,
@@ -89,7 +108,7 @@ export default async function OrdersPage() {
                     {o.soldAt?.toLocaleDateString()} · {o.channel === "stripe" ? "Stripe" : (o.channel ?? "by hand")}
                   </div>
                   <div className="mt-1 text-sm">
-                    {o.kind === "stack" ? "Cards" : "Card"} {money(o.merch)} · Shipping {o.shipping == null ? "—" : o.shipping === 0 ? "free" : money(o.shipping)}
+                    {o.kind === "card" ? "Card" : "Cards"} {money(o.merch)} · Shipping {o.shipping == null ? "—" : o.shipping === 0 ? "free" : money(o.shipping)}
                   </div>
                 </div>
                 <div className="text-sm">

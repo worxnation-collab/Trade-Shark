@@ -72,7 +72,8 @@ Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` �
 | `VISION_CONCURRENCY` | no (default `2`) | Max simultaneous vision calls. |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
-| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, packs open but have no Buy button. Use a restricted key with Payment Links write access if you like. |
+| `STRIPE_SECRET_KEY` | to sell | Saves players' cards (Checkout setup mode) and charges them for reveal / keep / blind (PaymentIntents, off-session). A restricted key needs Customers, Checkout Sessions, PaymentIntents, Refunds and Payment Links (to expire old links) write. |
+| `PLAYER_SECRET` | recommended | Signs the player cookie. Falls back to `TRADE_SHARK_PASSWORD`, so changing the desk password would sign every player out. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
 | `GEMINI_API_KEY` | no | Server-only. Draws the pack art (closed + torn open) once, server-side, from a text prompt. Without it the shop uses the CSS pack. |
 | `GEMINI_IMAGE_MODEL` | no (default `gemini-2.5-flash-image`) | Gemini image model for the pack art. |
@@ -140,23 +141,42 @@ A fresh batch runs straight through on its batch page (it starts by itself): **s
 
 Every card and pack page carries the small print: *For fun, not a grade. Photos are of the cards in the pack. / Prices are a cute-shop estimate, not a market quote. / Every pack shows all 12 cards before you pay. / Shipping is calculated at checkout.*
 
-## Packs: the only thing the shop sells
+## The reveal game (the only checkout)
 
-Three products: **Baseball Pack**, **Football Pack**, **Pokemon Pack**. One tier each. No basketball, no Magic. Cards never sell one at a time; identified, priced cards stay in inventory and go into packs.
+> **$1 to reveal. Keep for $2.99 more. Pass, or let the timer end, and the only option left is a $4.99 pack you see after you pay.**
 
-- **Category** comes from what identification already read (no new source): game Pokemon → Pokemon; sports by league words ("Football", "NFL", "Bowman"…), full team names (San Francisco Giants vs New York Giants), then unique nicknames (Yankees, Chiefs). Basketball, Magic, and anything ambiguous stay **unsorted**: in inventory, never packed. Pick a category by hand (Packs page or review screen) and it sticks through repricing.
-- **A pack is exactly 12 cards of one category**, built across batches, oldest cards first, a card in one pack only (status **In a pack**, internally `LilStack`). Fewer than 12 left over → they wait in stock (the Packs page says how many more fill the next one).
-- **Price = the exact sum of the 12 cards' existing prices.** No other pricing source, no rounding. Shipping is its own line: a tracked bubble mailer, never free.
-- Packs rebuild after every batch, reprice and card save, and with **Rebuild packs** (Admin → Packs). Stable: unchanged packs keep their pay link; a pack that lost a card refills from stock (new link) or dissolves back to stock if it can't reach 12.
-- **Buying:** one Stripe Payment Link per pack (`Pokemon Pack, Trade Shark`, the card names in the description, quantity 1, one checkout).
-- **`/packs/<category>`**: a sealed pack opens only on a full left-to-right swipe (or four right-arrow presses). Opening is free and shows all 12 cards (front, name, set; never a card's own price). Only then does **Buy this pack** appear, with cards + shipping = total. **Shuffle** deals the next unsold pack. Reduced motion: **Tap to open**.
-- **Sold:** only the signed webhook (`checkout.session.completed` on the pack's link) or **Mark sold** on the admin page. The pack and its 12 cards become Sold (the sale is split across the cards by list price).
-- **Admin → Packs** shows each category's packs with every card, its value and the pay link, stock counts, unsorted cards with a category picker, sold packs and pack art. The review screen shows which pack a card is in.
-- Pack art: with `GEMINI_API_KEY`, the admin page draws a closed and a torn-open pack once (text prompt only, never card photos). Without it, the CSS pack.
+That sentence and the odds are on screen before the first payment.
 
-## Home: the catalog
+1. Pick **Baseball**, **Football** or **Pokemon** (home page). A category with no ready pack says "Restocking".
+2. First time: **Save a card** (`/play/card`): name, email, US shipping address, then Stripe Checkout in setup mode. No charge. The browser gets a signed `ts_player` cookie; there's no password.
+3. **Reveal for $1**: charged to the saved card first, then a ready pack is reserved for you and all 12 cards show with name, image and engine price. The $1 is spent; it only counts toward the pack just shown.
+4. A **30 second** timer runs (server deadline). At 10 s and 20 s the pack graphic nudges and Keep pulses. Nothing is ever charged by the timer.
+5. **Keep · $2.99** ($3.99 in all): the 12 cards are yours, the cycle closes, and you can play again right away.
+6. **Pass**, the timer, or leaving the screen: that pack is gone for you (its cards go back to stock and are redrawn). The category is **locked for your account and your card until your local midnight**; the only button left is the **$4.99 blind pack**.
+7. **Blind pack**: $4.99 is charged first, then a pack from the same builder is reserved and revealed. No reject. Buying it unlocks a new cycle immediately.
 
-The home page is the three products, each with how many packs are up and their price range ("Restocking" when none). `/shop` and `/lil-stack` redirect there; single-card pages are gone. The wow score is still computed as an admin tag, but nothing public ranks by it any more.
+One active cycle per account. Every charge (and any refund, e.g. if the last pack went in the same second) is logged in `GameCharge`. Packs ship in a tracked bubble mailer; the game prices include shipping.
+
+**Odds (same for peek and blind):** 8 of 12 cards are bulk, usually under $0.25 · 3 are modest, usually $0.25 to $0.75 · 1 is the best card in the pack, usually $0.75 to $2 · Pack value is usually under the keep price.
+
+### Pack builder
+
+Per category, never mixed. Uses the existing engine price on each card; nothing new prices a card.
+
+- **Bins:** bulk < $0.25 · mid $0.25–$0.75 · top $0.75–$2.00 · chase ≥ $10. Cards from $2.01 to $9.99 stay in inventory.
+- **A pack:** 8 bulk + 3 mid + 1 top, summed value **$1.80–$2.40** (45–60% of the $3.99 keep). A draw outside the band is thrown out and drawn again. If a bin can't fill its slot, that category stays closed; it never pads with the wrong value. A normal pack is never shown above $3.50.
+- Packs are drawn ahead, up to 50 ready per category, after every batch, reprice, card save and pass, and with **Draw packs** (Admin → Packs). A purchase only reserves a pack that already exists.
+- Statuses: **available**, **reserved** (only the player holding it can see it), **kept**, **expired**, **sold-blind** (plus **dissolved** when I edit a card in a ready pack).
+
+### Chase cards (off by default)
+
+Any scanned card with an engine price of **$10 or more** is on that category's chase list (Admin → Packs). The flag can only be turned on once the category has one. While it's off, no $10+ card is ever in a pack and the odds don't mention chase cards. When it's on, about **1 in 25** reservations (peek and blind share the roll) swap the top slot for one chase card, at most one chase pack reserved per category at a time, and the odds add: *About 1 in 25 packs contains a card priced at $10 or more.*
+
+### Category
+
+From what identification already read (no new source): game Pokemon → Pokemon; sports by league words ("Football", "NFL", "Bowman"…), full team names, then unique nicknames. Basketball, Magic and anything ambiguous stay **unsorted**, in inventory. Pick a category by hand (Packs page or review screen) and it sticks.
+
+**Admin → Packs** shows each category's bins and what's short, built packs by status, live odds, the chase list with its toggle, recent packs with their cards and values, and unsorted cards. **Admin → Orders** lists kept and blind packs with the player's address for **Mark shipped**.
 
 ## Shipping
 
@@ -181,7 +201,7 @@ The buyer pays shipping on top of the price. It's its own line on the Stripe che
 ## Images and privacy
 
 - Scans live in the private Supabase bucket (or `DATA_DIR/images` locally). `/api/admin/images/*` requires the password.
-- The public shop uses `/api/shop/image/:cardId/front`, which serves a card's front **only while it sits in an open pack**. Inbox, Sold, and Archived cards 404.
+- The public shop uses `/api/shop/image/:cardId/front`, which is retired; game cards are served by `/api/play/image/:id` **only to the player holding or owning that pack**. Inbox, Sold, and Archived cards 404.
 - The `trade_shark` tables have RLS on and no grants for Supabase's `anon`/`authenticated` roles; only the app's server connection reads them.
 - TIFF scans are converted to JPEG on upload so browsers can show them.
 

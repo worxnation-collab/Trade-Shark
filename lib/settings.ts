@@ -31,6 +31,8 @@ export interface Settings {
   chaseNames: string[];
   /** What the buyer pays for shipping, on top of the card or pack price. */
   buyerShipping: { pwe: number; bubble: number; freeAt: number };
+  /** Chase cards ($10+) in the reveal game, per category. Off until I turn it on (needs one chase card scanned). */
+  chaseOn: { baseball: boolean; football: boolean; pokemon: boolean };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ebayLocation: "Florida",
   chaseNames: ["Pikachu", "Charizard", "Umbreon"],
   buyerShipping: { pwe: 1.5, bubble: 6, freeAt: 35 },
+  chaseOn: { baseball: false, football: false, pokemon: false },
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

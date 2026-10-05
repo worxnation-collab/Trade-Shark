@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /** Mark shipped. A stamped envelope says "no tracking" instead of asking for a number. */
-export function ShipForm({ kind, id, pwe }: { kind: "card" | "stack"; id: string; pwe: boolean }) {
+export function ShipForm({ kind, id, pwe }: { kind: "card" | "stack" | "game"; id: string; pwe: boolean }) {
   const router = useRouter();
   const [tracking, setTracking] = useState("");
   const [err, setErr] = useState("");

@@ -21,8 +21,8 @@ export function LilStackTools({ geminiReady, art }: { geminiReady: boolean; art:
       const r = await fetch("/api/admin/lil-stack/rebuild", { method: "POST" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || r.statusText);
-      const cats = (j.categories ?? []) as { category: string; packs: number; waiting: number }[];
-      setMsg(`Rebuilt: ${cats.map((c) => `${c.category} ${c.packs} pack${c.packs === 1 ? "" : "s"} (${c.waiting} waiting)`).join(", ")}.`);
+      const built = (j.built ?? []) as { category: string; built: number; available: number }[];
+      setMsg(`Drew ${built.map((c) => `${c.category} +${c.built} (${c.available} ready)`).join(", ")}.`);
       router.refresh();
     } catch (e) {
       setMsg(`Rebuild failed: ${e instanceof Error ? e.message : e}`);
@@ -64,11 +64,11 @@ export function LilStackTools({ geminiReady, art }: { geminiReady: boolean; art:
       <div className="card space-y-2 p-4">
         <h2 className="font-bold">Packs</h2>
         <p className="text-sm text-navy/70">
-          Packs build on their own when a batch finishes or a reprice ends. Rebuild by hand after you sort cards or change prices: changed packs get a fresh
-          pay link, unchanged ones keep theirs.
+          Packs are drawn on their own when a batch finishes or a reprice ends. Draw by hand after you sort cards or approve some: each category
+          keeps up to 50 ready packs, and a draw that misses the value band is thrown out and drawn again.
         </p>
         <button className="btn-primary" disabled={busy} onClick={rebuild}>
-          {busy ? "Rebuilding…" : "Rebuild packs"}
+          {busy ? "Drawing…" : "Draw packs"}
         </button>
         {msg && <p className="text-sm">{msg}</p>}
       </div>
@@ -101,51 +101,27 @@ export function LilStackTools({ geminiReady, art }: { geminiReady: boolean; art:
   );
 }
 
-/** Per-pack: pay link, mark sold by hand, fresh link. */
-export function PackActions({ id, linkUrl, linkError, price }: { id: string; linkUrl: string | null; linkError: string | null; price: number | null }) {
+/** Chase cards for one category. Can't turn on until the category has a $10+ card scanned. */
+export function ChaseToggle({ category, on, canTurnOn }: { category: string; on: boolean; canTurnOn: boolean }) {
   const router = useRouter();
-  const [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  async function act(action: string, extra: Record<string, unknown> = {}) {
-    setBusy(action);
+  async function flip() {
+    setBusy(true);
     setErr("");
-    try {
-      const r = await fetch(`/api/admin/lil-stack/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
-      const j = await r.json();
-      if (!r.ok || j.ok === false) setErr(j.error || j.note || r.statusText);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy("");
-      router.refresh();
-    }
+    const r = await fetch("/api/admin/game/chase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category, on: !on }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) setErr(j.error || r.statusText);
+    setBusy(false);
+    router.refresh();
   }
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-      {linkUrl ? (
-        <a href={linkUrl} target="_blank" rel="noreferrer" className="chip bg-teal/15 text-teal-2 underline">
-          Pay link ↗
-        </a>
-      ) : (
-        <span className="chip bg-coral/15 text-coral" title={linkError ?? ""}>
-          No pay link{linkError ? `: ${linkError.slice(0, 80)}` : ""}
-        </span>
-      )}
-      <button className="btn-ghost px-2 py-1 text-xs" disabled={!!busy} onClick={() => act("relink")}>
-        {busy === "relink" ? "Linking…" : linkUrl ? "New link" : "Create link"}
-      </button>
-      <button
-        className="btn-ghost px-2 py-1 text-xs text-coral"
-        disabled={!!busy}
-        onClick={() => {
-          const v = prompt("Sold by hand. Amount received ($)?", price != null ? String(price) : "");
-          if (v !== null) void act("sold", { amount: v });
-        }}
-      >
-        Mark sold
+    <span className="flex items-center gap-2 text-sm">
+      <button className={on ? "btn-coral px-3 py-1" : "btn-ghost px-3 py-1"} disabled={busy || (!on && !canTurnOn)} onClick={flip} title={!canTurnOn && !on ? "Scan a $10+ card in this category first" : ""}>
+        {on ? "Chase ON · turn off" : "Chase off · turn on"}
       </button>
       {err && <span className="text-xs text-coral">{err}</span>}
-    </div>
+    </span>
   );
 }
 

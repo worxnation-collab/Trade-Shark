@@ -1,0 +1,27 @@
+import { db } from "@/lib/db";
+import { currentBuyer } from "@/lib/game/buyer";
+import { readStored } from "@/lib/images";
+import { signedUrl, usingSupabase } from "@/lib/storage";
+
+export const runtime = "nodejs";
+
+/**
+ * A card's front, only for the player whose pack it's in (reserved, kept or bought blind).
+ * A reserved pack is never shown to anyone else; stock and other players' packs 404.
+ */
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const buyer = await currentBuyer();
+  if (!buyer) return new Response("not found", { status: 404 });
+  const c = await db.card.findUnique({ where: { id }, select: { frontImage: true, readable: true, gamePack: { select: { reservedBy: true, status: true } } } });
+  const mine = c?.gamePack && c.gamePack.reservedBy === buyer.id && ["reserved", "kept", "sold-blind"].includes(c.gamePack.status);
+  if (!c || !c.readable || !c.frontImage || !mine) return new Response("not found", { status: 404 });
+  if (usingSupabase()) {
+    const url = await signedUrl(c.frontImage, 600);
+    if (!url) return new Response("not found", { status: 404 });
+    return new Response(null, { status: 302, headers: { Location: url, "Cache-Control": "private, no-store" } });
+  }
+  const img = await readStored(c.frontImage);
+  if (!img) return new Response("not found", { status: 404 });
+  return new Response(new Uint8Array(img.buf), { headers: { "Content-Type": img.mime, "Cache-Control": "private, max-age=600" } });
+}

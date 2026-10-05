@@ -140,6 +140,14 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
+/* Reveal game: the Keep button pulses at 10 s and 20 s (the pack nudges with .ls-nudge). Never the whole screen. */
+.keep-pulse {
+  animation: keep-pulse 900ms ease-in-out 2;
+}
+@keyframes keep-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 93, 76, 0.55); transform: scale(1); }
+  50% { box-shadow: 0 0 0 12px rgba(232, 93, 76, 0); transform: scale(1.05); }
+}
 .ls-buy {
   animation: ls-rise 420ms ease-out both;
   animation-delay: 700ms;
@@ -173,6 +181,7 @@ kbd {
     transform: none !important;
   }
   .ls-card,
+  .keep-pulse,
   .ls-buy,
   .ls-flip,
   .ls-sheen,
