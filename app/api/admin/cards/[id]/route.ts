@@ -4,8 +4,9 @@ import { guarded } from "@/lib/api";
 import { db } from "@/lib/db";
 import { applySuggestion, priceCard, relinkCatalog } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
-import { LIL_STACK_UNDER, releaseFromPack } from "@/lib/lilStack";
-import { issuePaymentLink, needsLink, retirePaymentLink } from "@/lib/payLink";
+import { isCategory } from "@/lib/categories";
+import { buildPacks, releaseFromPack } from "@/lib/lilStack";
+import { retirePaymentLink } from "@/lib/payLink";
 import { CONDITIONS, FOR_SALE, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -38,6 +39,11 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   if ("cost" in b) data.cost = numOrNull(b.cost);
   if ("manualPrice" in b) data.manualPrice = numOrNull(b.manualPrice);
   if ("soldPrice" in b) data.soldPrice = numOrNull(b.soldPrice);
+  // Which pack it goes in. Set by hand it sticks; empty = never packed.
+  if ("category" in b) {
+    data.category = isCategory(b.category) ? b.category : null;
+    data.categorySource = "manual";
+  }
   if ("pastedComps" in b) data.pastedComps = typeof b.pastedComps === "string" && b.pastedComps.trim() ? b.pastedComps : null;
 
   const identityChanged = IDENTITY.some((k) => k in data && (data as Record<string, unknown>)[k] !== (before as Record<string, unknown>)[k]);
@@ -68,46 +74,36 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   else if ("pastedComps" in b && card.pastedComps !== before.pastedComps) card = await priceCard(card, s, { sources: ["pasted"], allowLivePriceChange: true });
   else card = await applySuggestion(id, s, { allowLivePriceChange: true });
 
-  // Status moves only from my hand.
+  // Status moves only from my hand. Cards never sell one at a time: Ready/Listed aren't allowed any more.
   let status = card.status;
+  let linkError: string | undefined;
+  if (typeof b.status === "string" && FOR_SALE.includes(b.status as never)) {
+    linkError = "Cards sell only in packs now. Approve it and it joins its category's next pack.";
+  }
   // LilStack is only set by packing (a card needs a pack to be in one).
-  if (typeof b.status === "string" && (STATUSES as readonly string[]).includes(b.status) && (b.status !== "LilStack" || card.lilStackId)) status = b.status;
-  // An unreadable file has no photo to sell; it can be confirmed but stays out of Ready.
-  // Saving a card I'm looking at approves it: $1+ goes live (pay link first), under $1 joins a Lil' Stack.
+  else if (typeof b.status === "string" && (STATUSES as readonly string[]).includes(b.status) && (b.status !== "LilStack" || card.lilStackId)) status = b.status;
+  // Saving a card I'm looking at approves it: back to stock, and the packer takes it from there.
   else if (b.confirm && card.readable && ["Inbox", "Identified", "Priced", "BulkHold", "NeedsLook", "Pulled"].includes(card.status)) {
-    status = card.listPrice == null ? "Identified" : card.listPrice < LIL_STACK_UNDER ? "BulkHold" : "Ready";
+    status = card.listPrice == null ? "Identified" : "Priced";
   }
   const extra: Prisma.CardUpdateInput = {};
-  if (card.listedUrl && card.listedUrl !== before.listedUrl && ["Ready", "Priced"].includes(status)) status = "Listed";
   if (card.soldPrice != null && before.soldPrice == null && status !== "Sold") status = "Sold";
-
-  // Under $1 never sells as a single: it belongs in a Lil' Stack.
-  let linkError: string | undefined;
-  if (FOR_SALE.includes(status as never) && card.listPrice != null && card.listPrice < LIL_STACK_UNDER) {
-    linkError = `Under $${LIL_STACK_UNDER.toFixed(2)} goes in a Lil' Stack, not the shop. Price it at $${LIL_STACK_UNDER.toFixed(2)}+ to sell it as a single.`;
-    status = before.status === "LilStack" && card.lilStackId ? "LilStack" : "BulkHold";
-  }
-  // A card only goes up for sale with a working pay link: create it before the status flips.
-  else if (FOR_SALE.includes(status as never) && needsLink(card, s)) {
-    const r = await issuePaymentLink(card, s);
-    card = r.card;
-    if (!r.ok) {
-      linkError = r.error;
-      // Stay out of the shop: back to Priced (or Bulk Hold if it's under the minimum).
-      status = "NeedsLook";
-    }
-  } else if (!FOR_SALE.includes(status as never) && card.paymentLinkActive) {
-    card = (await retirePaymentLink(card)).card;
-  }
+  // Old single-card pay links never stay up.
+  if (card.paymentLinkActive) card = (await retirePaymentLink(card)).card;
 
   if (status !== "LilStack" && card.lilStackId) await releaseFromPack(card);
-  // Approving it (live on the shop) clears why it was waiting, including a rotation hold.
-  if (FOR_SALE.includes(status as never) && card.holdReason) extra.holdReason = null;
-  if (status === "Listed" && !card.listedAt) extra.listedAt = new Date();
+  // Approving it clears why it was waiting, including a rotation hold.
+  if (b.confirm && status === "Priced" && card.holdReason) extra.holdReason = null;
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();
   card = await db.card.update({ where: { id }, data: { status, ...extra } });
+
+  // Refill the packs this card could touch (its category, and the one it left). Pack prices follow card prices.
+  const cats = new Set([before.category, card.category].filter(isCategory));
+  for (const c of cats) await buildPacks(c).catch((e) => console.error("pack build failed", e));
+  card = await db.card.findUniqueOrThrow({ where: { id } });
+
   if (linkError) return NextResponse.json({ ok: false, error: linkError, card }, { status: 422 });
-  return NextResponse.json({ ok: true, card, wentLive: FOR_SALE.includes(status as never) && !FOR_SALE.includes(before.status as never), sold: status === "Sold" && before.status !== "Sold" });
+  return NextResponse.json({ ok: true, card, packed: card.status === "LilStack" && before.status !== "LilStack", sold: status === "Sold" && before.status !== "Sold" });
 });
 
 export const DELETE = guarded(async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {

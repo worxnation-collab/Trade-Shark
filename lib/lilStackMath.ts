@@ -1,14 +1,18 @@
-/** Pure Lil' Stack helpers, safe to import from client components. */
-export const PACK_MIN_PRICE = 3;
+/** Pure pack helpers, safe to import from client components. */
+import { productName } from "./categories";
 
-/** Sum of list prices, rounded up to the nearest dollar, minimum $3. */
+/** A pack is exactly this many cards from one category. */
+export const PACK_SIZE = 12;
+
+/** Pack value = the sum of the cards' existing prices. No rounding, no minimum, no other price source. */
 export function packPrice(prices: (number | null | undefined)[]) {
-  const cents = Math.round(prices.reduce<number>((n, p) => n + (p ?? 0), 0) * 100);
-  return Math.max(PACK_MIN_PRICE, Math.ceil(cents / 100));
+  return Math.round(prices.reduce<number>((n, p) => n + (p ?? 0), 0) * 100) / 100;
 }
 
-/** "6 cards, $4." — the math under the Buy button. */
-export const packMath = (count: number, price: number) => `${count} card${count === 1 ? "" : "s"}, $${price}.`;
+const usd = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
 
-/** Public name: the first pack is "Lil' Stack", then "Lil' Stack 2", "Lil' Stack 3", … */
-export const packLabel = (n: number) => (n <= 1 ? "Lil' Stack" : `Lil' Stack ${n}`);
+/** "12 cards, $14.50." — the math under the Buy button. */
+export const packMath = (count: number, price: number) => `${count} card${count === 1 ? "" : "s"}, ${usd(price)}.`;
+
+/** "Pokemon Pack #3" */
+export const packLabel = (category: string | null | undefined, n: number) => `${productName(category)} #${n}`;

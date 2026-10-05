@@ -1,5 +1,6 @@
 "use client";
 
+import { CategoryPicker } from "@/app/admin/lil-stack/LilStackTools";
 import type { Card, SourceRun } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,7 +30,7 @@ interface Props {
   qs: string;
   defaultTitle: string;
   defaultDescription: string;
-  featured: boolean;
+  pack: { id: string; label: string } | null;
 }
 
 const FIELDS: { k: keyof Form; label: string; conf?: IdentField; wide?: boolean }[] = [
@@ -154,7 +155,7 @@ export function ReviewScreen(p: Props) {
       return;
     }
     // Celebrate going live or a sale, never block on it.
-    if (ok.wentLive || ok.sold) confetti(saveBtn.current);
+    if (ok.packed || ok.sold) confetti(saveBtn.current);
     if (andNext && p.nextId) go(p.nextId);
     else router.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -276,16 +277,15 @@ export function ReviewScreen(p: Props) {
               <StatusChip status={c.status} />
               <PileChip pile={c.pile} />
               <ConfidenceChip value={c.sourceConfidence} threshold={s.confidenceThreshold} confirmed={confirmed} />
-              <button
-                type="button"
-                data-nopop
-                className={`chip ${p.featured ? "bg-coral text-white" : "bg-navy/5 text-navy/70 hover:bg-navy/10"}`}
-                title="Pin to the home hero (beats the wow score)"
-                onClick={() => action(`/api/admin/cards/${c.id}/feature?on=${p.featured ? 0 : 1}`, "Pinning")}
-              >
-                {p.featured ? "★ Featured on home" : "☆ Feature on home"}
-              </button>
-              {c.wowScore > 0 && <span className="chip bg-teal/15 text-teal-2" title={c.wowTags}>wow {c.wowScore}</span>}
+              {p.pack ? (
+                <a href="/admin/lil-stack" className="chip bg-teal/15 text-teal-2 underline">In {p.pack.label}</a>
+              ) : (
+                <span className="chip bg-navy/5 text-navy/60">Not in a pack</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pt-1 text-xs text-navy/60">
+              Pack category {c.categorySource === "manual" ? "(set by hand)" : "(auto)"}
+              <CategoryPicker key={c.category ?? "none"} cardId={c.id} value={c.category} />
             </div>
           </div>
         </div>
@@ -437,7 +437,7 @@ export function ReviewScreen(p: Props) {
               </div>
             ) : (
               <p className="text-xs text-navy/60">
-                {c.paymentLinkUrl ? "Link expired (sold, archived, or pulled from sale). " : ""}A buy link is created automatically when you save this card as Ready.
+                {c.paymentLinkUrl ? "Link expired (sold, archived, or pulled from sale). " : ""}Cards sell only inside packs; the pack carries the buy link.
               </p>
             )}
           </div>
@@ -482,8 +482,8 @@ export function ReviewScreen(p: Props) {
           <button className="btn-ghost" onClick={() => go(p.nextId)}>J</button>
         </div>
         <p className="text-[11px] text-navy/50">
-          Saving approves this card: $1 and up goes live on the shop with its pay link (if Stripe fails it waits in Needs a look); under $1 joins a
-          Lil&apos; Stack. eBay/TCGplayer listings still only go up when you export and publish them yourself.
+          Saving approves this card: it goes to stock and joins its category&apos;s next 12-card pack. Cards never sell one at a time.
+          eBay/TCGplayer listings still only go up when you export and publish them yourself.
         </p>
       </div>
 
@@ -503,8 +503,7 @@ export function ReviewScreen(p: Props) {
             {p.suggestion.multiplier !== 1 && f.manualPrice === "" && ` × ${p.suggestion.multiplier} (${c.condition})`}
             {c.pricedAt && ` · ${new Date(c.pricedAt).toLocaleString()}`}
           </div>
-          {price != null && price < 1 && <div className="mt-1 text-xs font-semibold text-teal-2">Under $1 → Lil&apos; Stack</div>}
-          {price != null && price > 5 && <div className="mt-1 text-xs font-semibold text-coral">Over $5 → only goes live when you approve it</div>}
+          {price != null && price > 5 && <div className="mt-1 text-xs font-semibold text-coral">Over $5 → only packed once you approve it</div>}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>

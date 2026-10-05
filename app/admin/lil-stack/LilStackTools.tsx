@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { CATEGORIES } from "@/lib/categories";
 
 type Kind = "closed" | "open";
 
-export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; geminiReady: boolean; art: Partial<Record<Kind, string>> }) {
+export function LilStackTools({ geminiReady, art }: { geminiReady: boolean; art: Partial<Record<Kind, string>> }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -20,7 +21,8 @@ export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; 
       const r = await fetch("/api/admin/lil-stack/rebuild", { method: "POST" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || r.statusText);
-      setMsg(`Rebuilt: ${j.cards} cards in ${j.packs} pack${j.packs === 1 ? "" : "s"}${j.released ? `, ${j.released} pulled out (now $1+)` : ""}.`);
+      const cats = (j.categories ?? []) as { category: string; packs: number; waiting: number }[];
+      setMsg(`Rebuilt: ${cats.map((c) => `${c.category} ${c.packs} pack${c.packs === 1 ? "" : "s"} (${c.waiting} waiting)`).join(", ")}.`);
       router.refresh();
     } catch (e) {
       setMsg(`Rebuild failed: ${e instanceof Error ? e.message : e}`);
@@ -62,8 +64,8 @@ export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; 
       <div className="card space-y-2 p-4">
         <h2 className="font-bold">Packs</h2>
         <p className="text-sm text-navy/70">
-          Packs build on their own when a batch finishes. After a reprice, rebuild: cards now $1+ come out, new sub-$1 cards go in.
-          {waiting > 0 && <strong className="text-coral"> {waiting} card{waiting === 1 ? " is" : "s are"} waiting.</strong>}
+          Packs build on their own when a batch finishes or a reprice ends. Rebuild by hand after you sort cards or change prices: changed packs get a fresh
+          pay link, unchanged ones keep theirs.
         </p>
         <button className="btn-primary" disabled={busy} onClick={rebuild}>
           {busy ? "Rebuilding…" : "Rebuild packs"}
@@ -99,8 +101,8 @@ export function LilStackTools({ waiting, geminiReady, art }: { waiting: number; 
   );
 }
 
-/** Per-pack: pay link, pin to home, mark sold by hand, fresh link. */
-export function PackActions({ id, linkUrl, linkError, featured, price }: { id: string; linkUrl: string | null; linkError: string | null; featured: boolean; price: number | null }) {
+/** Per-pack: pay link, mark sold by hand, fresh link. */
+export function PackActions({ id, linkUrl, linkError, price }: { id: string; linkUrl: string | null; linkError: string | null; price: number | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -129,9 +131,6 @@ export function PackActions({ id, linkUrl, linkError, featured, price }: { id: s
           No pay link{linkError ? `: ${linkError.slice(0, 80)}` : ""}
         </span>
       )}
-      <button className="btn-ghost px-2 py-1 text-xs" disabled={!!busy} onClick={() => act(featured ? "unfeature" : "feature")}>
-        {featured ? "★ Featured on home" : "☆ Feature on home"}
-      </button>
       <button className="btn-ghost px-2 py-1 text-xs" disabled={!!busy} onClick={() => act("relink")}>
         {busy === "relink" ? "Linking…" : linkUrl ? "New link" : "Create link"}
       </button>
@@ -147,5 +146,37 @@ export function PackActions({ id, linkUrl, linkError, featured, price }: { id: s
       </button>
       {err && <span className="text-xs text-coral">{err}</span>}
     </div>
+  );
+}
+
+/** Set a card's category by hand (sticks through repricing). Empty = not packed. */
+export function CategoryPicker({ cardId, value }: { cardId: string; value: string | null }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function save(category: string) {
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await fetch(`/api/admin/cards/${cardId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category: category || null }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) setErr(j.error || r.statusText);
+    } finally {
+      setBusy(false);
+      router.refresh();
+    }
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <select className="input py-1 text-xs" defaultValue={value ?? ""} disabled={busy} onChange={(e) => save(e.target.value)} aria-label="Pack category">
+        <option value="">Not packed</option>
+        {CATEGORIES.map((c) => (
+          <option key={c.key} value={c.key}>
+            {c.product}
+          </option>
+        ))}
+      </select>
+      {err && <span className="text-xs text-coral">{err}</span>}
+    </span>
   );
 }

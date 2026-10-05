@@ -5,9 +5,10 @@ import { hamming, storeUpload } from "./images";
 import { matchManifest, parseManifest } from "./organize/manifest";
 import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing";
 import { parseText } from "./organize/parse";
-import { buildLilStacks, releaseFromPack } from "./lilStack";
+import { categorize } from "./categories";
+import { rebuildAllPacks, releaseFromPack } from "./lilStack";
 import { orientCard } from "./orient";
-import { autoPublish, publishLeftovers } from "./publish";
+import { autoPublish } from "./publish";
 import { shopPrice, statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
 import { appliesTo, CATALOG_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sources";
@@ -401,8 +402,9 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
   const raw = sug.basis === "manual" ? sug.basisAmount : sug.price;
   const listPrice = card.paymentLinkActive && !opts.allowLivePriceChange ? card.listPrice : shopPrice(raw, card.manualPrice);
   const status = statusAfterPricing(card.status, listPrice, identOk, s);
-  // Repriced to $1 or more: out of its Lil' Stack and back on the normal path.
-  if (card.status === "LilStack" && status !== "LilStack") await releaseFromPack(card);
+  // Which pack it belongs in comes from what identification read; a category I set by hand sticks.
+  const category = card.categorySource === "manual" ? card.category : categorize(card);
+  if (card.status === "LilStack" && (status !== "LilStack" || category !== card.category)) await releaseFromPack(card);
   return db.card.update({
     where: { id: cardId },
     data: {
@@ -412,6 +414,8 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
       listPrice,
       pricedAt: new Date(),
       status,
+      category,
+      categorySource: card.categorySource === "manual" ? "manual" : "auto",
       ...wowData(card, s, await newestYear(card.batchId)),
     },
   });
@@ -455,7 +459,7 @@ export async function processBatch(batchId: string, limit = 6) {
             let card = await identifyCard(c, s);
             card = await flagNameDuplicate(card);
             card = await priceCard(card, s);
-            // Straight to the shop: publish $5 and under, flag over $5, stack under $1, hold the unnamed.
+            // Into stock for packing: $5 and under right away, over $5 after a look, the unnamed held.
             decisions.push(await autoPublish(card, s));
           } else decisions.push("hold");
         } catch (e) {
@@ -470,10 +474,9 @@ export async function processBatch(batchId: string, limit = 6) {
   );
   const remaining = await db.card.count({ where: { batchId, processedAt: null } });
   if (todo.length && !remaining) await recomputeBatchWow(batchId, s);
-  // The batch is identified and priced: pile every sub-$1 card into Lil' Stacks.
-  const lilStack = todo.length && !remaining ? await buildLilStacks(batchId).catch((e) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
-  if (todo.length && !remaining) await publishLeftovers(batchId, s).catch(() => 0);
-  return { processed: todo.length, remaining, decisions, lilStack };
+  // The batch is identified and priced: fill 12-card packs per category (across batches).
+  const packs = todo.length && !remaining ? await rebuildAllPacks().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
+  return { processed: todo.length, remaining, decisions, packs };
 }
 
 /** Refresh quotes older than staleHours for every card in a batch (chunked like processBatch). */
@@ -491,7 +494,7 @@ export async function repriceBatch(batchId: string, cursor = 0, limit = 2) {
   const next = cursor + cards.length;
   if (next >= total) {
     await recomputeBatchWow(batchId, s);
-    await publishLeftovers(batchId, s).catch(() => 0);
+    await rebuildAllPacks().catch(() => null); // pack prices follow the new card prices
   }
   return { next, total, done: next >= total };
 }

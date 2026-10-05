@@ -11,8 +11,7 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
             <Wordmark light compact />
           </Link>
           <nav className="flex items-center gap-3 whitespace-nowrap text-xs font-semibold text-sand sm:gap-5 sm:text-sm">
-            <Link href="/shop" className="hover:text-teal">Shop</Link>
-            <Link href="/lil-stack" className="hover:text-teal">Lil&apos; Stack</Link>
+            <Link href="/" className="hover:text-teal">Packs</Link>
             <Link href="/about" className="hover:text-teal">About</Link>
             <Link href="/contact" className="hover:text-teal">Contact</Link>
             <MuteToggle className="-my-1" />

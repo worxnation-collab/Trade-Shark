@@ -55,10 +55,10 @@ describe("auto-orientation", () => {
     expect(TURN_FOR_TOP).toEqual({ top: 0, right: 270, bottom: 180, left: 90 });
   });
 
-  it("a card still sideways never publishes: it goes to Needs a look", () => {
+  it("a card still sideways never sells: it goes to Needs a look", () => {
     const c = { name: "Pikachu", player: null, identSource: "vision:anthropic", readable: true, frontImage: "f.jpg", listPrice: 3 };
     expect(decide({ ...c, holdReason: "rotation" })).toBe("review");
     expect(decide({ ...c, holdReason: "rotation", listPrice: 0.4 })).toBe("review");
-    expect(decide({ ...c, holdReason: null })).toBe("publish");
+    expect(decide({ ...c, holdReason: null })).toBe("stock");
   });
 });

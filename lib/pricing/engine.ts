@@ -131,7 +131,7 @@ export function suggest(
 
 /**
  * The shop price of a card from its suggestion.
- * - Under $1 stays exact: it's a Lil' Stack card, and the pack price adds those up.
+ * - Under $1 stays exact; the pack price adds those up.
  * - Otherwise round to the nearest dollar, minimum $1. No source at all = $1.
  */
 export function shopPrice(raw: number | null, manual?: number | null): number {
@@ -150,15 +150,15 @@ export function netAfterFees(price: number, channel: Channel, profile: ShippingP
   return { fees, ship, net: round2(price - fees - ship) };
 }
 
-/** Lil' Stack threshold: list price under this goes in a free pack instead of selling as a single. */
+/** Under this the price stays exact (cents) instead of rounding to the dollar. */
 export const LIL_STACK_UNDER = 1;
 
 /**
  * Status after pricing. Never moves a card past Priced on its own.
- * A Lil' Stack card stays packed while it's under $1; repriced to $1+ it falls back to the normal path.
+ * A packed card stays in its pack at any price (the pack's price follows the sum).
  */
 export function statusAfterPricing(current: string, price: number | null, identOk: boolean, s: Settings): string {
-  if (current === "LilStack" && price != null && price < LIL_STACK_UNDER) return "LilStack";
+  if (current === "LilStack" && price != null) return "LilStack";
   if (!["Inbox", "Identified", "Priced", "BulkHold", "LilStack"].includes(current)) return current;
   if (!identOk) return "Inbox";
   if (price == null) return "Identified";

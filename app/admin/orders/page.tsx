@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/SharkFin";
 import { db } from "@/lib/db";
 import { SHIP_LABEL, type ShipMethod } from "@/lib/shipping";
 import { cardLabel } from "@/lib/shop";
+import { productName } from "@/lib/categories";
 import { money, safeJson } from "@/lib/util";
 import { ShipForm } from "./ShipForm";
 
@@ -24,7 +25,7 @@ interface Order {
   shippedAt: Date | null;
 }
 
-/** Sold singles and sold Lil' Stacks, unshipped first. */
+/** Sold packs (and any older sold singles), unshipped first. */
 export default async function OrdersPage() {
   const [cards, packs] = await Promise.all([
     // A card sold inside a pack belongs to the pack's order.
@@ -49,7 +50,7 @@ export default async function OrdersPage() {
     ...packs.map((p) => ({
       kind: "stack" as const,
       id: p.id,
-      title: `Lil' Stack · ${p.cardIds.length} cards (${p.batch.name})`,
+      title: `${p.category ? productName(p.category) : `Lil' Stack${p.batch ? ` (${p.batch.name})` : ""}`} · ${p.cardIds.length} cards`,
       href: `/admin/lil-stack`,
       soldAt: p.soldAt,
       merch: p.soldPrice,
@@ -72,7 +73,7 @@ export default async function OrdersPage() {
         </p>
       </div>
       {orders.length === 0 ? (
-        <EmptyState title="No orders yet">Sold cards and Lil&apos; Stacks land here with their shipping method.</EmptyState>
+        <EmptyState title="No orders yet">Sold packs land here with their shipping method.</EmptyState>
       ) : (
         <ul className="space-y-3">
           {orders.map((o) => {

@@ -10,7 +10,7 @@ async function patch(id: string, body: Record<string, unknown>) {
   const r = await fetch(`/api/admin/cards/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.ok === false) throw new Error(j.error ?? r.statusText);
-  return j as { wentLive?: boolean };
+  return j as { packed?: boolean };
 }
 
 function Thumb({ image, v }: { image: string | null; v?: number }) {
@@ -23,7 +23,7 @@ function Thumb({ image, v }: { image: string | null; v?: number }) {
   );
 }
 
-/** Approve sends it live (pay link first). Correct lets me fix the name or price, then sends it live. */
+/** Approve puts it in stock for its category's next pack. Correct lets me fix the name or price first. */
 export function LookRow({
   card,
 }: {
@@ -53,7 +53,7 @@ export function LookRow({
     setErr("");
     try {
       const j = await patch(card.id, { ...body, confirm: true });
-      if (j.wentLive) confetti(el);
+      if (j.packed) confetti(el);
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -120,7 +120,7 @@ export function LookRow({
               disabled={busy || !name.trim() || !(Number(price) > 0)}
               onClick={(e) => go({ ...(name.trim() !== card.name ? { name: name.trim() } : {}), manualPrice: Number(price) }, e.currentTarget)}
             >
-              {busy ? "Saving…" : "Save + go live"}
+              {busy ? "Saving…" : "Save + approve"}
             </button>
           </>
         ) : (
@@ -129,47 +129,11 @@ export function LookRow({
               Correct
             </button>
             <button className="btn-primary" disabled={busy || card.price == null} onClick={(e) => go({}, e.currentTarget)}>
-              {busy ? "Going live…" : "Approve"}
+              {busy ? "Approving…" : "Approve"}
             </button>
           </>
         )}
       </div>
-    </li>
-  );
-}
-
-/** One button off the shop: the pay link is expired and the card waits in Needs a look as Pulled. */
-export function LiveRow({ card }: { card: { id: string; label: string; image: string | null; price: number | null; v?: number } }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  return (
-    <li className="card flex items-center gap-3 p-2">
-      <Thumb image={card.image} v={card.v} />
-      <div className="min-w-0 flex-1">
-        <Link href={`/card/${card.id}`} target="_blank" className="line-clamp-2 text-sm font-semibold hover:text-teal-2">
-          {card.label}
-        </Link>
-        <div className="text-sm text-navy/70">{money(card.price)}</div>
-        {err && <p className="text-xs text-coral">{err}</p>}
-      </div>
-      <button
-        className="btn-ghost text-coral"
-        disabled={busy}
-        data-nopop
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await patch(card.id, { status: "Pulled" });
-            router.refresh();
-          } catch (e) {
-            setErr(e instanceof Error ? e.message : String(e));
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? "Pulling…" : "Pull"}
-      </button>
     </li>
   );
 }

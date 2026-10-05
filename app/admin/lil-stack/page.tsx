@@ -1,115 +1,144 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/SharkFin";
 import { artUrls, geminiConfigured } from "@/lib/brandArt";
+import { CATEGORIES, productName } from "@/lib/categories";
 import { db } from "@/lib/db";
-import { getFeatured, isFeatured } from "@/lib/featured";
-import { LIL_STACK_SIZE, LIL_STACK_UNDER, PACK_MIN_PRICE, packLabel, packMath } from "@/lib/lilStack";
+import { PACK_SIZE, PACKABLE, packLabel, packMath } from "@/lib/lilStack";
 import { money } from "@/lib/util";
-import { LilStackTools, PackActions } from "./LilStackTools";
+import { CategoryPicker, LilStackTools, PackActions } from "./LilStackTools";
 
-export const metadata = { title: "Lil' Stack" };
+export const metadata = { title: "Packs" };
 export const dynamic = "force-dynamic";
 
-export default async function LilStackAdmin() {
-  const [packs, waiting, art, featured, sold] = await Promise.all([
-    db.lilStack.findMany({
-      where: { status: "open" },
-      orderBy: [{ batch: { createdAt: "asc" } }, { seq: "asc" }],
-      include: { batch: { select: { id: true, name: true } }, cards: { select: { id: true, name: true, player: true, game: true, setName: true, listPrice: true, frontImage: true } } },
+const nameOf = (c: { game: string; name: string | null; player: string | null }) => (c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed";
+
+/** Every pack by category, with the cards inside, each card's value, and the pay link. Plus stock waiting to fill one. */
+export default async function PacksAdmin() {
+  const cardSel = { id: true, name: true, player: true, game: true, setName: true, team: true, listPrice: true, frontImage: true } as const;
+  const [packs, stock, unsorted, art, sold] = await Promise.all([
+    db.lilStack.findMany({ where: { status: "open", category: { not: null } }, orderBy: { seq: "asc" }, include: { cards: { select: cardSel } } }),
+    db.card.groupBy({ by: ["category"], where: { status: { in: PACKABLE.filter((s) => s !== "LilStack") }, lilStackId: null, readable: true, category: { not: null } }, _count: true, _sum: { listPrice: true } }),
+    db.card.findMany({
+      where: { category: null, status: { in: PACKABLE }, readable: true },
+      select: { ...cardSel, categorySource: true },
+      orderBy: { createdAt: "asc" },
+      take: 60,
     }),
-    // Under $1 but not packed yet (e.g. repriced since the last build).
-    db.card.count({ where: { status: { in: ["Priced", "BulkHold"] }, listPrice: { lt: LIL_STACK_UNDER }, lilStackId: null, readable: true } }),
     artUrls(),
-    getFeatured(),
-    db.lilStack.findMany({ where: { status: "sold" }, orderBy: { soldAt: "desc" }, take: 20, include: { batch: { select: { name: true } } } }),
+    db.lilStack.findMany({ where: { status: "sold" }, orderBy: { soldAt: "desc" }, take: 20 }),
   ]);
-  const total = packs.reduce((n, p) => n + p.cards.length, 0);
+  const waitingAll = stock.reduce((n, s) => n + s._count, 0);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">Lil&apos; Stack</h1>
+          <h1 className="text-2xl font-extrabold">Packs</h1>
           <p className="text-sm text-navy/70">
-            Every card under {money(LIL_STACK_UNDER)} piles into a pack (up to {LIL_STACK_SIZE} per pack, one batch per pack), never a single.
-            Opening is free; the whole pack sells on one Stripe link at the sum of its cards rounded up, minimum {money(PACK_MIN_PRICE)}. Shown at{" "}
-            <Link href="/lil-stack" className="font-semibold text-teal-2 underline" target="_blank">
-              /lil-stack
+            The shop sells three products: {CATEGORIES.map((c) => c.product).join(", ")}. A pack is exactly {PACK_SIZE} cards of one category, oldest cards
+            first, priced at the sum of its cards. Cards stay in stock until there are {PACK_SIZE} to fill a pack.{" "}
+            <Link href="/" className="font-semibold text-teal-2 underline" target="_blank">
+              See the shop
             </Link>
             .
           </p>
         </div>
         <div className="flex gap-3 text-center">
-          <Stat n={total} label="cards in the pile" />
-          <Stat n={packs.length} label={packs.length === 1 ? "pack" : "packs"} />
-          <Stat n={waiting} label="waiting to pack" warn={waiting > 0} />
+          <Stat n={packs.length} label={packs.length === 1 ? "pack for sale" : "packs for sale"} />
+          <Stat n={waitingAll} label="cards in stock" />
+          <Stat n={unsorted.length} label="unsorted" warn={unsorted.length > 0} />
         </div>
       </div>
 
-      <LilStackTools waiting={waiting} geminiReady={geminiConfigured()} art={art} />
+      <LilStackTools geminiReady={geminiConfigured()} art={art} />
 
-      {packs.length === 0 ? (
-        <EmptyState title="No Lil' Stacks yet">Process a batch: cards priced under {money(LIL_STACK_UNDER)} pile up here automatically.</EmptyState>
-      ) : (
-        packs.map((p, i) => {
-          const byId = new Map(p.cards.map((c) => [c.id, c]));
-          const cards = p.cardIds.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c);
-          return (
-            <section key={p.id} className="card p-4">
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-lg font-bold">
-                  {packLabel(i + 1)} <span className="text-sm font-normal text-navy/60">· {cards.length} cards</span>
-                  {p.price != null && <span className="ml-2 text-base text-teal-2">{packMath(cards.length, p.paymentLinkAmount ?? p.price)}</span>}
-                </h2>
-                <Link href={`/admin/batches/${p.batch.id}`} className="text-sm text-teal-2 underline">
-                  {p.batch.name} · pack {p.seq}
+      {CATEGORIES.map((cat) => {
+        const mine = packs.filter((p) => p.category === cat.key);
+        const st = stock.find((s) => s.category === cat.key);
+        const waiting = st?._count ?? 0;
+        return (
+          <section key={cat.key} className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-xl font-extrabold">{cat.product}</h2>
+              <p className="text-sm text-navy/60">
+                {mine.length} pack{mine.length === 1 ? "" : "s"} · {waiting} in stock ({money(st?._sum.listPrice ?? 0)})
+                {` · ${PACK_SIZE - (waiting % PACK_SIZE)} more to fill the next pack`}
+              </p>
+            </div>
+            {mine.length === 0 ? (
+              <EmptyState title={`No ${cat.product}s yet`}>Packs fill automatically once {PACK_SIZE} {cat.name} cards are identified and priced.</EmptyState>
+            ) : (
+              mine.map((p, i) => {
+                const byId = new Map(p.cards.map((c) => [c.id, c]));
+                const cards = p.cardIds.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c);
+                const value = cards.reduce((n, c) => n + (c.listPrice ?? 0), 0);
+                return (
+                  <div key={p.id} className="card p-4">
+                    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-lg font-bold">
+                        {packLabel(cat.key, i + 1)} <span className="text-sm font-normal text-navy/60">· {cards.length} cards</span>
+                        <span className="ml-2 text-base text-teal-2">{packMath(cards.length, p.paymentLinkAmount ?? p.price ?? value)}</span>
+                      </h3>
+                      <span className="text-xs text-navy/50">pack id {p.id.slice(-6)} · #{p.seq}</span>
+                    </div>
+                    <PackActions id={p.id} linkUrl={p.paymentLinkActive ? p.paymentLinkUrl : null} linkError={p.linkError} price={p.paymentLinkAmount ?? p.price} />
+                    <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-12">
+                      {cards.map((c) => (
+                        <li key={c.id}>
+                          <Link href={`/admin/review/${c.id}`} className="block">
+                            {c.frontImage && <img src={`/api/admin/images/${c.frontImage}`} alt="" className="aspect-[5/7] w-full rounded object-cover" loading="lazy" />}
+                            <span className="mt-1 block truncate text-xs font-semibold">{nameOf(c)}</span>
+                            <span className="block text-xs text-navy/60">{money(c.listPrice)}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })
+            )}
+          </section>
+        );
+      })}
+
+      {unsorted.length > 0 && (
+        <section className="card p-4">
+          <h2 className="font-bold">Unsorted</h2>
+          <p className="mb-3 text-sm text-navy/70">
+            Priced cards I couldn&apos;t place (basketball, Magic, or a sports card with no team or league on it). They stay in inventory and never go in a pack unless
+            you pick a category.
+          </p>
+          <ul className="divide-y divide-navy/5 text-sm">
+            {unsorted.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                <Link href={`/admin/review/${c.id}`} className="min-w-0 flex-1 truncate hover:text-teal-2">
+                  <strong>{nameOf(c)}</strong> <span className="text-navy/60">· {c.game}{c.team ? ` · ${c.team}` : ""}{c.setName ? ` · ${c.setName}` : ""} · {money(c.listPrice)}</span>
                 </Link>
-              </div>
-              <PackActions
-                id={p.id}
-                linkUrl={p.paymentLinkActive ? p.paymentLinkUrl : null}
-                linkError={p.linkError}
-                featured={isFeatured(featured, "stack", p.id)}
-                price={p.paymentLinkAmount ?? p.price}
-              />
-              <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:grid-cols-12">
-                {cards.map((c) => (
-                  <li key={c.id}>
-                    <Link href={`/admin/review/${c.id}`} className="block">
-                      {c.frontImage && <img src={`/api/admin/images/${c.frontImage}`} alt="" className="aspect-[5/7] w-full rounded object-cover" loading="lazy" />}
-                      <span className="mt-1 block truncate text-xs font-semibold">{(c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed"}</span>
-                      <span className="block text-xs text-navy/60">{money(c.listPrice)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })
+                <CategoryPicker cardId={c.id} value={null} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      <SoldList sold={sold} />
-    </div>
-  );
-}
 
-function SoldList({ sold }: { sold: { id: string; cardIds: string[]; soldPrice: number | null; soldAt: Date | null; stripeSessionId: string | null; batch: { name: string } }[] }) {
-  if (!sold.length) return null;
-  return (
-    <section className="card p-4">
-      <h2 className="mb-2 font-bold">Sold stacks</h2>
-      <ul className="divide-y divide-navy/5 text-sm">
-        {sold.map((p) => (
-          <li key={p.id} className="flex flex-wrap justify-between gap-2 py-1.5">
-            <span>
-              {p.batch.name} · {p.cardIds.length} cards
-            </span>
-            <span className="text-navy/60">
-              {money(p.soldPrice)} · {p.stripeSessionId ? "Stripe" : "by hand"} · {p.soldAt?.toLocaleDateString()}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {sold.length > 0 && (
+        <section className="card p-4">
+          <h2 className="mb-2 font-bold">Sold packs</h2>
+          <ul className="divide-y divide-navy/5 text-sm">
+            {sold.map((p) => (
+              <li key={p.id} className="flex flex-wrap justify-between gap-2 py-1.5">
+                <span>
+                  {p.category ? productName(p.category) : "Lil' Stack (old)"} · {p.cardIds.length} cards
+                </span>
+                <span className="text-navy/60">
+                  {money(p.soldPrice)} · {p.stripeSessionId ? "Stripe" : "by hand"} · {p.soldAt?.toLocaleDateString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 

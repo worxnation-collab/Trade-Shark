@@ -129,13 +129,14 @@ export async function createPaymentLink(api: PaymentLinkApi, card: LinkCard, bas
   return { ...link, amount: amount / 100 };
 }
 
-export const PACK_PRODUCT_NAME = "Lil\u2019 Stack, Trade Shark";
+/** Fallback product name; packs pass their own ("Pokemon Pack, Trade Shark"). */
+export const PACK_PRODUCT_NAME = "Pack, Trade Shark";
 export const packThankYouUrl = (base: string, id: string) => `${base}/shop/thank-you?stack=${encodeURIComponent(id)}`;
 
-/** One link for a whole Lil' Stack: the description lists every card in it. */
+/** One link for a whole pack: the description lists every card in it. */
 export async function createPackLink(
   api: PaymentLinkApi,
-  pack: { id: string; price: number; cardNames: string[]; image?: string | null },
+  pack: { id: string; price: number; cardNames: string[]; image?: string | null; name?: string },
   base = siteUrl(),
   shipping?: ShipLine,
 ): Promise<CreatedLink> {
@@ -143,13 +144,13 @@ export async function createPackLink(
   if (!(pack.price > 0)) throw new Error("No pack price to charge.");
   const amount = Math.round(pack.price * 100);
   const link = await createLink(api, {
-    name: PACK_PRODUCT_NAME,
+    name: pack.name ?? PACK_PRODUCT_NAME,
     description: clean(`${pack.cardNames.length} cards: ${pack.cardNames.join(", ")}`, 1000),
     amount,
     image: pack.image && base.startsWith("https://") ? pack.image : null,
     metadata: { lil_stack_id: pack.id, sku: `stack-${pack.id}` },
     redirect: packThankYouUrl(base, pack.id),
-    inactiveMessage: "This Lil' Stack has sold. Thanks for stopping by Trade Shark.",
+    inactiveMessage: "This pack has sold. Thanks for stopping by Trade Shark.",
     shipping,
   });
   return { ...link, amount: amount / 100 };

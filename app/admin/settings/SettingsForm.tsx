@@ -57,8 +57,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         <h2 className="font-bold">Shipping the buyer pays</h2>
         <div className="grid grid-cols-3 gap-2">
           <N label="Stamped envelope ($)" value={s.buyerShipping.pwe} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, pwe: v } })} hint="One raw card under $20, no tracking" />
-          <N label="Tracked bubble mailer ($)" value={s.buyerShipping.bubble} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, bubble: v } })} hint="Graded, $20+, every Lil' Stack" />
-          <N label="Free shipping at ($)" value={s.buyerShipping.freeAt} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, freeAt: v } })} hint="Single cards only, never a Lil' Stack" />
+          <N label="Tracked bubble mailer ($)" value={s.buyerShipping.bubble} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, bubble: v } })} hint="Every pack ships this way" />
+          <N label="Free shipping at ($)" value={s.buyerShipping.freeAt} onChange={(v) => setS({ ...s, buyerShipping: { ...s.buyerShipping, freeAt: v } })} hint="Single cards only (not sold now); never a pack" />
         </div>
         <p className="text-[11px] text-navy/50">
           Added on top of the price as its own checkout line. Set a card&apos;s shipping profile to bubble or slab to send it in a mailer under $20. Saving new rates replaces the live pay links.
@@ -75,7 +75,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
             onBlur={(e) => setS({ ...s, chaseNames: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })}
           />
           <p className="mt-0.5 text-[11px] text-navy/50">
-            Names people already chase: +25 wow. Full/illustration/alt art or numbered +40, graded 9–10 +20, newest set in the batch +10. Pin a card or a Lil&apos; Stack as Featured to beat the score.
+            Names people already chase: +25 wow (an admin-only tag; the shop sells packs, so it no longer ranks anything public).
           </p>
         </div>
       </section>
@@ -88,8 +88,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
       <section className="card space-y-3 p-4">
         <h2 className="font-bold">Price rule</h2>
         <p className="text-sm text-navy/70">
-          Median of every source that returns a price (one source = that price), rounded to the nearest dollar, minimum $1. No source = $1. Under $1 goes in a
-          Lil&apos; Stack. $5 and under goes live on upload; over $5 waits in Needs a look.
+          Median of every source that returns a price (one source = that price), rounded to the nearest dollar, minimum $1. No source = $1. Under $1 stays exact.
+          Cards sell only in 12-card category packs priced at the sum of their cards. $5 and under is packed on upload; over $5 waits in Needs a look.
         </p>
         <div className="grid grid-cols-2 gap-2">
           <N label="Stale after (hours)" step="1" value={s.staleHours} onChange={(v) => setS({ ...s, staleHours: v })} />

@@ -7,7 +7,7 @@ import { QUEUE_ORDER, queueQuery, queueWhere, type QueueParams } from "@/lib/que
 import { getSettings } from "@/lib/settings";
 import type { IdentCandidate, IdentField } from "@/lib/types";
 import { safeJson } from "@/lib/util";
-import { getFeatured, isFeatured } from "@/lib/featured";
+import { productName } from "@/lib/categories";
 import { ReviewScreen } from "./ReviewScreen";
 
 export const metadata = { title: "Review" };
@@ -70,8 +70,15 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
         qs={queueQuery(queue)}
         defaultTitle={renderTitle(card, s)}
         defaultDescription={renderDescription(card, s)}
-        featured={isFeatured(await getFeatured(), "card", card.id)}
+        pack={await packOf(card.lilStackId)}
       />
     </div>
   );
+}
+
+/** The pack a card sits in, for the admin: "Pokemon Pack · #3". */
+async function packOf(id: string | null) {
+  if (!id) return null;
+  const p = await db.lilStack.findUnique({ where: { id }, select: { id: true, seq: true, status: true, category: true } });
+  return p ? { id: p.id, label: `${p.category ? productName(p.category) : "Lil' Stack"} · #${p.seq}${p.status === "open" ? "" : ` (${p.status})`}` } : null;
 }

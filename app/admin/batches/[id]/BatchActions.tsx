@@ -26,8 +26,7 @@ export function BatchActions({ batchId, unprocessed }: { batchId: string; unproc
         const tally: Record<string, number> = {};
         const line = () =>
           [
-            tally.publish && `${tally.publish} live`,
-            tally.stack && `${tally.stack} for Lil' Stacks`,
+            tally.stock && `${tally.stock} to stock for packs`,
             tally.review && `${tally.review} need a look`,
             tally.hold && `${tally.hold} held (no name)`,
           ]
@@ -35,7 +34,7 @@ export function BatchActions({ batchId, unprocessed }: { batchId: string; unproc
             .join(" · ");
         let misses = 0;
         while (remaining > 0) {
-          setMsg(`Identifying, pricing and publishing… ${remaining} left${line() ? ` · ${line()}` : ""}`);
+          setMsg(`Identifying, pricing and packing… ${remaining} left${line() ? ` · ${line()}` : ""}`);
           // A slow card can time out a request; the card stays unprocessed, so just ask again (a few times).
           const r = await fetch(`/api/admin/batches/${batchId}/process?limit=1`, { method: "POST" })
             .then((res) => res.json())

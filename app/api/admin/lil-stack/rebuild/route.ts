@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/api";
-import { buildLilStacks, rebuildAllLilStacks } from "@/lib/lilStack";
+import { rebuildAllPacks } from "@/lib/lilStack";
 
 export const runtime = "nodejs";
 
-/** Rebuild Lil' Stacks (after a reprice). ?batch=<id> for one batch, otherwise every batch. */
-export const POST = guarded(async (req: Request) => {
-  const batch = new URL(req.url).searchParams.get("batch");
-  return NextResponse.json(batch ? await buildLilStacks(batch) : await rebuildAllLilStacks());
-});
+/** Re-sort cards into categories and rebuild every category's 12-card packs (stable: unchanged packs keep their link). */
+export const POST = guarded(async () => NextResponse.json(await rebuildAllPacks()));

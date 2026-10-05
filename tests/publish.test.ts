@@ -14,16 +14,16 @@ const c = (o: Partial<Parameters<typeof decide>[0]> = {}) => ({
   ...o,
 });
 
-describe("auto-publish on upload", () => {
-  it("$5 and under goes live, over $5 needs a look (dollars, not confidence)", () => {
-    expect(decide(c({ listPrice: 1 }))).toBe("publish");
-    expect(decide(c({ listPrice: 5 }))).toBe("publish");
+describe("after upload (cards go to stock for packs, never sold alone)", () => {
+  it("$5 and under goes to stock, over $5 needs a look (dollars, not confidence)", () => {
+    expect(decide(c({ listPrice: 1 }))).toBe("stock");
+    expect(decide(c({ listPrice: 5 }))).toBe("stock");
     expect(decide(c({ listPrice: 6 }))).toBe("review");
     expect(decide(c({ listPrice: 250 }))).toBe("review");
   });
 
-  it("under $1 bundles into a Lil' Stack", () => {
-    expect(decide(c({ listPrice: 0.42 }))).toBe("stack");
+  it("under $1 goes to stock too (it's packed like any other card)", () => {
+    expect(decide(c({ listPrice: 0.42 }))).toBe("stock");
   });
 
   it("never invents a name: no name or only a filename guess is held", () => {
@@ -39,18 +39,18 @@ describe("auto-publish on upload", () => {
     expect(decide(c(), true)).toBe("review");
   });
 
-  it("a named card with no price source is published at $1 (shopPrice gives it $1)", async () => {
+  it("a named card with no price source goes to stock at $1 (shopPrice gives it $1)", async () => {
     const { shopPrice } = await import("@/lib/pricing/engine");
-    expect(decide(c({ listPrice: shopPrice(null) }))).toBe("publish");
+    expect(decide(c({ listPrice: shopPrice(null) }))).toBe("stock");
   });
 });
 
 describe("cute-shop copy", () => {
   it("has the four disclaimers", () => {
     expect(DISCLAIMERS).toEqual([
-      "For fun, not a grade. Photos are of the cards in the pack or listing.",
+      "For fun, not a grade. Photos are of the cards in the pack.",
       "Prices are a cute-shop estimate, not a market quote.",
-      "A Lil’ Stack shows every card before you pay.",
+      "Every pack shows all 12 cards before you pay.",
       "Shipping is calculated at checkout.",
     ]);
   });

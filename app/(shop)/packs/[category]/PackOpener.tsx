@@ -55,7 +55,7 @@ function useColumns() {
   return cols;
 }
 
-export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art: Art; startId?: string }) {
+export function PackOpener({ packs, art, startId, product }: { packs: PublicPack[]; art: Art; startId?: string; product: string }) {
   const reduced = useReducedMotion();
   const cols = useColumns();
   const start = Math.max(0, packs.findIndex((p) => p.id === startId));
@@ -131,7 +131,7 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
     // Skip packs that sold while this page was open.
     let sold = soldIds;
     try {
-      const r = await fetch("/api/shop/lil-stack", { cache: "no-store" });
+      const r = await fetch("/api/shop/packs", { cache: "no-store" });
       if (r.ok) {
         const open = new Set<string>(((await r.json()) as { open: string[] }).open);
         sold = new Set(packs.filter((p) => !open.has(p.id)).map((p) => p.id));
@@ -155,7 +155,7 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
         <div className="w-40 opacity-50">
           <CssPack />
         </div>
-        <p className="text-sm text-sand/75">The stack is empty right now. Check back after my next batch.</p>
+        <p className="text-sm text-sand/75">No {product}s right now. A new one fills up after my next batch.</p>
       </div>
     );
   }
@@ -247,7 +247,7 @@ export function LilStackPack({ packs, art, startId }: { packs: PublicPack[]; art
               <p className="text-sm font-semibold text-white">{checkoutLine(pack.price, pack.ship, "Cards")}</p>
               <p className="-mt-1 mb-1 text-xs text-sand/60">{pack.ship.label}, ships from Florida</p>
               <a href={pack.buyUrl} className="btn-coral px-7 py-3 text-base" data-pop>
-                Buy this stack
+                Buy this pack
               </a>
               <p className="text-sm text-sand/75">{packMath(pack.cards.length, pack.price)}</p>
             </div>

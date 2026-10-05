@@ -63,21 +63,23 @@ model Card {
   pile    String @default("none")
 
   // identity
-  game      String  @default("Other") // Pokemon | Sports | Magic | Other
-  name      String?
-  setName   String?
-  setCode   String?
-  number    String?
-  year      String?
-  variant   String?
-  rarity    String?
-  player    String?
-  team      String?
-  condition String  @default("NM") // NM | LP | MP | HP | DMG
-  graded    String? // e.g. "PSA 10" — empty means raw
-  quantity  Int     @default(1)
-  cost      Float?
-  notes     String?
+  game           String  @default("Other") // Pokemon | Sports | Magic | Other
+  category       String? // baseball | football | pokemon: which pack product it goes in (null = never packed)
+  categorySource String? // auto | manual
+  name           String?
+  setName        String?
+  setCode        String?
+  number         String?
+  year           String?
+  variant        String?
+  rarity         String?
+  player         String?
+  team           String?
+  condition      String  @default("NM") // NM | LP | MP | HP | DMG
+  graded         String? // e.g. "PSA 10" — empty means raw
+  quantity       Int     @default(1)
+  cost           Float?
+  notes          String?
 
   // images + provenance
   frontImage    String?
@@ -174,11 +176,12 @@ model Card {
   @@index([lilStackId])
 }
 
-// A pack of up to 12 sub-$1 cards from one batch. Opening it is free; buying it is one Payment Link. cardIds keeps the pack's order.
+// A pack of exactly 12 cards from one category (the only thing the shop sells). Opening it is free; buying it is one Payment Link. cardIds keeps the pack's order.
 model LilStack {
   id        String   @id @default(cuid())
-  batchId   String
-  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchId   String? // packs built before category packs belonged to one batch
+  category  String? // baseball | football | pokemon
+  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: Cascade)
   seq       Int // 1, 2, 3… within the batch
   cardIds   String[]
   cards     Card[]
@@ -206,6 +209,7 @@ model LilStack {
   shippedAt             DateTime?
 
   @@unique([batchId, seq])
+  @@index([category, status])
   @@index([paymentLinkId])
 }
 

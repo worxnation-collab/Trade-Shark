@@ -42,12 +42,12 @@ How it fits Netlify's limits:
 4. **Review** (`/admin/review/:id`): large front, back thumbnail, catalog image, form on the right, price panel. Uncertain fields are outlined in coral.
    - <kbd>J</kbd>/<kbd>K</kbd> next/previous, <kbd>Enter</kbd> save + next, <kbd>F</kbd> flip front/back.
    - Winning source plus alternates; **Use** an alternate to swap identity.
-   - Saving confirms the card: priced ≥ minimum → **Ready**, under → **Bulk Hold**, no price → **Identified**.
-5. **Pay link (Stripe):** saving a card as Ready first creates a Stripe Payment Link for it: quantity 1, USD at the list price, product name and description from the listing title and description, the front photo when `SITE_URL` is https, US shipping address collection, and a one-sale limit so it can't sell twice. If Stripe fails, the card stays Priced and the error shows on the review screen. The link (with Copy, Open, Regenerate) sits on the review screen, and the public card page gets a **Buy this card** button. Changing the price of a live card regenerates the link (the old one is expired first). After checkout Stripe sends the buyer to `/shop/thank-you?card=<id>` (confetti, nothing else). The card is marked **Sold** only by the signed webhook at `/api/stripe/webhook` (`checkout.session.completed`, matched to the card's current or earlier link) or when you enter a sold price yourself. Stripe Payment Links have no cancel URL; a buyer who backs out returns with the browser's Back button to the card page.
+   - Saving confirms the card: priced → stock (**Priced**), and it joins its category's next pack. No price → **Identified**.
+5. **Pay link (Stripe):** each 12-card pack gets one Stripe Payment Link when it's built: quantity 1, USD at the sum of its cards, the card names in the description, US shipping address collection, a mailer shipping line, and a one-sale limit. A pack whose cards or price change gets a new link (the old one expired first). After checkout Stripe sends the buyer to `/shop/thank-you?stack=<id>` (confetti, nothing else). The pack and its cards are marked **Sold** only by the signed webhook at `/api/stripe/webhook` (`checkout.session.completed`, matched to the pack's current or earlier link) or by **Mark sold**. Single-card pay links are retired.
 5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
-6. **Shop** (`/`): grid + card page for For Sale cards (Ready or Listed). "Buy on eBay" once a URL is pasted; otherwise a mailto to `SHOP_EMAIL`.
+6. **Shop** (`/`): the catalog of three packs; each opens at `/packs/<category>`.
 
-Statuses: `Inbox` (held) → `For Sale` (internally `Ready`) / `Needs a look` / `Lil' Stack` → `Sold`, plus `Pulled`, `Listed` (exported to a marketplace) and `Archived`.
+Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` → `In a pack` (internally `LilStack`) → `Sold`, plus `Pulled`, `Listed` (exported to a marketplace by hand) and `Archived`.
 
 ## Environment keys
 
@@ -72,9 +72,9 @@ Statuses: `Inbox` (held) → `For Sale` (internally `Ready`) / `Needs a look` / 
 | `VISION_CONCURRENCY` | no (default `2`) | Max simultaneous vision calls. |
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
-| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, cards can't be marked Ready (the save explains why) and Lil' Stacks open but have no Buy button. Use a restricted key with Payment Links write access if you like. |
+| `STRIPE_SECRET_KEY` | to sell direct | Creates Payment Links. Without it, packs open but have no Buy button. Use a restricted key with Payment Links write access if you like. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
-| `GEMINI_API_KEY` | no | Server-only. Draws the Lil' Stack pack art (closed + torn open) once, server-side, from a text prompt. Without it `/lil-stack` uses the CSS pack. |
+| `GEMINI_API_KEY` | no | Server-only. Draws the pack art (closed + torn open) once, server-side, from a text prompt. Without it the shop uses the CSS pack. |
 | `GEMINI_IMAGE_MODEL` | no (default `gemini-2.5-flash-image`) | Gemini image model for the pack art. |
 | `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
 
@@ -114,7 +114,7 @@ Suggested list price (editable in Settings):
 4. **Condition multipliers** (NM 1, LP 0.85, MP 0.7, HP 0.5, DMG 0.3) apply only when the source price is NM. TCGplayer market and Scryfall are treated as NM; sold comps count as NM only if every kept title says NM.
 5. **Manual override always wins** and is labeled Manual.
 6. Under the **minimum list price ($2)** → **Bulk Hold**.
-7. Under **$1.00** → **Lil' Stack** (below).
+7. Any priced card can go in a pack; under $1 the price just stays exact.
 
 Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0.30, Local 0. Shipping profiles: standard $1.00, bubble mailer $4.50, slab $6.00. The panel shows net after fees and shipping for each channel.
 
@@ -122,46 +122,41 @@ Fees (editable): eBay 13.25% + $0.40, TCGplayer 10.25% + $0.30, Stripe 2.9% + $0
 
 **Reprice batch** refreshes quotes older than 24 hours (configurable). **Refresh all sources** on a card ignores the window.
 
-## Upload → shop, no review step
+## Upload → packs, no review step
 
-A fresh batch runs straight through on its batch page (it starts by itself): **stand upright**, identify, price, publish.
+A fresh batch runs straight through on its batch page (it starts by itself): **stand upright**, identify, price, sort into a category, pack.
 
 **Upright first.** Every crop is turned upright on its own before anything else: the vision model names the edge where the card's title sits, the card is turned, and the turned image is checked again. The front and its back get the same turn, saved over the crop. On real flatbed crops turned every which way this got 32/32. Without `ANTHROPIC_API_KEY`, sideways crops get a layout guess (original kept) and wait in Needs a look; portrait crops are left as scanned. A card that's still sideways is never published: it waits in **Needs a look** marked "rotation", with ↻ buttons. Flatbed's hand-rotate controls now live in a collapsed "Fallback" panel.
 
 | Result | What happens |
 |---|---|
 | No name (identification failed) or no usable photo | **Held** in Inbox for me. Names are never invented; a filename guess doesn't count. |
-| Under $1 | Goes into a **Lil' Stack**, which publishes with its own pay link. |
-| $1 to $5 | **For Sale** right away. The pay link (with its shipping line) is created first. |
-| Over $5 | **Needs a look** (admin only) with the suggested price and source. |
+| $5 and under | **Stock** right away; it joins its category's next pack. |
+| Over $5, still sideways, or the same scan twice | **Needs a look** (admin only) with the suggested price and source. |
 
-**Price rule:** one number per source (sold-comp median, TCGplayer market, Scryfall, eBay active median), then the median of those. One source = that number. No source = **$1**. Rounded to the nearest dollar, minimum $1 (under $1 stays exact for Lil' Stacks). Uncertain or disagreeing prices still publish; the sources are stored on the card, and the shop shows the small-print disclaimers instead of warnings.
+**Price rule:** one number per source (sold-comp median, TCGplayer market, Scryfall, eBay active median), then the median of those. One source = that number. No source = **$1**. Rounded to the nearest dollar, minimum $1 (under $1 stays exact). Uncertain or disagreeing prices still go to stock; the sources are stored on the card, and the shop shows the small-print disclaimers instead of warnings.
 
-**Admin → Needs a look** (`/admin/queue`): sorted by suggested price. **Approve** sends a card live (pay link first). **Correct** changes the name or price, then sends it live. Below it, everything on the shop has a one-click **Pull** (link expired, card waits as Pulled).
+**Admin → Needs a look** (`/admin/queue`): sorted by suggested price. **Approve** puts a card in stock for its category's next pack. **Correct** changes the name or price first.
 
-Every card and pack page carries the small print: *For fun, not a grade. Photos are of the cards in the pack or listing. / Prices are a cute-shop estimate, not a market quote. / A Lil’ Stack shows every card before you pay. / Shipping is calculated at checkout.*
+Every card and pack page carries the small print: *For fun, not a grade. Photos are of the cards in the pack. / Prices are a cute-shop estimate, not a market quote. / Every pack shows all 12 cards before you pay. / Shipping is calculated at checkout.*
 
-## Lil' Stack
+## Packs: the only thing the shop sells
 
-Cards priced under $1.00 never sell as singles. When a batch finishes identifying and pricing, every card under $1 (Priced or Bulk Hold, with a photo, not a rescan) piles into packs:
+Three products: **Baseball Pack**, **Football Pack**, **Pokemon Pack**. One tier each. No basketball, no Magic. Cards never sell one at a time; identified, priced cards stay in inventory and go into packs.
 
-- One batch per pack, up to 12 cards: **Lil' Stack**, **Lil' Stack 2**, 3, … Each pack stores its card ids; a card is in at most one pack and its status is **Lil' Stack**.
-- Repricing a card to $1+ pulls it out of its pack (back to Bulk Hold / Priced) and the pack gets a new link at its new price. A card under $1 can't be saved to Ready.
-- **Rebuild packs** (Admin → Lil' Stack) is stable: cards stay where they are, new sub-$1 cards fill open packs first, and unchanged packs keep their link.
-- **Buying:** each pack gets one Stripe Payment Link when it's built: product `Lil’ Stack, Trade Shark`, the card names in the description, quantity 1, one checkout. Price = sum of the cards' list prices, **rounded up to the dollar, minimum $3**. The pack id and link are stored on the pack.
-- **`/lil-stack`** ("Take a bite."): a sealed pack opens only on a full left-to-right swipe (or four right-arrow presses); a short drag snaps back. Opening is free: pop, small confetti, the cards fan out (front, name, set). Only then does **Buy this stack** appear, with the math under it ("6 cards, $4."). **Shuffle** deals the next unsold pack (it re-checks which are still open) or restacks the only one. Reduced motion: **Tap to open**, no confetti. Sort by price with the menu; `?pack=<id>` opens on a given pack.
-- **Sold:** only the signed webhook (`checkout.session.completed` on the pack's link) or **Mark sold** on the admin page. The pack and every card in it become Sold (the sale is split across the cards by list price), the pack leaves `/lil-stack`, and the thank-you page (`/shop/thank-you?stack=<id>`) fires confetti once.
-- Pack art: with `GEMINI_API_KEY`, the admin page draws a closed and a torn-open pack once (text prompt only, never card photos) and caches them in `DATA_DIR/brand` (or `brand/` in the bucket). Without it, the CSS pack.
+- **Category** comes from what identification already read (no new source): game Pokemon → Pokemon; sports by league words ("Football", "NFL", "Bowman"…), full team names (San Francisco Giants vs New York Giants), then unique nicknames (Yankees, Chiefs). Basketball, Magic, and anything ambiguous stay **unsorted**: in inventory, never packed. Pick a category by hand (Packs page or review screen) and it sticks through repricing.
+- **A pack is exactly 12 cards of one category**, built across batches, oldest cards first, a card in one pack only (status **In a pack**, internally `LilStack`). Fewer than 12 left over → they wait in stock (the Packs page says how many more fill the next one).
+- **Price = the exact sum of the 12 cards' existing prices.** No other pricing source, no rounding. Shipping is its own line: a tracked bubble mailer, never free.
+- Packs rebuild after every batch, reprice and card save, and with **Rebuild packs** (Admin → Packs). Stable: unchanged packs keep their pay link; a pack that lost a card refills from stock (new link) or dissolves back to stock if it can't reach 12.
+- **Buying:** one Stripe Payment Link per pack (`Pokemon Pack, Trade Shark`, the card names in the description, quantity 1, one checkout).
+- **`/packs/<category>`**: a sealed pack opens only on a full left-to-right swipe (or four right-arrow presses). Opening is free and shows all 12 cards (front, name, set; never a card's own price). Only then does **Buy this pack** appear, with cards + shipping = total. **Shuffle** deals the next unsold pack. Reduced motion: **Tap to open**.
+- **Sold:** only the signed webhook (`checkout.session.completed` on the pack's link) or **Mark sold** on the admin page. The pack and its 12 cards become Sold (the sale is split across the cards by list price).
+- **Admin → Packs** shows each category's packs with every card, its value and the pay link, stock counts, unsorted cards with a category picker, sold packs and pack art. The review screen shows which pack a card is in.
+- Pack art: with `GEMINI_API_KEY`, the admin page draws a closed and a torn-open pack once (text prompt only, never card photos). Without it, the CSS pack.
 
-## Home: wow first
+## Home: the catalog
 
-The home page leads with the most eye-catching live item, never the most expensive.
-
-- **Wow score** (computed when a card is identified or repriced, stored on the card): full art / illustration rare / special illustration rare / alt art / numbered parallel **+40**; a name on the **chase list** (Settings → Home feature; Pikachu, Charizard, Umbreon by default) **+25**; graded **9 or 10** **+20**; from the **newest set in its batch** (by release year) **+10**. A Lil' Stack scores as its best card.
-- **Featured:** pin one card (review screen) or one pack (Lil' Stack page) and it takes the hero while it's live.
-- **Hero:** big image, name, set and a one-line hype; the price sits on the button (**Buy this card · $18** / **Buy this stack · $4**). A stack hero shows every card in it.
-- **On the hunt:** the next 6 by wow, price as secondary text. A sold item drops out and the next one moves up.
-- **`/shop`** has the full grid with search, game filter and price sort.
+The home page is the three products, each with how many packs are up and their price range ("Restocking" when none). `/shop` and `/lil-stack` redirect there; single-card pages are gone. The wow score is still computed as an admin tag, but nothing public ranks by it any more.
 
 ## Shipping
 
@@ -169,14 +164,14 @@ The buyer pays shipping on top of the price. It's its own line on the Stripe che
 
 | Method | Default | When |
 |---|---|---|
-| Stamped envelope | $1.50 | A raw single under $20. No tracking promise. |
-| Tracked bubble mailer | $6.00 | Any graded card, any card $20+, every Lil' Stack, or a card whose shipping profile I set to bubble/slab. Ships from Florida. |
-| Free | $0 | A single card at or over **$35**. I eat the postage. **Never on a Lil' Stack.** |
+| Stamped envelope | $1.50 | Old single-card sales only (singles aren't sold now). |
+| Tracked bubble mailer | $6.00 | Every pack. Ships from Florida with tracking. |
+| Free | $0 | Never on a pack. |
 
 - Every buy button has the math above it: "Cards $4 · Shipping $6 · Total $10".
 - Changing a rate in Settings replaces the live pay links (chunked, a few per request).
 - The webhook splits the checkout into merchandise (`soldPrice`) and shipping (`shippingCharged`), and keeps the method and the ship-to address Stripe collected.
-- **Admin → Orders** lists sold cards and Lil' Stacks, unshipped first, with the method and address. Mailers take a tracking number before **Mark shipped**; envelopes say "no tracking".
+- **Admin → Orders** lists sold packs, unshipped first, with the method and address. Mailers take a tracking number before **Mark shipped**; envelopes say "no tracking".
 
 ## Exports
 
@@ -186,7 +181,7 @@ The buyer pays shipping on top of the price. It's its own line on the Stripe che
 ## Images and privacy
 
 - Scans live in the private Supabase bucket (or `DATA_DIR/images` locally). `/api/admin/images/*` requires the password.
-- The public shop uses `/api/shop/image/:cardId/:side`, which serves a scan **only while its card is Ready or Listed** (or the front of a card in a Lil' Stack). Inbox, Sold, and Archived cards 404.
+- The public shop uses `/api/shop/image/:cardId/front`, which serves a card's front **only while it sits in an open pack**. Inbox, Sold, and Archived cards 404.
 - The `trade_shark` tables have RLS on and no grants for Supabase's `anon`/`authenticated` roles; only the app's server connection reads them.
 - TIFF scans are converted to JPEG on upload so browsers can show them.
 

@@ -4,31 +4,31 @@ import { db } from "@/lib/db";
 import { AUTO_PUBLISH_MAX } from "@/lib/publish";
 import { cardLabel } from "@/lib/shop";
 import { money } from "@/lib/util";
-import { LiveRow, LookRow } from "./QueueRows";
+import { LookRow } from "./QueueRows";
 
 export const metadata = { title: "Needs a look" };
 export const dynamic = "force-dynamic";
 
 /**
- * The one queue. Everything $5 and under already went live on upload; this is only:
- * cards priced over $5, cards whose pay link failed, and cards I pulled. Plus the shop, with a Pull button.
+ * The one queue. Everything $5 and under already went to stock for packing; this is only:
+ * cards priced over $5, sideways scans, the same scan twice, and cards I pulled.
  */
 export default async function QueuePage() {
-  const [look, held, live] = await Promise.all([
+  const [look, held] = await Promise.all([
     db.card.findMany({
       where: { status: { in: ["NeedsLook", "Pulled"] } },
       orderBy: [{ suggestedPrice: { sort: "desc", nulls: "last" } }, { listPrice: "desc" }],
       include: { runs: { where: { source: "stripe", status: "error" }, orderBy: { at: "desc" }, take: 1 } },
     }),
     db.card.count({ where: { status: "Inbox" } }),
-    db.card.findMany({ where: { status: { in: ["Ready", "Listed"] } }, orderBy: { updatedAt: "desc" }, take: 200 }),
   ]);
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold">Needs a look</h1>
         <p className="text-sm text-navy/70">
-          Cards priced over {money(AUTO_PUBLISH_MAX)} wait here. Everything at {money(AUTO_PUBLISH_MAX)} and under is already on the shop.
+          Cards priced over {money(AUTO_PUBLISH_MAX)} wait here. Approve one and it joins its category&apos;s next pack. Everything at{" "}
+          {money(AUTO_PUBLISH_MAX)} and under already did.
           {held > 0 && (
             <>
               {" "}
@@ -42,7 +42,7 @@ export default async function QueuePage() {
       </div>
 
       {look.length === 0 ? (
-        <EmptyState title="Nothing needs a look">Fresh uploads at {money(AUTO_PUBLISH_MAX)} and under go straight to the shop.</EmptyState>
+        <EmptyState title="Nothing needs a look">Fresh uploads at {money(AUTO_PUBLISH_MAX)} and under go straight to stock for packing.</EmptyState>
       ) : (
         <ul className="space-y-2">
           {look.map((c) => (
@@ -66,20 +66,6 @@ export default async function QueuePage() {
         </ul>
       )}
 
-      <section>
-        <h2 className="mb-2 text-lg font-bold">
-          On the shop <span className="text-sm font-normal text-navy/60">· {live.length}</span>
-        </h2>
-        {live.length === 0 ? (
-          <p className="text-sm text-navy/60">Nothing live yet.</p>
-        ) : (
-          <ul className="grid gap-2 md:grid-cols-2">
-            {live.map((c) => (
-              <LiveRow key={c.id} card={{ id: c.id, label: cardLabel(c), image: c.frontImage, price: c.listPrice, v: c.updatedAt.getTime() }} />
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

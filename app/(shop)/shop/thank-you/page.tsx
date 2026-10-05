@@ -4,6 +4,7 @@ import { SharkFin } from "@/components/SharkFin";
 import { db } from "@/lib/db";
 import { shipFromLink, type ShipQuote } from "@/lib/shipping";
 import { cardLabel } from "@/lib/shop";
+import { productName } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Thank you" };
@@ -20,8 +21,8 @@ export default async function ThankYou({ searchParams }: { searchParams: Promise
   const SHIP = { shipMethod: true, shippingCharged: true, paymentLinkShipMethod: true, paymentLinkShipping: true } as const;
   if (stack) {
     try {
-      const p = await db.lilStack.findUnique({ where: { id: stack }, select: { cardIds: true, ...SHIP } });
-      if (p) label = `Lil' Stack · ${p.cardIds.length} cards`;
+      const p = await db.lilStack.findUnique({ where: { id: stack }, select: { cardIds: true, category: true, ...SHIP } });
+      if (p) label = `${productName(p.category)} · ${p.cardIds.length} cards`;
       if (p) ship = shipFromLink(p.shipMethod ?? p.paymentLinkShipMethod, p.shippingCharged ?? p.paymentLinkShipping);
     } catch {
       /* the thanks matters more than the name */
