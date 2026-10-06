@@ -157,7 +157,7 @@ That sentence and the odds are on screen before the first payment.
 
 One active cycle per account. Every charge (and any refund, e.g. if the last pack went in the same second) is logged in `GameCharge`. Packs ship in a tracked bubble mailer; the game prices include shipping.
 
-**Odds (same for peek and blind):** 8 of 12 cards are bulk, usually under $0.25 · 3 are modest, usually $0.25 to $0.75 · 1 is the best card in the pack, usually $0.75 to $2 · Pack value is usually under the keep price.
+**Odds (same for peek and blind):** 8 of 12 cards are bulk, usually under $0.25 · 3 are modest, usually $0.25 to $0.75 · 1 is the best card in the pack, usually $0.75 to $2 · Pack value is usually under the keep price · Chase cards are not in packs until that feature is turned on.
 
 ### Pack builder
 
@@ -170,7 +170,7 @@ Per category, never mixed. Uses the existing engine price on each card; nothing 
 
 ### Chase cards (off by default)
 
-Any scanned card with an engine price of **$10 or more** is on that category's chase list (Admin → Packs). The flag can only be turned on once the category has one. While it's off, no $10+ card is ever in a pack and the odds don't mention chase cards. When it's on, about **1 in 25** reservations (peek and blind share the roll) swap the top slot for one chase card, at most one chase pack reserved per category at a time, and the odds add: *About 1 in 25 packs contains a card priced at $10 or more.*
+Any scanned card with an engine price of **$10 or more** is on that category's chase list (Admin → Packs). The flag can only be turned on once the category has one. While it's off, no $10+ card is ever in a pack and the odds say *Chase cards are not in packs until that feature is turned on*. When it's on, about **1 in 25** reservations (peek and blind share the roll) swap the top slot for one chase card, at most one chase pack reserved per category at a time, and the odds add: *About 1 in 25 packs contains a card priced at $10 or more.*
 
 ### Category
 

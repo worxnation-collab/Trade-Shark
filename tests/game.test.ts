@@ -111,11 +111,15 @@ describe("game copy and prices", () => {
     expect(PRICES.reveal + PRICES.keepMore).toBeCloseTo(PRICES.keepTotal, 10);
   });
 
-  it("odds: chase isn't mentioned while the flag is off; one line when on", () => {
-    const off = oddsLines(false);
-    expect(off).toHaveLength(4);
-    expect(off.join(" ")).not.toMatch(/chase|\$10/i);
-    expect(oddsLines(true)).toEqual([...off, "About 1 in 25 packs contains a card priced at $10 or more."]);
+  it("odds: the same five lines for peek and blind; the chase line follows the flag", () => {
+    const base = [
+      "8 of 12 cards are bulk, usually under $0.25",
+      "3 are modest, usually $0.25 to $0.75",
+      "1 is the best card in the pack, usually $0.75 to $2",
+      "Pack value is usually under the keep price",
+    ];
+    expect(oddsLines(false)).toEqual([...base, "Chase cards are not in packs until that feature is turned on"]);
+    expect(oddsLines(true)).toEqual([...base, "About 1 in 25 packs contains a card priced at $10 or more."]);
   });
 });
 

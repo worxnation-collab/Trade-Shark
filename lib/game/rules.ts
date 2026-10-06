@@ -34,8 +34,8 @@ export function oddsLines(chaseOn: boolean): string[] {
     "3 are modest, usually $0.25 to $0.75",
     "1 is the best card in the pack, usually $0.75 to $2",
     "Pack value is usually under the keep price",
-    // While the flag is off, chase cards aren't mentioned at all (and $10+ cards never go in packs).
-    ...(chaseOn ? ["About 1 in 25 packs contains a card priced at $10 or more."] : []),
+    // Flag off: $10+ cards never go in packs, and the odds say so. Flag on: the 1 in 25 line replaces it.
+    chaseOn ? "About 1 in 25 packs contains a card priced at $10 or more." : "Chase cards are not in packs until that feature is turned on",
   ];
 }
 
