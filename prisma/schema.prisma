@@ -291,6 +291,7 @@ model Buyer {
   memberCheckedAt      DateTime?
   orders               ShipOrder[]
   perks                MemberPerk[]
+  stampCards           StampCard[]
   cycles               GameCycle[]
   charges              GameCharge[]
   locks                GameLock[]
@@ -340,6 +341,7 @@ model GameCycle {
   kind        String // peek | blind
   member      Boolean      @default(false) // this reveal used the monthly member stack
   shipQuoteId String?
+  creditUsed  Boolean      @default(false) // paid with the category's $4 stamp-card credit
   status      String // revealing | kept | passed | expired | blind-bought | failed
   packId      String?
   revealedAt  DateTime?
@@ -433,4 +435,18 @@ model MemberPerk {
   createdAt DateTime @default(now())
 
   @@unique([buyerId, kind, period])
+}
+
+/// Stamp card, one per player per category: a paid keep or blind pack = one stamp; 10 stamps = one $4 credit for that
+/// category (one keep or one blind pack). Stamps and credits clear 90 days after the last paid pack in the category.
+model StampCard {
+  id             String    @id @default(cuid())
+  buyerId        String
+  buyer          Buyer     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  category       String
+  stamps         Int       @default(0) // 0–9 toward the next credit
+  credits        Int       @default(0) // unused $4 credits
+  lastPurchaseAt DateTime?
+
+  @@unique([buyerId, category])
 }
