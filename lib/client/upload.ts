@@ -25,8 +25,9 @@ async function post(url: string, body?: BodyInit, json = false) {
 
 export const postJson = (url: string, body: unknown) => post(url, JSON.stringify(body), true);
 
-export async function createBatch(name: string): Promise<string> {
-  return (await postJson("/api/admin/batches", { name })).id;
+/** A new upload. Every card in it belongs to `partnerId` (required). */
+export async function createBatch(name: string, partnerId: string): Promise<string> {
+  return (await postJson("/api/admin/batches", { name, partnerId })).id;
 }
 
 /** Upload in chunks of 4 so each server call stays well inside serverless time/size limits. */

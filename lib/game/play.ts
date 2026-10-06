@@ -5,6 +5,7 @@ import { splitSale } from "../lilStack";
 import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
 import { buildGamePacks, categoryStatus, packView, releasePack, reservePack } from "./packs";
+import { recordSale } from "../partners";
 import { KEEP_GRACE_MS, PRICES, TIMER_SECONDS, cryptoRng, nextLocalMidnight, type Rng } from "./rules";
 
 /**
@@ -129,6 +130,7 @@ export async function keep(buyer: Buyer, cycleId: string, opts: { api?: ChargeAp
   }
   await sellPack(cycle.packId, buyer, PRICES.keepTotal, "kept", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "kept", endedAt: now } });
+  await splitForPartners(cycle.packId);
   return { ok: true as const, pack: await packView(cycle.packId) };
 }
 
@@ -182,9 +184,15 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
   }
   await sellPack(got.pack.id, buyer, PRICES.blind, "sold-blind", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "blind-bought", packId: got.pack.id, revealedAt: now, endedAt: now } });
+  await splitForPartners(got.pack.id);
   // A completed purchase unlocks a new cycle right away.
   await db.gameLock.deleteMany({ where: { category, OR: [{ buyerId: buyer.id }, ...(buyer.cardFingerprint ? [{ fingerprint: buyer.cardFingerprint }] : [])] } });
   return { ok: true as const, pack: await packView(got.pack.id) };
+}
+
+/** What each partner is owed for a completed keep or blind buy. Never blocks the sale; the Partners page catches up a miss. */
+async function splitForPartners(packId: string) {
+  await recordSale(packId).catch((e) => console.error("partner split failed", e));
 }
 
 /** The pack and its cards are sold: assign them, split the money across the cards by engine price. */

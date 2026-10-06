@@ -9,7 +9,7 @@ import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, isBump, nextKind, round2, 
  * ever reserves a pack that already exists; it never assembles one on the spot.
  */
 
-/** Cards that may be drawn: identified, priced stock with a photo, not in any pack. */
+/** Cards that may be drawn: identified, priced stock with a photo, tagged to a partner, not in any pack. */
 export const STOCK = ["Priced", "BulkHold"];
 /** Keep up to this many available packs per category (more stock stays loose for later draws). */
 export const AVAILABLE_TARGET = 50;
@@ -20,6 +20,7 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   readable: true,
   frontImage: { not: null },
   listPrice: { not: null },
+  partnerId: { not: null },
   gamePackId: null,
   lilStackId: null,
 });
@@ -58,7 +59,8 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
   if (!want) return { category, built: 0, available: ready.length, kinds: {} as Record<string, number> };
   const settings = await getSettings();
   const chaseOn = !!settings.chaseOn?.[category];
-  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true }, orderBy: { createdAt: "asc" } });
+  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true }, orderBy: { createdAt: "asc" } });
+  const ownerOf = new Map(rows.map((c) => [c.id, c.partnerId!]));
   const left = new Map<string, PoolCard>(rows.map((c) => [c.id, { id: c.id, price: c.listPrice! }]));
   const recent = await recentKinds(category);
   const readyCount = { total: ready.length, hit: ready.filter((p) => p.kind === "hit").length };
@@ -86,6 +88,7 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
             number,
             kind,
             cardIds: draw.ids,
+            partnerIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!))].sort(),
             value: draw.value,
             hitCardId: kind === "base" ? null : draw.best,
             chase: kind === "chase",
@@ -174,18 +177,19 @@ async function bumpTopSlot(packId: string, category: Category, rng: Rng) {
   const current = await db.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
   const top = current.cards.reduce<(typeof current.cards)[number] | null>((a, c) => (!a || (c.listPrice ?? 0) > (a.listPrice ?? 0) ? c : a), null);
   if (!top) return false;
-  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true } })).filter((c) => isBump(c.listPrice) && c.listPrice! > (top.listPrice ?? 0));
+  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true } })).filter((c) => isBump(c.listPrice) && c.listPrice! > (top.listPrice ?? 0));
   if (!pool.length) return false;
   const card = pool[rng(pool.length)];
   return db
     .$transaction(async (tx) => {
-      const pack = await tx.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
+      const pack = await tx.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true, partnerId: true } } } });
       const took = await tx.card.updateMany({ where: { id: card.id, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: packId, status: "LilStack" } });
       if (!took.count) throw new Error("bump card taken");
       await tx.card.update({ where: { id: top.id }, data: { gamePackId: null, status: "Priced" } });
       const cardIds = pack.cardIds.map((id) => (id === top.id ? card.id : id));
       const value = round2(pack.cards.reduce((n, c) => n + (c.id === top.id ? card.listPrice! : c.listPrice ?? 0), 0));
-      await tx.gamePack.update({ where: { id: packId }, data: { cardIds, value, kind: "member", hitCardId: card.id } });
+      const partnerIds = [...new Set([...pack.cards.filter((c) => c.id !== top.id).map((c) => c.partnerId), card.partnerId].filter((x): x is string => !!x))].sort();
+      await tx.gamePack.update({ where: { id: packId }, data: { cardIds, partnerIds, value, kind: "member", hitCardId: card.id } });
       return true;
     })
     .catch(() => false);

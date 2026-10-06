@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { applySuggestion, priceCard, relinkCatalog } from "@/lib/pipeline";
 import { getSettings } from "@/lib/settings";
 import { isCategory } from "@/lib/categories";
+import { isPartner } from "@/lib/partners/split";
 import { buildGamePacks, releaseCardFromGame } from "@/lib/game/packs";
 import { retirePaymentLink } from "@/lib/payLink";
 import { CONDITIONS, FOR_SALE, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
@@ -44,6 +45,8 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
     data.category = isCategory(b.category) ? b.category : null;
     data.categorySource = "manual";
   }
+  // Whose card it is. A sold card keeps the owner it was split with.
+  if ("partnerId" in b && before.status !== "Sold") data.partnerId = isPartner(b.partnerId) ? b.partnerId : null;
   if ("pastedComps" in b) data.pastedComps = typeof b.pastedComps === "string" && b.pastedComps.trim() ? b.pastedComps : null;
 
   const identityChanged = IDENTITY.some((k) => k in data && (data as Record<string, unknown>)[k] !== (before as Record<string, unknown>)[k]);
@@ -92,7 +95,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   if (card.paymentLinkActive) card = (await retirePaymentLink(card)).card;
 
   // Out of an available pack (that pack is drawn again). A pack a player holds or bought is left alone.
-  if (status !== "LilStack" && card.gamePackId) await releaseCardFromGame(card);
+  if ((status !== "LilStack" || card.partnerId !== before.partnerId) && card.gamePackId) await releaseCardFromGame(card);
   // Approving it clears why it was waiting, including a rotation hold.
   if (b.confirm && status === "Priced" && card.holdReason) extra.holdReason = null;
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();

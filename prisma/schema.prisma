@@ -20,6 +20,7 @@ model Batch {
   notes        String?
   pairMode     String       @default("auto") // auto | filename | order | fronts
   pairDecision String? // JSON BackDecision from Auto pairing: did this batch contain backs?
+  partnerId    String? // who owns every card in this upload (required for new uploads); copied onto each card
   createdAt    DateTime     @default(now())
   cards        Card[]
   files        UploadFile[]
@@ -64,6 +65,7 @@ model Card {
 
   // identity
   game           String  @default("Other") // Pokemon | Sports | Magic | Other
+  partnerId      String? // owner: matthew | adrian | mike (Partner.id). No partner = can't enter a bin
   category       String? // baseball | football | pokemon: which pack product it goes in (null = never packed)
   categorySource String? // auto | manual
   name           String?
@@ -312,6 +314,7 @@ model GamePack {
   category       String // baseball | football | pokemon
   cardIds        String[]
   cards          Card[]
+  partnerIds     String[] // partners whose cards are in this stack (copied from the cards when built)
   value          Float // summed engine prices of the 12 cards
   status         String     @default("available") // available | reserved | kept | expired | sold-blind | dissolved
   chase          Boolean    @default(false) // top slot swapped for a $10+ chase card (flag on only)
@@ -452,4 +455,49 @@ model StampCard {
   lastPurchaseAt DateTime?
 
   @@unique([buyerId, category])
+}
+
+/// A partner who owns cards: Matthew, Adrian or Mike. Each gets paid by a manual Stripe Connect transfer.
+model Partner {
+  id              String           @id // matthew | adrian | mike
+  name            String
+  stripeAccountId String? // connected account (acct_…)
+  createdAt       DateTime         @default(now())
+  earnings        PartnerEarning[]
+  payouts         PartnerPayout[]
+}
+
+/// One partner's cut of one sold pack (keep or blind only): pack price minus the Stripe fee, split by engine value.
+model PartnerEarning {
+  id           String         @id @default(cuid())
+  partnerId    String
+  partner      Partner        @relation(fields: [partnerId], references: [id])
+  packId       String
+  saleKind     String // kept | sold-blind
+  packPrice    Float // what the player paid for the pack (shipping is never in here)
+  stripeFee    Float // fees on the charges that make up that price
+  feeEstimated Boolean        @default(false) // Stripe didn't report the fee: 2.9% + $0.30 per charge
+  net          Float
+  cardValue    Float // this partner's cards, summed engine value
+  packValue    Float // the whole stack, summed engine value
+  amount       Float // owed for this pack, rounded to cents
+  payoutId     String?
+  payout       PartnerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+
+  @@unique([packId, partnerId])
+  @@index([partnerId, payoutId])
+}
+
+/// A manual payout: the owed balance sent to the partner's connected account with one Stripe transfer.
+model PartnerPayout {
+  id         String           @id @default(cuid())
+  partnerId  String
+  partner    Partner          @relation(fields: [partnerId], references: [id])
+  amount     Float
+  status     String // pending | paid | failed
+  transferId String?
+  error      String?
+  createdAt  DateTime         @default(now())
+  earnings   PartnerEarning[]
 }

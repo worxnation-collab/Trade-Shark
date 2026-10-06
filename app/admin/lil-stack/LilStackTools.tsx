@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { PartnerSelect } from "@/components/PartnerSelect";
 import { CATEGORIES } from "@/lib/categories";
 
 type Kind = "closed" | "open";
@@ -152,6 +153,34 @@ export function CategoryPicker({ cardId, value }: { cardId: string; value: strin
           </option>
         ))}
       </select>
+      {err && <span className="text-xs text-coral">{err}</span>}
+    </span>
+  );
+}
+
+/** Set a card's partner by hand. No partner = it can't go in a pack. */
+export function PartnerPicker({ cardId, value, locked = false }: { cardId: string; value: string | null; locked?: boolean }) {
+  const router = useRouter();
+  const [v, setV] = useState(value ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function save(partnerId: string) {
+    setV(partnerId);
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await fetch(`/api/admin/cards/${cardId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partnerId: partnerId || null }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) setErr(j.error || r.statusText);
+    } finally {
+      setBusy(false);
+      router.refresh();
+    }
+  }
+  if (locked) return <span className="font-semibold text-navy">{value ?? "none"} (sold)</span>;
+  return (
+    <span className={`flex items-center gap-2 ${busy ? "opacity-60" : ""}`}>
+      <PartnerSelect value={v} onChange={save} allowNone className={`input py-1 text-xs ${v ? "" : "border-coral"}`} />
       {err && <span className="text-xs text-coral">{err}</span>}
     </span>
   );

@@ -102,6 +102,7 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
     if (c.frontPhash) seenPhash.push({ ph: c.frontPhash, id: c.id });
   }
   const already = await db.card.count({ where: { batchId } });
+  const { partnerId } = await db.batch.findUniqueOrThrow({ where: { id: batchId }, select: { partnerId: true } });
   const created: string[] = [];
   let position = 0;
   for (const g of groups) {
@@ -153,6 +154,7 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
     const card = await db.card.create({
       data: {
         batchId,
+        partnerId,
         pairId: `${batchId.slice(-6)}-${String(already + created.length + 1).padStart(4, "0")}`,
         pile,
         readable: g.pile !== "unreadable",

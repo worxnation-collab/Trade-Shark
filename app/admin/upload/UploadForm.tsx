@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
+import { PartnerSelect } from "@/components/PartnerSelect";
 import { createBatch, organize, processAll, uploadItems } from "@/lib/client/upload";
 
 type Picked = { file: File; path: string };
@@ -37,6 +38,7 @@ export function UploadForm() {
   const [lines, setLines] = useState("");
   const [pairMode, setPairMode] = useState("auto");
   const [name, setName] = useState("");
+  const [partner, setPartner] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [error, setError] = useState("");
@@ -73,11 +75,11 @@ export function UploadForm() {
   }
 
   async function submit() {
-    if (!files.length) return;
+    if (!files.length || !partner) return;
     setBusy(true);
     setError("");
     try {
-      const id = await createBatch(name);
+      const id = await createBatch(name, partner);
       await uploadItems(
         id,
         files.map((p) => ({ file: p.file, name: p.path })),
@@ -144,6 +146,10 @@ export function UploadForm() {
 
       <div className="card space-y-4 p-4">
         <div>
+          <label className="label">Whose cards? (required)</label>
+          <PartnerSelect value={partner} onChange={setPartner} />
+        </div>
+        <div>
           <label className="label">Batch name</label>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Estate sale binder #2" />
         </div>
@@ -191,7 +197,7 @@ export function UploadForm() {
             </div>
           </div>
         )}
-        <button className="btn-primary w-full justify-center py-2.5 text-base" disabled={busy || !files.length} onClick={submit}>
+        <button className="btn-primary w-full justify-center py-2.5 text-base" disabled={busy || !files.length || !partner} onClick={submit}>
           {busy ? "Working…" : `Organize + price ${files.length || ""} file(s)`}
         </button>
         <p className="text-xs text-navy/50">Nothing is listed anywhere. Every card waits for your review.</p>

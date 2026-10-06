@@ -4,6 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
+import { PartnerSelect } from "@/components/PartnerSelect";
 import { createBatch, organize, processAll, uploadItems, type UploadItem } from "@/lib/client/upload";
 import { cropCard, detectCards, manualBox } from "@/lib/flatbed/detect";
 import { readDpi } from "@/lib/flatbed/dpi";
@@ -83,6 +84,7 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
   const [margin, setMargin] = useState(2.5);
   const [prefix, setPrefix] = useState("batch");
   const [name, setName] = useState("");
+  const [partner, setPartner] = useState("");
   const [frontsOnly, setFrontsOnly] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -184,7 +186,7 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
     setBusy("Cropping + uploading…");
     setError("");
     try {
-      const id = batchId ?? (await createBatch(name || `Flatbed ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`));
+      const id = batchId ?? (await createBatch(name || `Flatbed ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`, partner));
       const useBack = !!sheets.back && pairing?.ok && !frontsOnly;
       const sides: Side[] = useBack ? ["front", "back"] : ["front"];
 
@@ -360,6 +362,12 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
           <div className="grid grid-cols-2 gap-2">
             {!batchId && (
               <div className="col-span-2">
+                <label className="label">Whose cards? (required)</label>
+                <PartnerSelect value={partner} onChange={setPartner} />
+              </div>
+            )}
+            {!batchId && (
+              <div className="col-span-2">
                 <label className="label">Batch name</label>
                 <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Binder page 3" />
               </div>
@@ -391,7 +399,7 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
               </div>
             </div>
           )}
-          <button className="btn-primary w-full justify-center py-2.5 text-base" disabled={!canCommit} onClick={commit}>
+          <button className="btn-primary w-full justify-center py-2.5 text-base" disabled={!canCommit || (!batchId && !partner)} onClick={commit}>
             Commit {sheets.front?.boxes.length ?? 0} card(s) to Inbox
           </button>
           <p className="text-xs text-navy/50">Crops are cut in your browser with OpenCV. Nothing is sent to a vision API to split the sheet.</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CategoryPicker } from "@/app/admin/lil-stack/LilStackTools";
+import { CategoryPicker, PartnerPicker } from "@/app/admin/lil-stack/LilStackTools";
 import type { Card, SourceRun } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -286,6 +286,10 @@ export function ReviewScreen(p: Props) {
             <div className="flex items-center gap-2 pt-1 text-xs text-navy/60">
               Pack category {c.categorySource === "manual" ? "(set by hand)" : "(auto)"}
               <CategoryPicker key={c.category ?? "none"} cardId={c.id} value={c.category} />
+            </div>
+            <div className="flex items-center gap-2 pt-1 text-xs text-navy/60">
+              Partner
+              <PartnerPicker key={c.partnerId ?? "none"} cardId={c.id} value={c.partnerId} locked={c.status === "Sold"} />
             </div>
           </div>
         </div>
