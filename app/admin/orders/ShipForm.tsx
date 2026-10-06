@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /** Mark shipped. A stamped envelope says "no tracking" instead of asking for a number. */
-export function ShipForm({ kind, id, pwe }: { kind: "card" | "stack" | "game"; id: string; pwe: boolean }) {
+export function ShipForm({ kind, id, pwe }: { kind: "card" | "stack" | "game" | "parcel"; id: string; pwe: boolean }) {
   const router = useRouter();
   const [tracking, setTracking] = useState("");
   const [err, setErr] = useState("");
@@ -21,13 +21,13 @@ export function ShipForm({ kind, id, pwe }: { kind: "card" | "stack" | "game"; i
   }
   return (
     <form onSubmit={ship} className="space-y-1">
-      {pwe ? (
+      {kind === "parcel" ? null : pwe ? (
         <p className="text-sm text-navy/60">Stamped envelope: no tracking.</p>
       ) : (
         <input className="input font-mono" placeholder="Tracking number" value={tracking} onChange={(e) => setTracking(e.target.value)} aria-label="Tracking number" />
       )}
-      <button className="btn-primary" disabled={busy || (!pwe && !tracking.trim())}>
-        {busy ? "Saving…" : "Mark shipped"}
+      <button className={kind === "parcel" ? "btn-ghost" : "btn-primary"} disabled={busy || (!pwe && !tracking.trim())}>
+        {busy ? "Saving…" : kind === "parcel" ? "Dropped off" : "Mark shipped"}
       </button>
       {err && <p className="text-xs text-coral">{err}</p>}
     </form>

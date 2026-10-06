@@ -8,6 +8,12 @@ import { markPackSold, packForLink } from "./lilStack";
  * for an already-sold card changes nothing.
  */
 export async function handleStripeEvent(event: Stripe.Event): Promise<{ handled: boolean; note: string }> {
+  // Membership changes (renewals, cancels). The game also re-reads the subscription hourly, so this is a speed-up.
+  if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted" || event.type === "customer.subscription.created") {
+    const { applySubscription } = await import("./game/member");
+    const r = await applySubscription(event.data.object as Stripe.Subscription);
+    return { handled: r.count > 0, note: `membership ${event.type} (${r.count})` };
+  }
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded")
     return { handled: false, note: `ignored ${event.type}` };
   const session = event.data.object as Stripe.Checkout.Session;

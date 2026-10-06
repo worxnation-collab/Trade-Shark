@@ -7,6 +7,7 @@ import { pairFiles, type BackDecision, type PairMode } from "./organize/pairing"
 import { parseText } from "./organize/parse";
 import { categorize } from "./categories";
 import { releasePack } from "./game/packs";
+import { presentCard } from "./present";
 import { refreshPacks } from "./lilStack";
 import { orientCard } from "./orient";
 import { autoPublish } from "./publish";
@@ -441,7 +442,12 @@ export async function processBatch(batchId: string, limit = 6) {
   if (unoriented.length) {
     for (const c of unoriented) {
       try {
-        await orientCard(c);
+        const upright = await orientCard(c);
+        // Then the presentation image: straightened, trimmed, framed. A failure here never blocks the batch.
+        if (!upright.holdReason) {
+          const rel = await presentCard(upright).catch((e) => (console.error("present failed", e), null));
+          if (rel) await db.card.update({ where: { id: c.id }, data: { frontDisplay: rel } });
+        }
       } catch (e) {
         // Never block the batch on it: mark it so the card waits in Needs a look instead of publishing sideways.
         await db.card.update({ where: { id: c.id }, data: { orientedAt: new Date(), rotationNote: "unsure", holdReason: "rotation" } });

@@ -205,6 +205,7 @@ export async function turnCard(card: Card, deg: Deg) {
   if (card.backImage) await rotateStored(card.backImage, deg, false);
   return db.card.update({
     where: { id: card.id },
-    data: { rotation: norm(card.rotation + deg), rotationNote: "by hand", holdReason: card.holdReason === "rotation" ? null : card.holdReason },
+    // The display image is rebuilt from the turned scan the next time it's needed.
+    data: { rotation: norm(card.rotation + deg), rotationNote: "by hand", holdReason: card.holdReason === "rotation" ? null : card.holdReason, frontDisplay: null },
   });
 }

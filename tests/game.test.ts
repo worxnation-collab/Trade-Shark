@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHASE_RATE,
   drawPack,
   drawPacks,
   HARD_CAP,
@@ -8,12 +7,13 @@ import {
   oddsLines,
   PRICES,
   RULES_LINE,
-  rollChase,
+  nextKind,
   showable,
   shortages,
   slotOf,
   sumValue,
   TARGET,
+  type PackKind,
   type PoolCard,
   type Rng,
 } from "@/lib/game/rules";
@@ -34,14 +34,14 @@ const overBand = () => [...many(40, 0.1, "b"), ...many(15, 0.3, "m"), ...many(5,
 const fitting = () => [...many(40, 0.05, "b"), ...many(15, 0.3, "m"), ...many(5, 0.75, "t")];
 
 describe("value bins", () => {
-  it("bulk < $0.25 ≤ mid < $0.75 ≤ top ≤ $2; $10+ is chase; $2.01–$9.99 never packs", () => {
+  it("bulk < $0.25 ≤ mid < $0.75 ≤ top ≤ $2 < bump < $4 ≤ hit < $10 ≤ chase", () => {
     expect(slotOf(0.24)).toBe("bulk");
     expect(slotOf(0.25)).toBe("mid");
     expect(slotOf(0.74)).toBe("mid");
     expect(slotOf(0.75)).toBe("top");
     expect(slotOf(2)).toBe("top");
-    expect(slotOf(2.01)).toBe(null);
-    expect(slotOf(9.99)).toBe(null);
+    expect(slotOf(2.01)).toBe("bump");
+    expect(slotOf(9.99)).toBe("hit");
     expect(slotOf(10)).toBe("chase");
     expect(slotOf(null)).toBe(null);
   });
@@ -75,9 +75,9 @@ describe("pack builder", () => {
     expect(shortages(fitting())).toEqual([]);
   });
 
-  it("$10+ cards never land in a normal pack", () => {
-    const withChase = [...fitting(), ...many(5, 50, "c")];
-    for (const p of drawPacks(withChase, 10, seeded())) expect(p.ids.some((id) => id.startsWith("c"))).toBe(false);
+  it("$10+ and $4+ cards never land in a base pack", () => {
+    const withChase = [...fitting(), ...many(5, 50, "c"), ...many(5, 6, "h")];
+    for (const p of drawPacks(withChase, 10, seeded())) expect(p.ids.some((id) => id.startsWith("c") || id.startsWith("h"))).toBe(false);
   });
 
   it("draws as many packs as the bins allow, each card once", () => {
@@ -90,17 +90,59 @@ describe("pack builder", () => {
     expect(showable({ value: 2.0, chase: false })).toBe(true);
     expect(showable({ value: 2.5, chase: false })).toBe(false);
     expect(showable({ value: HARD_CAP + 1, chase: false })).toBe(false);
-    expect(showable({ value: 14, chase: true })).toBe(true);
+    expect(showable({ value: 14, kind: "chase" })).toBe(true);
     expect(sumValue([0.1, 0.2])).toBe(0.3);
   });
 
-  it("chase is about 1 in 25, the same roll for peek and blind", () => {
-    let hits = 0;
-    const rng = seeded(11);
-    for (let i = 0; i < 25000; i++) if (rollChase(rng)) hits++;
-    expect(CHASE_RATE).toBe(25);
-    expect(hits / 25000).toBeGreaterThan(0.035);
-    expect(hits / 25000).toBeLessThan(0.045);
+  it("hit packs: 8 bulk + 3 mid + one $4–$9.99 card, summed $5–$11", () => {
+    const pool = [...fitting(), ...many(3, 6, "h"), ...many(2, 12, "x")];
+    const p = drawPack(pool, seeded(), 400, "hit")!;
+    expect(p.ids.filter((id) => id.startsWith("h"))).toHaveLength(1);
+    expect(p.ids.filter((id) => id.startsWith("t") || id.startsWith("x"))).toHaveLength(0);
+    expect(p.value).toBeGreaterThanOrEqual(5);
+    expect(p.value).toBeLessThanOrEqual(11);
+    // A $9.99 hit with $0.24 bulk and $0.74 mid would be $14.13: over the band, never built.
+    expect(drawPack([...many(8, 0.24, "b"), ...many(3, 0.74, "m"), ...many(1, 9.99, "h")], seeded(), 50, "hit")).toBe(null);
+    expect(slotOf(4)).toBe("hit");
+    expect(slotOf(3.99)).toBe("bump");
+    expect(showable({ value: 6.5, kind: "hit" })).toBe(true);
+    expect(showable({ value: 12, kind: "hit" })).toBe(false);
+  });
+});
+
+describe("pack mix", () => {
+  /** Build `n` packs in a row with the mix rule and an always-stocked pool. */
+  function run(n: number, o: { chaseOn: boolean; hitCards?: boolean; readyCap?: boolean }) {
+    const recent: PackKind[] = [];
+    const counts = { base: 0, hit: 0, chase: 0 };
+    for (let i = 0; i < n; i++) {
+      const k = nextKind({ recent, ready: { total: o.readyCap ? 10 : 0, hit: o.readyCap ? 3 : 0 }, hitCards: o.hitCards ?? true, chaseOn: o.chaseOn, chaseCards: true });
+      recent.unshift(k);
+      counts[k]++;
+    }
+    return { counts, last100: recent.slice(0, 100) };
+  }
+
+  it("80 base / 18 hit / 2 chase over the last 100, chase only with the flag on", () => {
+    const on = run(400, { chaseOn: true }).last100;
+    expect(on.filter((k) => k === "hit")).toHaveLength(18);
+    expect(on.filter((k) => k === "chase")).toHaveLength(2);
+    expect(on.filter((k) => k === "base")).toHaveLength(80);
+    const off = run(400, { chaseOn: false }).last100;
+    expect(off.filter((k) => k === "chase")).toHaveLength(0);
+    expect(off.filter((k) => k === "hit")).toHaveLength(18);
+  });
+
+  it("stops placing $4+ cards past 20% of the last 100 or a fifth of the ready queue", () => {
+    const heavy: PackKind[] = [...Array(25).fill("hit"), ...Array(74).fill("base")];
+    expect(nextKind({ recent: heavy, ready: { total: 0, hit: 0 }, hitCards: true, chaseOn: false, chaseCards: false })).toBe("base");
+    expect(run(200, { chaseOn: false, readyCap: true }).counts.hit).toBe(0); // 3 of 10 ready are already hits
+    expect(run(200, { chaseOn: false, hitCards: false }).counts.hit).toBe(0); // no $4+ cards in stock
+  });
+
+  it("a kept hit still counts: the window is every built pack, whatever happened to it", () => {
+    const recent: PackKind[] = [...Array(18).fill("hit"), ...Array(81).fill("base")];
+    expect(nextKind({ recent, ready: { total: 0, hit: 0 }, hitCards: true, chaseOn: false, chaseCards: false })).toBe("base");
   });
 });
 
@@ -111,15 +153,16 @@ describe("game copy and prices", () => {
     expect(PRICES.reveal + PRICES.keepMore).toBeCloseTo(PRICES.keepTotal, 10);
   });
 
-  it("odds: the same five lines for peek and blind; the chase line follows the flag", () => {
+  it("odds: the same lines for peek and blind; the hit line always, the $10 line only with chase on", () => {
     const base = [
       "8 of 12 cards are bulk, usually under $0.25",
       "3 are modest, usually $0.25 to $0.75",
       "1 is the best card in the pack, usually $0.75 to $2",
       "Pack value is usually under the keep price",
+      "About 18 in 100 packs contain a card priced from $4 to $10.",
     ];
     expect(oddsLines(false)).toEqual([...base, "Chase cards are not in packs until that feature is turned on"]);
-    expect(oddsLines(true)).toEqual([...base, "About 1 in 25 packs contains a card priced at $10 or more."]);
+    expect(oddsLines(true)).toEqual([...base, "About 2 in 100 packs contain a card priced at $10 or more."]);
   });
 });
 

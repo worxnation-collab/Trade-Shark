@@ -140,6 +140,15 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
+/* Reveal game: cards rise into place (no flip, no spin). */
+.card-in {
+  animation: card-in 420ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  animation-delay: calc(var(--i) * 55ms);
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
 /* Reveal game: the Keep button pulses at 10 s and 20 s (the pack nudges with .ls-nudge). Never the whole screen. */
 .keep-pulse {
   animation: keep-pulse 900ms ease-in-out 2;
@@ -181,6 +190,7 @@ kbd {
     transform: none !important;
   }
   .ls-card,
+  .card-in,
   .keep-pulse,
   .ls-buy,
   .ls-flip,

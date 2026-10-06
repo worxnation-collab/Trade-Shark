@@ -31,12 +31,15 @@ export default async function PackPage({ params }: { params: Promise<{ category:
         product={cat.product}
         odds={oddsLines(state.chaseOn)}
         open={state.open}
+        opensAt={state.opensAt ? new Date(state.opensAt).toISOString() : null}
         hasCard={state.hasCard}
+        member={state.member}
+        stackLeft={state.stackLeft}
         cardLabel={state.signedIn ? state.cardLabel : null}
         lockedUntil={state.lockedUntil ? new Date(state.lockedUntil).toISOString() : null}
         revealing={
           state.revealing && state.revealing.category === category
-            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack }
+            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack, ship: state.revealing.ship }
             : null
         }
         serverNow={new Date().toISOString()}

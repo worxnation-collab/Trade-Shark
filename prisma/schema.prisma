@@ -107,11 +107,13 @@ model Card {
   wowScore Int    @default(0)
   wowTags  String @default("") // comma list: art, chase, graded, newest
 
-  lilStackId String?
-  lilStack   LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
+  lilStackId   String?
+  lilStack     LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
   // The reveal game: the built pack this card sits in (available / reserved / kept / sold-blind).
-  gamePackId String?
-  gamePack   GamePack? @relation(fields: [gamePackId], references: [id], onDelete: SetNull)
+  gamePackId   String?
+  gamePack     GamePack? @relation(fields: [gamePackId], references: [id], onDelete: SetNull)
+  // The scan presented as a finished card (straightened, trimmed, rounded border, soft shadow). Never redrawn.
+  frontDisplay String?
 
   // identification
   identSource      String? // filename | manifest | pasted | pokemontcg | scryfall | vision:anthropic | vision:openai | manual
@@ -267,34 +269,53 @@ model Setting {
 
 /// A player: a Stripe customer with a saved card. No password; the browser holds a signed cookie.
 model Buyer {
-  id               String       @id @default(cuid())
-  createdAt        DateTime     @default(now())
-  email            String
-  name             String
-  shipTo           String // JSON name + address, for fulfillment
-  tz               String // IANA zone from their browser at signup; locks end at its local midnight
-  stripeCustomerId String       @unique
-  paymentMethodId  String?
-  cardFingerprint  String? // locks follow the card too, so a fresh cookie doesn't reset them
-  cardLabel        String? // "Visa ·· 4242"
-  cycles           GameCycle[]
-  charges          GameCharge[]
-  locks            GameLock[]
+  id                   String       @id @default(cuid())
+  createdAt            DateTime     @default(now())
+  email                String
+  name                 String
+  shipTo               String // JSON name + address, for fulfillment
+  tz                   String // IANA zone from their browser at signup; locks end at its local midnight
+  stripeCustomerId     String       @unique
+  paymentMethodId      String?
+  cardFingerprint      String? // locks follow the card too, so a fresh cookie doesn't reset them
+  cardLabel            String? // "Visa ·· 4242"
+  // EasyPost-verified ship-to address (verified at signup and again at checkout).
+  easypostAddressId    String?
+  addressVerified      Boolean      @default(false)
+  // Membership ($7.99/mo Stripe subscription). Status is re-read from Stripe at most hourly.
+  memberSubscriptionId String?
+  memberStatus         String? // active | trialing | past_due | canceled | …
+  memberPeriodStart    DateTime?
+  memberUntil          DateTime?
+  memberCancelAtEnd    Boolean      @default(false)
+  memberCheckedAt      DateTime?
+  orders               ShipOrder[]
+  perks                MemberPerk[]
+  cycles               GameCycle[]
+  charges              GameCharge[]
+  locks                GameLock[]
 
   @@index([cardFingerprint])
 }
 
-/// A built pack for the reveal game: 12 cards of one category, 8 bulk + 3 mid + 1 top, value $1.80–$2.40.
+/// A built pack for the reveal game: 12 cards of one category. Base: 8 bulk + 3 mid + 1 top, $1.80–$2.40. Hit: 8 bulk + 3 mid + one $4–$9.99 card, $5–$11. Chase: a $10+ card in the top slot.
 model GamePack {
-  id             String    @id @default(cuid())
+  id             String     @id @default(cuid())
+  number         Int? // permanent pack number within its category ("Pokemon Pack 12")
+  kind           String     @default("base") // base | hit | chase | member
+  hitCardId      String? // the one $4–$9.99 card in a hit pack (or the $2–$4 top of a member stack)
+  publicAt       DateTime   @default(now()) // a new drop is members-only until this time
+  locationNote   String? // where the physical stack sits, for the pull sheet
+  orderId        String?
+  order          ShipOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
   category       String // baseball | football | pokemon
   cardIds        String[]
   cards          Card[]
   value          Float // summed engine prices of the 12 cards
-  status         String    @default("available") // available | reserved | kept | expired | sold-blind | dissolved
-  chase          Boolean   @default(false) // top slot swapped for a $10+ chase card (flag on only)
+  status         String     @default("available") // available | reserved | kept | expired | sold-blind | dissolved
+  chase          Boolean    @default(false) // top slot swapped for a $10+ chase card (flag on only)
   chaseCardId    String?
-  builtAt        DateTime  @default(now())
+  builtAt        DateTime   @default(now())
   reservedBy     String? // Buyer id; nobody else ever sees a reserved pack
   reservedAt     DateTime?
   closedAt       DateTime?
@@ -304,24 +325,28 @@ model GamePack {
   trackingNumber String?
   shippedAt      DateTime?
 
+  @@unique([category, number])
   @@index([category, status])
   @@index([reservedBy])
+  @@index([orderId])
 }
 
 /// One play: $1 reveal → keep ($2.99) / pass → optional blind ($4.99). Or a blind buy after a pass.
 model GameCycle {
-  id         String       @id @default(cuid())
-  buyerId    String
-  buyer      Buyer        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  category   String
-  kind       String // peek | blind
-  status     String // revealing | kept | passed | expired | blind-bought | failed
-  packId     String?
-  revealedAt DateTime?
-  deadline   DateTime? // reveal + 30 s; keep is refused after it
-  endedAt    DateTime?
-  createdAt  DateTime     @default(now())
-  charges    GameCharge[]
+  id          String       @id @default(cuid())
+  buyerId     String
+  buyer       Buyer        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  category    String
+  kind        String // peek | blind
+  member      Boolean      @default(false) // this reveal used the monthly member stack
+  shipQuoteId String?
+  status      String // revealing | kept | passed | expired | blind-bought | failed
+  packId      String?
+  revealedAt  DateTime?
+  deadline    DateTime? // reveal + 30 s; keep is refused after it
+  endedAt     DateTime?
+  createdAt   DateTime     @default(now())
+  charges     GameCharge[]
 
   @@index([buyerId, status])
 }
@@ -355,4 +380,57 @@ model GameLock {
 
   @@index([buyerId, category])
   @@index([fingerprint, category])
+}
+
+/// One shipping price shown to a player before Keep or a blind buy: USPS Ground Advantage for the fixed parcel.
+model ShipQuote {
+  id          String    @id @default(cuid())
+  buyerId     String
+  amount      Float // what the player pays for shipping (0 = rides with an open order, or the member mailer credit)
+  how         String // rate | join | credit | fallback
+  shipmentId  String? // EasyPost shipment the rate came from
+  rateId      String?
+  rateAmount  Float? // what EasyPost charges me for the label
+  joinOrderId String?
+  error       String?
+  createdAt   DateTime  @default(now())
+  usedAt      DateTime?
+
+  @@index([buyerId])
+}
+
+/// A parcel: up to 3 packs, one label. The first pack pays shipping; packs 2–3 ride along while it hasn't shipped.
+model ShipOrder {
+  id              String     @id @default(cuid())
+  buyerId         String
+  buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  packs           GamePack[]
+  shipTo          String // JSON name + address at purchase
+  shippingCharged Float // what the player paid for shipping
+  how             String // rate | credit | fallback
+  shipmentId      String?
+  rateId          String?
+  labelCost       Float?
+  labelPath       String? // stored PDF (private bucket)
+  labelError      String?
+  trackingCode    String?
+  trackingUrl     String?
+  emailedAt       DateTime?
+  emailError      String?
+  createdAt       DateTime   @default(now())
+  shippedAt       DateTime?
+
+  @@index([buyerId, shippedAt])
+}
+
+/// Member perks used, one row per kind per billing period (mailer credit, member stack).
+model MemberPerk {
+  id        String   @id @default(cuid())
+  buyerId   String
+  buyer     Buyer    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  kind      String // mailer | stack
+  period    String // billing period start, ISO date
+  createdAt DateTime @default(now())
+
+  @@unique([buyerId, kind, period])
 }

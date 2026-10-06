@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { CATEGORY_KEYS, type Category } from "../categories";
 import { db } from "../db";
 import { getSettings } from "../settings";
-import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPacks, rollChase, round2, showable, shortages, slotOf, type Rng } from "./rules";
+import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
 
 /**
  * Built packs for the reveal game, per category. Packs are drawn ahead of time from stock, so a purchase only
@@ -24,42 +24,96 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   lilStackId: null,
 });
 
-/** Stock, by bin, for one category. Chase-priced cards are counted on their own and never drawn into normal packs. */
+/** A new drop is members-only for this long. */
+export const EARLY_ACCESS_MS = 60 * 60 * 1000;
+
+/** Stock, by bin, for one category. Chase-priced cards wait on the chase list until that flag is on. */
 export async function bins(category: Category) {
   const cards = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true } });
-  const out = { bulk: 0, mid: 0, top: 0, between: 0, chase: 0 };
+  const out = { bulk: 0, mid: 0, top: 0, bump: 0, hit: 0, chase: 0 };
   for (const c of cards) {
     const s = slotOf(c.listPrice);
-    if (s === "bulk" || s === "mid" || s === "top" || s === "chase") out[s]++;
-    else out.between++;
+    if (s) out[s]++;
   }
   return { ...out, short: shortages(cards.map((c) => ({ id: c.id, price: c.listPrice! }))) };
 }
 
-/** Draw new packs for one category until it has AVAILABLE_TARGET available, or the bins run out. */
-export async function buildGamePacks(category: Category, rng: Rng = cryptoRng) {
-  const available = await db.gamePack.count({ where: { category, status: "available" } });
-  const want = Math.max(0, AVAILABLE_TARGET - available);
-  if (!want) return { category, built: 0, available };
-  const pool = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true }, orderBy: { createdAt: "asc" } });
-  const drawn = drawPacks(pool.map((c) => ({ id: c.id, price: c.listPrice! })), want, rng);
-  let built = 0;
-  for (const p of drawn) {
-    // Claim the cards only if they're still free (a save or another build may have taken one).
-    const ok = await db.$transaction(async (tx) => {
-      const pack = await tx.gamePack.create({ data: { category, cardIds: p.ids, value: p.value } });
-      const n = await tx.card.updateMany({ where: { id: { in: p.ids }, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: pack.id, status: "LilStack" } });
-      if (n.count !== p.ids.length) throw new Error("card taken");
-      return true;
-    }).catch(() => false);
-    if (ok) built++;
-  }
-  return { category, built, available: available + built };
+/** Kinds of the packs built in a category, newest first (the mix window). Dissolved packs never counted. */
+async function recentKinds(category: string) {
+  const rows = await db.gamePack.findMany({ where: { category, status: { not: "dissolved" } }, orderBy: { builtAt: "desc" }, take: 99, select: { kind: true } });
+  return rows.map((r) => r.kind as PackKind);
 }
 
-export async function buildAllGamePacks() {
+/**
+ * Draw new packs for one category until it has AVAILABLE_TARGET ready, or the bins run out.
+ * Each pack's kind comes from the 80 / 18 / 2 mix (`nextKind`); a hit or chase pack that can't be drawn falls back
+ * to base. `drop: true` (a batch finished, or I pressed Draw packs) makes the new packs members-only for an hour.
+ */
+export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop?: boolean; now?: Date } = {}) {
+  const rng = opts.rng ?? cryptoRng;
+  const now = opts.now ?? new Date();
+  const ready = await db.gamePack.findMany({ where: { category, status: "available" }, select: { kind: true } });
+  const want = Math.max(0, AVAILABLE_TARGET - ready.length);
+  if (!want) return { category, built: 0, available: ready.length, kinds: {} as Record<string, number> };
+  const settings = await getSettings();
+  const chaseOn = !!settings.chaseOn?.[category];
+  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true }, orderBy: { createdAt: "asc" } });
+  const left = new Map<string, PoolCard>(rows.map((c) => [c.id, { id: c.id, price: c.listPrice! }]));
+  const recent = await recentKinds(category);
+  const readyCount = { total: ready.length, hit: ready.filter((p) => p.kind === "hit").length };
+  let number = (await db.gamePack.aggregate({ where: { category }, _max: { number: true } }))._max.number ?? 0;
+  const kinds: Record<string, number> = {};
+  let built = 0;
+  while (built < want) {
+    const pool = [...left.values()];
+    const has = (bin: string) => pool.some((c) => slotOf(c.price) === bin);
+    let kind = nextKind({ recent, ready: readyCount, hitCards: has("hit"), chaseOn, chaseCards: has("chase") });
+    let p = drawPack(pool, rng, 400, kind);
+    if (!p && kind !== "base") {
+      kind = "base";
+      p = drawPack(pool, rng, 400, "base");
+    }
+    if (!p) break;
+    const draw = p;
+    number++;
+    // Claim the cards only if they're still free (a save or another build may have taken one).
+    const ok = await db
+      .$transaction(async (tx) => {
+        const pack = await tx.gamePack.create({
+          data: {
+            category,
+            number,
+            kind,
+            cardIds: draw.ids,
+            value: draw.value,
+            hitCardId: kind === "base" ? null : draw.best,
+            chase: kind === "chase",
+            chaseCardId: kind === "chase" ? draw.best : null,
+            publicAt: opts.drop ? new Date(now.getTime() + EARLY_ACCESS_MS) : now,
+          },
+        });
+        const n = await tx.card.updateMany({ where: { id: { in: draw.ids }, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: pack.id, status: "LilStack" } });
+        if (n.count !== draw.ids.length) throw new Error("card taken");
+        return true;
+      })
+      .catch(() => false);
+    draw.ids.forEach((id) => left.delete(id));
+    if (!ok) {
+      number = (await db.gamePack.aggregate({ where: { category }, _max: { number: true } }))._max.number ?? number;
+      continue;
+    }
+    built++;
+    recent.unshift(kind);
+    readyCount.total++;
+    if (kind === "hit") readyCount.hit++;
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return { category, built, available: ready.length + built, kinds };
+}
+
+export async function buildAllGamePacks(opts: { drop?: boolean } = {}) {
   const out = [];
-  for (const c of CATEGORY_KEYS) out.push(await buildGamePacks(c));
+  for (const c of CATEGORY_KEYS) out.push(await buildGamePacks(c, opts));
   return out;
 }
 
@@ -89,60 +143,76 @@ export async function chaseList(category: Category) {
 }
 
 /**
- * Reserve one available pack for a player. Peek and blind use this same call, so they share packs and odds.
- * With the chase flag on, 1 in 25 reservations swaps the top slot for a chase card (capped while reserved).
+ * Reserve one ready pack for a player, at random. Peek and blind use this same call and the same queue, so they
+ * share packs and odds. A new drop is members-only for its first hour. Only one chase pack per category can be
+ * reserved at a time. `memberStack`: the member's monthly stack, a base pack with its top slot bumped to $2–$4.
  */
-export async function reservePack(category: Category, buyerId: string, rng: Rng = cryptoRng) {
-  const s = await getSettings();
-  const chaseOn = !!s.chaseOn?.[category];
+export async function reservePack(category: Category, buyerId: string, opts: { rng?: Rng; member?: boolean; memberStack?: boolean; now?: Date } = {}) {
+  const rng = opts.rng ?? cryptoRng;
+  const now = opts.now ?? new Date();
   for (let attempt = 0; attempt < 5; attempt++) {
-    const candidates = (await db.gamePack.findMany({ where: { category, status: "available" }, select: { id: true, value: true, chase: true } })).filter(showable);
+    const chaseBusy = (await db.gamePack.count({ where: { category, status: "reserved", kind: "chase" } })) >= CHASE_RESERVE_CAP;
+    const candidates = (
+      await db.gamePack.findMany({
+        where: { category, status: "available", ...(opts.member ? {} : { publicAt: { lte: now } }) },
+        select: { id: true, value: true, kind: true },
+      })
+    ).filter((p) => showable(p) && !(chaseBusy && p.kind === "chase") && (!opts.memberStack || p.kind === "base"));
     if (!candidates.length) return null;
     const pick = candidates[rng(candidates.length)];
-    const n = await db.gamePack.updateMany({ where: { id: pick.id, status: "available" }, data: { status: "reserved", reservedBy: buyerId, reservedAt: new Date() } });
+    const n = await db.gamePack.updateMany({ where: { id: pick.id, status: "available" }, data: { status: "reserved", reservedBy: buyerId, reservedAt: now } });
     if (!n.count) continue; // someone else got it first
-    if (chaseOn && rollChase(rng)) await swapInChase(pick.id, category, rng);
-    return db.gamePack.findUniqueOrThrow({ where: { id: pick.id } });
+    const bumped = opts.memberStack ? await bumpTopSlot(pick.id, category, rng) : false;
+    return { pack: await db.gamePack.findUniqueOrThrow({ where: { id: pick.id } }), bumped };
   }
   return null;
 }
 
-/** Swap the top-slot card of a just-reserved pack for a chase card, if the cap and the list allow. */
-async function swapInChase(packId: string, category: Category, rng: Rng) {
-  const live = await db.gamePack.count({ where: { category, status: "reserved", chase: true } });
-  if (live >= CHASE_RESERVE_CAP) return false;
-  const chase = (await chaseList(category)).filter((c) => c.eligible);
-  if (!chase.length) return false;
-  const card = chase[rng(chase.length)];
+/** The member stack: swap the top-slot card of a just-reserved base pack for a $2.01–$3.99 card from stock. */
+async function bumpTopSlot(packId: string, category: Category, rng: Rng) {
+  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true } })).filter((c) => slotOf(c.listPrice) === "bump");
+  if (!pool.length) return false;
+  const card = pool[rng(pool.length)];
   return db
     .$transaction(async (tx) => {
       const pack = await tx.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
       const top = pack.cards.find((c) => slotOf(c.listPrice) === "top");
       if (!top) throw new Error("no top slot");
       const took = await tx.card.updateMany({ where: { id: card.id, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: packId, status: "LilStack" } });
-      if (!took.count) throw new Error("chase card taken");
+      if (!took.count) throw new Error("bump card taken");
       await tx.card.update({ where: { id: top.id }, data: { gamePackId: null, status: "Priced" } });
       const cardIds = pack.cardIds.map((id) => (id === top.id ? card.id : id));
       const value = round2(pack.cards.reduce((n, c) => n + (c.id === top.id ? card.listPrice! : c.listPrice ?? 0), 0));
-      await tx.gamePack.update({ where: { id: packId }, data: { cardIds, value, chase: true, chaseCardId: card.id } });
+      await tx.gamePack.update({ where: { id: packId }, data: { cardIds, value, kind: "member", hitCardId: card.id } });
       return true;
     })
     .catch(() => false);
 }
 
-/** Turning a category's chase flag off: no chase pack may stay up. Only reserved ones can hold one; leave those to finish. */
+/** Chase on/off for a category. Off: ready chase packs are taken apart (a reserved one finishes its 30 s). */
 export async function setChase(category: Category, on: boolean) {
   const { saveSettings } = await import("../settings");
   const s = await getSettings();
   if (on && !(await chaseList(category)).length) throw new Error("Scan at least one card priced $10 or more in this category first.");
   await saveSettings({ chaseOn: { ...s.chaseOn, [category]: on } });
+  if (!on) for (const p of await db.gamePack.findMany({ where: { category, status: "available", kind: "chase" }, select: { id: true } })) await releasePack(p.id, "dissolved", ["available"]);
 }
 
-/** Whether a new game can start in a category, and why not. */
-export async function categoryStatus(category: Category) {
+/** Whether a new game can start in a category (members see a new drop an hour early), and when it opens to everyone. */
+export async function categoryStatus(category: Category, member = false, now = new Date()) {
   const s = await getSettings();
-  const available = (await db.gamePack.findMany({ where: { category, status: "available" }, select: { value: true, chase: true } })).filter(showable).length;
-  return { category, available, open: available > 0, chaseOn: !!s.chaseOn?.[category] };
+  const ready = (await db.gamePack.findMany({ where: { category, status: "available" }, select: { value: true, kind: true, publicAt: true } })).filter(showable);
+  const pub = ready.filter((p) => p.publicAt <= now);
+  const early = ready.filter((p) => p.publicAt > now);
+  const available = member ? ready.length : pub.length;
+  return {
+    category,
+    available,
+    open: available > 0,
+    chaseOn: !!s.chaseOn?.[category],
+    earlyCount: early.length,
+    opensAt: !pub.length && early.length ? new Date(Math.min(...early.map((p) => p.publicAt.getTime()))) : null,
+  };
 }
 
 /** The 12 cards a player may see for a pack: name, set, engine price, in pack order. */
@@ -161,8 +231,10 @@ export async function packView(packId: string) {
       setName: [c.year, c.setName].filter(Boolean).join(" ") || null,
       price: c.listPrice ?? 0,
       chase: c.id === pack.chaseCardId,
+      hit: c.id === pack.hitCardId && pack.kind === "hit",
+      bumped: c.id === pack.hitCardId && pack.kind === "member",
     }))
     .sort((a, b) => a.price - b.price); // best card last: the reveal builds to it
-  return { id: pack.id, category: pack.category, value: pack.value, chase: pack.chase, cards };
+  return { id: pack.id, number: pack.number, kind: pack.kind, category: pack.category, value: pack.value, chase: pack.chase, cards };
 }
 export type PackView = Awaited<ReturnType<typeof packView>>;

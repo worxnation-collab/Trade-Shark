@@ -59,7 +59,7 @@ export async function retireOldLinks(api: PaymentLinkApi | null = linkApi()) {
 export async function refreshPacks() {
   const sorted = await categorizeAll();
   const retired = await retireOldLinks();
-  const built = await buildAllGamePacks();
+  const built = await buildAllGamePacks({ drop: true }); // a new drop: members get the first hour
   return { sorted, retired, built, categories: CATEGORY_KEYS };
 }
 

@@ -7,7 +7,14 @@ export const runtime = "nodejs";
 /** Mark a sold card or Lil' Stack shipped. Bubble mailers take a tracking number; envelopes have none. */
 export const POST = guarded(async (req: Request) => {
   const b = (await req.json()) as { kind?: string; id?: string; tracking?: string };
-  if (!b.id || !["card", "stack", "game"].includes(b.kind ?? "")) return NextResponse.json({ ok: false, error: "kind (card|stack|game) and id required" }, { status: 400 });
+  if (!b.id || !["card", "stack", "game", "parcel"].includes(b.kind ?? "")) return NextResponse.json({ ok: false, error: "kind (card|stack|game|parcel) and id required" }, { status: 400 });
+  if (b.kind === "parcel") {
+    // The label already carries tracking; this just records the drop-off.
+    const o = await db.shipOrder.findUnique({ where: { id: b.id } });
+    if (!o?.labelPath) return NextResponse.json({ ok: false, error: "Buy the label first." }, { status: 400 });
+    await db.shipOrder.update({ where: { id: b.id }, data: { shippedAt: new Date() } });
+    return NextResponse.json({ ok: true });
+  }
   if (b.kind === "game") {
     // Reveal-game packs ship in a tracked bubble mailer.
     const p = await db.gamePack.findUnique({ where: { id: b.id } });
