@@ -299,7 +299,7 @@ model Buyer {
   @@index([cardFingerprint])
 }
 
-/// A built pack for the reveal game: 12 cards of one category. Base: 8 bulk + 3 mid + 1 top, $1.80–$2.40. Hit: 8 bulk + 3 mid + one $4–$9.99 card, $5–$11. Chase: a $10+ card in the top slot.
+/// A built pack for the reveal game: 12 cards of one category. Base: 7 bulk + 4 mid + 1 top, $3.20–$3.80. Hit: 7 bulk + 4 mid + one $4–$9.99 card, $5–$12. Chase: a $10+ card in the top slot.
 model GamePack {
   id             String     @id @default(cuid())
   number         Int? // permanent pack number within its category ("Pokemon Pack 12")
@@ -307,7 +307,7 @@ model GamePack {
   hitCardId      String? // the one $4–$9.99 card in a hit pack (or the $2–$4 top of a member stack)
   publicAt       DateTime   @default(now()) // a new drop is members-only until this time
   locationNote   String? // where the physical stack sits, for the pull sheet
-  orderId        String?
+  orderId        String? // null on a kept / blind pack = stored in the player's Collection, not shipped yet
   order          ShipOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
   category       String // baseball | football | pokemon
   cardIds        String[]
@@ -360,7 +360,8 @@ model GameCharge {
   buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   cycleId         String?
   cycle           GameCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  kind            String // reveal | keep | blind | refund
+  ref             String? // shipping charges: the parcel (ShipOrder id), for the idempotency key
+  kind            String // reveal | keep | blind | ship | refund
   amount          Float
   paymentIntentId String?
   status          String // succeeded | failed
@@ -384,7 +385,7 @@ model GameLock {
   @@index([fingerprint, category])
 }
 
-/// One shipping price shown to a player before Keep or a blind buy: USPS Ground Advantage for the fixed parcel.
+/// One shipping price shown in Collection → Ship: USPS Ground Advantage for one parcel holding the selected packs.
 model ShipQuote {
   id          String    @id @default(cuid())
   buyerId     String
@@ -393,7 +394,8 @@ model ShipQuote {
   shipmentId  String? // EasyPost shipment the rate came from
   rateId      String?
   rateAmount  Float? // what EasyPost charges me for the label
-  joinOrderId String?
+  joinOrderId String? // retired: packs no longer join a parcel at purchase
+  packIds     String[] // the stored packs this quote ships together (Collection → Ship)
   error       String?
   createdAt   DateTime  @default(now())
   usedAt      DateTime?
@@ -401,7 +403,7 @@ model ShipQuote {
   @@index([buyerId])
 }
 
-/// A parcel: up to 3 packs, one label. The first pack pays shipping; packs 2–3 ride along while it hasn't shipped.
+/// A parcel: the packs a player picked in Collection → Ship, one label, shipping charged on its own.
 model ShipOrder {
   id              String     @id @default(cuid())
   buyerId         String
@@ -409,6 +411,7 @@ model ShipOrder {
   packs           GamePack[]
   shipTo          String // JSON name + address at purchase
   shippingCharged Float // what the player paid for shipping
+  paymentIntentId String? // the shipping-only charge
   how             String // rate | credit | fallback
   shipmentId      String?
   rateId          String?

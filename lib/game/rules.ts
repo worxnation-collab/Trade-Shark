@@ -4,20 +4,23 @@
  */
 
 export const PACK_CARDS = 12;
-export const SLOTS = { bulk: 8, mid: 3, top: 1 } as const;
+export const SLOTS = { bulk: 7, mid: 4, top: 1 } as const;
 export type Slot = keyof typeof SLOTS;
 
 /**
- * Value bins, in dollars. Bulk < 0.25 ≤ mid < 0.75 ≤ top ≤ 2.00 < bump < 4.00 ≤ hit < 10 ≤ chase.
- * Bump cards ($2.01–$3.99) only ever sit in the top slot of a member stack.
+ * Value bins, in dollars. Bulk < 0.25 ≤ mid < 1.00 ≤ top < 4.00 ≤ hit < 10 ≤ chase.
+ * The top slot is usually a $1–$2 card; the band below decides what fits. A member stack swaps its top slot for a
+ * $2.01–$3.99 card (`BUMP`). Nothing $4 or more ever goes in a base pack.
  */
-export const BIN = { midFrom: 0.25, topFrom: 0.75, topTo: 2, hitFrom: 4, chaseFrom: 10 } as const;
-/** A base pack's summed value must land here; otherwise the draw is thrown out and drawn again. */
-export const TARGET = { min: 1.8, max: 2.4 } as const;
-/** A hit pack: one $4–$9.99 card plus 8 bulk and 3 mid, summed $5–$11. */
-export const HIT_TARGET = { min: 5, max: 11 } as const;
+export const BIN = { midFrom: 0.25, topFrom: 1, hitFrom: 4, chaseFrom: 10 } as const;
+/** The member stack's top-slot swap. */
+export const BUMP = { from: 2.01, to: 3.99 } as const;
+/** A base pack's summed value must land here (close to the $3.99 keep); otherwise the draw is thrown out and drawn again. */
+export const TARGET = { min: 3.2, max: 3.8 } as const;
+/** A hit pack: one $4–$9.99 card plus 7 bulk and 4 mid. */
+export const HIT_TARGET = { min: 5, max: 12 } as const;
 /** Never show or sell a base pack above this. Hit, chase and member packs have their own rules. */
-export const HARD_CAP = 3.5;
+export const HARD_CAP = TARGET.max;
 
 /** The mix over the last 100 built packs in a category. */
 export const MIX = { window: 100, hit: 18, chase: 2 } as const;
@@ -41,17 +44,17 @@ export const RULES_LINE = "$1 to reveal. Keep for $2.99 more. Pass, or let the t
 /** The odds shown before anyone pays the $1. Peeked and blind packs share them. */
 export function oddsLines(chaseOn: boolean): string[] {
   return [
-    "8 of 12 cards are bulk, usually under $0.25",
-    "3 are modest, usually $0.25 to $0.75",
-    "1 is the best card in the pack, usually $0.75 to $2",
-    "Pack value is usually under the keep price",
+    "7 of 12 cards are bulk, usually under $0.25",
+    "4 are modest, usually $0.25 to $1",
+    "1 is the best card in the pack, usually $1 to $2",
+    "Pack value is usually close to the $3.99 keep price",
     "About 18 in 100 packs contain a card priced from $4 to $10.",
     // Flag off: $10+ cards never go in packs, and the odds say so. Flag on: the $10 line replaces it.
     chaseOn ? "About 2 in 100 packs contain a card priced at $10 or more." : "Chase cards are not in packs until that feature is turned on",
   ];
 }
 
-export type Bin = Slot | "bump" | "hit" | "chase";
+export type Bin = Slot | "hit" | "chase";
 
 export function slotOf(price: number | null | undefined): Bin | null {
   if (price == null || !(price >= 0)) return null;
@@ -59,9 +62,10 @@ export function slotOf(price: number | null | undefined): Bin | null {
   if (price >= BIN.hitFrom) return "hit";
   if (price < BIN.midFrom) return "bulk";
   if (price < BIN.topFrom) return "mid";
-  if (price <= BIN.topTo) return "top";
-  return "bump"; // $2.01–$3.99: only the top slot of a member stack
+  return "top"; // $1–$3.99
 }
+
+export const isBump = (price: number | null | undefined) => price != null && price >= BUMP.from && price <= BUMP.to;
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
 export const sumValue = (prices: number[]) => round2(prices.reduce((a, b) => a + b, 0));
@@ -108,7 +112,7 @@ export function shortages(pool: PoolCard[]): Shortage[] {
 }
 
 function binsOf(pool: PoolCard[]) {
-  const bins: Record<Bin, PoolCard[]> = { bulk: [], mid: [], top: [], bump: [], hit: [], chase: [] };
+  const bins: Record<Bin, PoolCard[]> = { bulk: [], mid: [], top: [], hit: [], chase: [] };
   for (const c of pool) {
     const b = slotOf(c.price);
     if (b) bins[b].push(c);
@@ -117,7 +121,7 @@ function binsOf(pool: PoolCard[]) {
 }
 
 /**
- * Draw one pack of a kind, at random: 8 bulk + 3 mid + one "best" card (top for base, $4–$9.99 for hit,
+ * Draw one pack of a kind, at random: 7 bulk + 4 mid + one "best" card (top for base, $4–$9.99 for hit,
  * $10+ for chase). If the total misses that kind's band, throw it out and draw again.
  * Returns null when a slot can't be filled or no draw lands in the band (never pads with the wrong value).
  */
@@ -173,7 +177,7 @@ export function nextKind(o: {
   return "base";
 }
 
-/** Is this a pack the game may show? Base packs stay in the band and under $3.50; hit packs in $5–$11; chase and member stacks by their own build. */
+/** Is this a pack the game may show? Base packs stay in the $3.20–$3.80 band; hit packs in $5–$12; chase and member stacks by their own build. */
 export function showable(p: { value: number; kind?: string; chase?: boolean }) {
   const kind = p.kind ?? (p.chase ? "chase" : "base");
   if (kind === "chase" || kind === "member") return true;

@@ -12,7 +12,7 @@ export const metadata = { title: "Packs" };
 export const dynamic = "force-dynamic";
 
 const nameOf = (c: { game: string; name: string | null; player: string | null }) => (c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed";
-const SLOT_LABEL = { bulk: "bulk (under $0.25)", mid: "mid ($0.25–$0.75)", top: "top ($0.75–$2)" } as const;
+const SLOT_LABEL = { bulk: "bulk (under $0.25)", mid: "mid ($0.25–$0.99)", top: "top ($1–$3.99)" } as const;
 
 /** The reveal game's packs, per category: bins, built packs by status, the chase list and its flag. */
 export default async function PacksAdmin() {

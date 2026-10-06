@@ -4,17 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandClip } from "@/components/BrandClip";
 import { HIT_CLIP, openStill, packStill, passClip, tearClip } from "@/lib/brandAssets";
-import { confetti, pop, reducedMotion as reducedMotionNow } from "@/lib/client/feel";
+import { confetti, pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { NUDGES, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
-import type { ShipLine } from "@/lib/game/ship";
-import { TiltCard } from "./TiltCard";
+import { CardGrid } from "./CardGrid";
 
 type Phase =
   | { k: "intro" }
-  | { k: "revealing"; cycleId: string; deadline: number; pack: PackView; ship: ShipLine | null }
+  | { k: "revealing"; cycleId: string; deadline: number; pack: PackView }
   | { k: "passed"; why: "pass" | "timer" | "left" | "locked" }
-  | { k: "won"; pack: PackView; how: "kept" | "blind"; shipping: number };
+  | { k: "won"; pack: PackView; how: "kept" | "blind" };
 
 export interface GameProps {
   category: string;
@@ -27,12 +26,12 @@ export interface GameProps {
   member: boolean;
   stackLeft: boolean;
   lockedUntil: string | null;
-  revealing: { cycleId: string; deadline: string; pack: PackView | null; ship: ShipLine | null } | null;
+  revealing: { cycleId: string; deadline: string; pack: PackView | null } | null;
   serverNow: string;
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
-type Res = Record<string, unknown> & { ok: boolean; error?: string; code?: string; ship?: ShipLine };
+type Res = Record<string, unknown> & { ok: boolean; error?: string; code?: string };
 const post = async (path: string, body: unknown): Promise<Res> => {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   return (await r.json().catch(() => ({ ok: false, error: r.statusText }))) as Res;
@@ -43,7 +42,7 @@ export function Game(p: GameProps) {
   const skew = useRef(new Date(p.serverNow).getTime() - Date.now());
   const [phase, setPhase] = useState<Phase>(() => {
     if (p.revealing?.pack && p.revealing.cycleId)
-      return { k: "revealing", cycleId: p.revealing.cycleId, deadline: new Date(p.revealing.deadline).getTime(), pack: p.revealing.pack, ship: p.revealing.ship };
+      return { k: "revealing", cycleId: p.revealing.cycleId, deadline: new Date(p.revealing.deadline).getTime(), pack: p.revealing.pack };
     if (p.lockedUntil && !p.member) return { k: "passed", why: "locked" };
     return { k: "intro" };
   });
@@ -51,7 +50,6 @@ export function Game(p: GameProps) {
   const [error, setError] = useState("");
   const [left, setLeft] = useState(TIMER_SECONDS);
   const [nudge, setNudge] = useState(0);
-  const [blindShip, setBlindShip] = useState<ShipLine | null>(null);
   const [stackLeft, setStackLeft] = useState(p.stackLeft);
   // Brand clips: the tear on a reveal (and a blind buy), the puff on a pass, the sparkle over a hit pack.
   const [clip, setClip] = useState<"tear" | "pass" | null>(null);
@@ -80,7 +78,7 @@ export function Game(p: GameProps) {
     pop();
     setClip("tear");
     setHitFx(special(r.pack as PackView) ? "pending" : null);
-    setPhase({ k: "revealing", cycleId: r.cycleId as string, deadline: new Date(r.deadline as string).getTime(), pack: r.pack as PackView, ship: r.ship ?? null });
+    setPhase({ k: "revealing", cycleId: r.cycleId as string, deadline: new Date(r.deadline as string).getTime(), pack: r.pack as PackView });
   }
 
   const passNow = useCallback(async (why: "pass" | "timer") => {
@@ -100,35 +98,24 @@ export function Game(p: GameProps) {
     const r = await post("/api/play/keep", { cycleId: phase.cycleId });
     setBusy("");
     if (!r.ok) {
-      if (r.code === "ship-changed" && r.ship) setPhase({ ...phase, ship: r.ship });
       if (r.code === "expired" || r.code === "closed") setPhase({ k: "passed", why: "timer" });
       return setError(r.error ?? "That didn't work.");
     }
     cycleRef.current = null;
     confetti(keepRef.current);
-    setPhase({ k: "won", pack: r.pack as PackView, how: "kept", shipping: (r.shipping as number) ?? 0 });
+    setPhase({ k: "won", pack: r.pack as PackView, how: "kept" });
   }
-
-  // The blind button shows its one shipping line before anyone pays.
-  useEffect(() => {
-    if (phase.k !== "passed" || blindShip) return;
-    void post("/api/play/ship-quote", {}).then((r) => r.ok && r.ship && setBlindShip(r.ship));
-  }, [phase.k, blindShip]);
 
   async function buyBlind() {
     setBusy("blind");
     setError("");
-    const r = await post("/api/play/blind", { category: p.category, quoteId: blindShip?.quoteId });
+    const r = await post("/api/play/blind", { category: p.category });
     setBusy("");
-    if (!r.ok) {
-      if (r.code === "ship-changed" && r.ship) setBlindShip(r.ship);
-      return setError(r.error ?? "That didn't work.");
-    }
-    setBlindShip(null);
+    if (!r.ok) return setError(r.error ?? "That didn't work.");
     confetti(packRef.current);
     setClip("tear");
     setHitFx(special(r.pack as PackView) ? "pending" : null);
-    setPhase({ k: "won", pack: r.pack as PackView, how: "blind", shipping: (r.shipping as number) ?? 0 });
+    setPhase({ k: "won", pack: r.pack as PackView, how: "blind" });
   }
 
   // The 30 s clock, the two nudges, and expiry. Expiry only removes the choice; it never charges.
@@ -190,8 +177,6 @@ export function Game(p: GameProps) {
   );
 
   const opensAt = p.opensAt ? new Date(p.opensAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
-  const keepTotal = phase.k === "revealing" ? PRICES.keepMore + (phase.ship?.amount ?? 0) : 0;
-  const blindTotal = PRICES.blind + (blindShip?.amount ?? 0);
 
   return (
     <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
@@ -254,19 +239,19 @@ export function Game(p: GameProps) {
           </div>
           {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-teal">Member stack: your best card is bumped.</p>}
           {cardsWithFx(phase.pack)}
-          {/* Stays on screen while you scroll the cards: the clock, the one shipping line and both choices. */}
+          {/* Stays on screen while you scroll the cards: the clock and both choices. */}
           <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-2xl bg-navy-2/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
-            <p className="text-xs text-sand/75">Shipping · {phase.ship?.label ?? "…"}</p>
+            <p className="text-xs text-sand/75">Pack value {usd(phase.pack.value)} · stored in your Collection until you ship</p>
             <p className="text-sm font-semibold text-white">
-              Keep all 12: {usd(PRICES.keepMore)} + {usd(phase.ship?.amount ?? 0)} shipping = {usd(keepTotal)} ·{" "}
+              Keep all 12 for {usd(PRICES.keepMore)} more ({usd(PRICES.keepTotal)} in all) ·{" "}
               <span className={left <= 10 ? "text-coral" : "text-teal"}>{left}s</span>
             </p>
             <div className="flex gap-3">
               <button className="btn-ghost px-5 py-3" disabled={!!busy} onClick={() => passNow("pass")} data-nopop>
                 Pass
               </button>
-              <button ref={keepRef} key={`k${nudge}`} className={`btn-coral px-8 py-3 text-lg ${nudge ? "keep-pulse" : ""}`} disabled={!!busy || !phase.ship} onClick={keepIt} data-pop>
-                {busy === "keep" ? "Keeping…" : `Keep · ${usd(keepTotal)}`}
+              <button ref={keepRef} key={`k${nudge}`} className={`btn-coral px-8 py-3 text-lg ${nudge ? "keep-pulse" : ""}`} disabled={!!busy} onClick={keepIt} data-pop>
+                {busy === "keep" ? "Keeping…" : `Keep · ${usd(PRICES.keepMore)}`}
               </button>
             </div>
           </div>
@@ -284,9 +269,8 @@ export function Game(p: GameProps) {
           <p className="mt-1 max-w-sm text-sm text-sand/75">
             {p.member ? "Members can reveal again right away, or take" : "The only one left for you today is"} a {usd(PRICES.blind)} pack you see after you pay. Same packs, same odds.
           </p>
-          <p className="mt-3 text-xs text-sand/70">Shipping · {blindShip?.label ?? "…"}</p>
-          <button className="btn-coral mt-2 px-7 py-3 text-base" disabled={!!busy || !p.open || !blindShip} onClick={buyBlind} data-pop>
-            {busy === "blind" ? "Opening…" : `Buy a blind pack · ${usd(blindTotal)}`}
+          <button className="btn-coral mt-4 px-7 py-3 text-base" disabled={!!busy || !p.open} onClick={buyBlind} data-pop>
+            {busy === "blind" ? "Opening…" : `Buy a blind pack · ${usd(PRICES.blind)}`}
           </button>
           {p.member && (
             <button className="btn-ghost mt-3 px-5 py-2" disabled={!!busy} onClick={() => reveal()}>
@@ -306,18 +290,27 @@ export function Game(p: GameProps) {
           {clip === "tear" && <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft mb-2 w-40 sm:w-48" />}
           <p className="text-2xl font-extrabold text-white">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
           <p className="mt-1 text-sm text-sand/75">
-            {phase.pack.number ? `Pack ${phase.pack.number}. ` : ""}All 12 cards ship from Florida by USPS Ground Advantage. Tracking comes by email.
+            {phase.pack.number ? `Pack ${phase.pack.number} is` : "It's"} in your{" "}
+            <Link href="/collection" className="underline">
+              Collection
+            </Link>
+            . Ship it whenever you like, on its own or with other packs.
           </p>
           {cardsWithFx(phase.pack)}
-          <button
-            className="btn-coral mt-6 px-7 py-3"
-            onClick={() => {
-              setError("");
-              setPhase({ k: "intro" });
-            }}
-          >
-            Play again
-          </button>
+          <div className="mt-6 flex gap-3">
+            <button
+              className="btn-coral px-7 py-3"
+              onClick={() => {
+                setError("");
+                setPhase({ k: "intro" });
+              }}
+            >
+              Play again
+            </button>
+            <Link href="/collection" className="btn-ghost px-5 py-3">
+              My collection
+            </Link>
+          </div>
         </>
       )}
     </div>
@@ -336,7 +329,7 @@ function Rules({ odds }: { odds: string[] }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-left text-xs text-sand/60">Shipping is one line, USPS Ground Advantage, added when you keep or buy.</p>
+      <p className="mt-2 text-left text-xs text-sand/60">Packs you buy wait in your Collection. Ship one or several together whenever you like; shipping is charged then.</p>
     </div>
   );
 }
@@ -351,55 +344,5 @@ function Timer({ left }: { left: number }) {
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-xl font-extrabold text-white">{left}</span>
     </div>
-  );
-}
-
-/** The 12 real scans. Drag to tilt; tap to open one larger (it tilts there too). */
-function CardGrid({ pack, fx = null, fxEl = null }: { pack: PackView; fx?: string | null; fxEl?: React.ReactNode }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const big = pack.cards.find((c) => c.id === open);
-  // The hit card is dealt last: bring it into view for its sparkle (above the pinned Keep bar).
-  useEffect(() => {
-    if (fx) document.getElementById(`card-${fx}`)?.scrollIntoView({ block: "center", behavior: reducedMotionNow() ? "auto" : "smooth" });
-  }, [fx]);
-  useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
-  }, [open]);
-  return (
-    <>
-      <ul className="mt-6 grid w-full grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 lg:grid-cols-6" aria-label="The 12 cards in this pack">
-        {pack.cards.map((c, i) => (
-          <li key={c.id} id={`card-${c.id}`} className="card-in relative" style={{ "--i": i } as React.CSSProperties}>
-            {fx === c.id && fxEl}
-            <TiltCard src={`/api/play/image/${c.id}`} alt={c.name} onTap={() => setOpen(c.id)} />
-            <p className="-mt-1 truncate text-xs font-semibold text-white">{c.name}</p>
-            <p className="truncate text-[11px] text-sand/60">
-              {usd(c.price)}
-              {c.chase && <span className="ml-1 font-bold text-coral">CHASE</span>}
-              {c.hit && <span className="ml-1 font-bold text-teal">HIT</span>}
-              {c.bumped && <span className="ml-1 font-bold text-teal">MEMBER</span>}
-            </p>
-          </li>
-        ))}
-      </ul>
-      {big && (
-        <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-navy/90 p-6 pb-40 backdrop-blur-sm" onClick={() => setOpen(null)} role="dialog" aria-label={big.name}>
-          <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <TiltCard src={`/api/play/image/${big.id}`} alt={big.name} free />
-          </div>
-          <p className="mt-2 font-semibold text-white">{big.name}</p>
-          <p className="text-sm text-sand/70">
-            {big.setName ? `${big.setName} · ` : ""}
-            {usd(big.price)}
-          </p>
-          <button className="btn-ghost mt-3 px-4 py-1.5" onClick={() => setOpen(null)}>
-            Close
-          </button>
-        </div>
-      )}
-    </>
   );
 }

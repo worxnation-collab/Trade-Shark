@@ -3,7 +3,15 @@
  * Plain fetch with the API key (EASYPOST_API_KEY). Every call has a timeout; callers fall back to $5.95 when it trips.
  */
 export const FROM_ADDRESS = { name: "Trade Shark", street1: "1424 Orchid Lane", city: "Kissimmee", state: "FL", zip: "34744", country: "US" };
-export const PARCEL = { length: 6, width: 4, height: 1, weight: 4 }; // inches, ounces
+export const PARCEL = { length: 6, width: 4, height: 1, weight: 4 }; // inches, ounces: one pack
+/** Each extra pack in the same parcel adds this much weight; every 4 packs add an inch of height. */
+export const EXTRA_PACK_OZ = 1.5;
+
+/** The one parcel for a shipment of `packs` stored packs (same 6 × 4 footprint). */
+export function parcelFor(packs: number) {
+  const n = Math.max(1, Math.floor(packs));
+  return { ...PARCEL, height: PARCEL.height * Math.ceil(n / 4), weight: PARCEL.weight + EXTRA_PACK_OZ * (n - 1) };
+}
 export const SERVICE = { carrier: "USPS", service: "GroundAdvantage", label: "USPS Ground Advantage" } as const;
 export const FALLBACK_SHIPPING = 5.95;
 const TIMEOUT_MS = Number(process.env.EASYPOST_TIMEOUT_MS || 8000);
@@ -65,10 +73,10 @@ export async function verifyAddress(a: ShipToAddress): Promise<{ ok: true; id: s
   }
 }
 
-/** One rate: create the shipment for the fixed parcel and take the USPS Ground Advantage rate. */
-export async function groundAdvantageRate(toAddressId: string) {
+/** One rate: create the shipment for the parcel and take the USPS Ground Advantage rate. */
+export async function groundAdvantageRate(toAddressId: string, parcel: { length: number; width: number; height: number; weight: number } = PARCEL) {
   const s = await ep<{ id: string; rates?: { id: string; carrier: string; service: string; rate: string }[]; messages?: { message: string }[] }>("/shipments", {
-    shipment: { to_address: { id: toAddressId }, from_address: FROM_ADDRESS, parcel: PARCEL, options: { label_format: "PDF" } },
+    shipment: { to_address: { id: toAddressId }, from_address: FROM_ADDRESS, parcel, options: { label_format: "PDF" } },
   });
   const rate = s.rates?.find((r) => r.carrier === SERVICE.carrier && r.service === SERVICE.service);
   if (!rate) throw new EasyPostError(`No USPS Ground Advantage rate${s.messages?.[0] ? `: ${s.messages[0].message}` : ""}`);

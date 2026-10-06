@@ -35,8 +35,8 @@ export default async function OrdersPage() {
       take: 200,
     }),
     db.lilStack.findMany({ where: { status: "sold" }, orderBy: { soldAt: "desc" }, take: 200, include: { batch: { select: { name: true } } } }),
-    // Game packs bought before parcels existed (parcel packs are listed under Parcels).
-    db.gamePack.findMany({ where: { status: { in: ["kept", "sold-blind"] }, orderId: null }, orderBy: { closedAt: "desc" }, take: 200 }),
+    // Bought game packs not in a parcel: stored in the player's Collection until they tap Ship (not mine to ship yet).
+    db.gamePack.findMany({ where: { status: { in: ["kept", "sold-blind"] }, orderId: null }, orderBy: { closedAt: "desc" }, take: 500, select: { id: true } }),
   ]);
   const parcels = await db.shipOrder.findMany({
     orderBy: [{ shippedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
@@ -72,20 +72,6 @@ export default async function OrdersPage() {
       tracking: p.trackingNumber,
       shippedAt: p.shippedAt,
     })),
-    ...games.map((p) => ({
-      kind: "game" as const,
-      id: p.id,
-      title: `${productName(p.category)} · ${p.status === "kept" ? "kept after reveal" : "blind"} · 12 cards`,
-      href: `/admin/lil-stack`,
-      soldAt: p.closedAt,
-      merch: p.charged,
-      shipping: null, // the game prices don't add a shipping line
-      method: "bubble",
-      channel: "game",
-      shipTo: safeJson<Order["shipTo"]>(p.shipTo ?? "null", null),
-      tracking: p.trackingNumber,
-      shippedAt: p.shippedAt,
-    })),
   ].sort((a, b) => Number(!!a.shippedAt) - Number(!!b.shippedAt) || (b.soldAt?.getTime() ?? 0) - (a.soldAt?.getTime() ?? 0));
   const toShip = orders.filter((o) => !o.shippedAt).length;
 
@@ -99,8 +85,11 @@ export default async function OrdersPage() {
       </div>
       <section className="space-y-3">
         <h2 className="text-lg font-bold">
-          Parcels <span className="text-sm font-normal text-navy/60">· {parcels.filter((o) => !o.shippedAt).length} to ship · USPS Ground Advantage, 6×4×1 in, 4 oz</span>
+          Parcels <span className="text-sm font-normal text-navy/60">· {parcels.filter((o) => !o.shippedAt).length} to ship · USPS Ground Advantage, 6×4 in</span>
         </h2>
+        <p className="text-xs text-navy/60">
+          {games.length} bought pack{games.length === 1 ? "" : "s"} stored in players&apos; collections, not shipping yet. A parcel shows up here when a player taps Ship.
+        </p>
         {parcels.length === 0 ? (
           <p className="text-sm text-navy/60">No game orders yet.</p>
         ) : (

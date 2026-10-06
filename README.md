@@ -153,11 +153,11 @@ That sentence and the odds are on screen before the first payment.
 2. First time: **Save a card** (`/play/card`): name, email, US shipping address, then Stripe Checkout in setup mode. No charge. The browser gets a signed `ts_player` cookie; there's no password.
 3. **Reveal for $1**: charged to the saved card first, then a ready pack is reserved for you and all 12 cards show with name, image and engine price. The $1 is spent; it only counts toward the pack just shown.
 4. A **30 second** timer runs (server deadline). At 10 s and 20 s the pack graphic nudges and Keep pulses. Nothing is ever charged by the timer.
-5. **Keep · $2.99 + shipping** ($3.99 in all for the pack): the 12 cards are yours, the cycle closes, and you can play again right away.
+5. **Keep · $2.99** ($3.99 in all for the pack): the 12 cards go into your Collection, the cycle closes, and you can play again right away.
 6. **Pass**, the timer, or leaving the screen: that pack is gone for you (its cards go back to stock and are redrawn). The category is **locked for your account and your card until your local midnight**; the only button left is the **$4.99 blind pack**.
-7. **Blind pack**: $4.99 + shipping is charged first, then a pack from the same builder is reserved and revealed. No reject. Buying it unlocks a new cycle immediately.
+7. **Blind pack**: $4.99 is charged first, then a pack from the same builder is reserved and revealed. No reject. Buying it unlocks a new cycle immediately.
 
-One active cycle per account. Every charge (and any refund, e.g. if the last pack went in the same second) is logged in `GameCharge`. Shipping is one USPS Ground Advantage line added to Keep or the blind buy (see Game shipping).
+One active cycle per account. Every charge (and any refund, e.g. if the last pack went in the same second) is logged in `GameCharge`. Buying never charges shipping: packs wait in the Collection until the player ships them (see Game shipping).
 
 **Odds (same for peek and blind):** 8 of 12 cards are bulk, usually under $0.25 · 3 are modest, usually $0.25 to $0.75 · 1 is the best card in the pack, usually $0.75 to $2 · Pack value is usually under the keep price · About 18 in 100 packs contain a card priced from $4 to $10 · Chase cards are not in packs until that feature is turned on (with chase on: About 2 in 100 packs contain a card priced at $10 or more).
 
@@ -166,9 +166,9 @@ One active cycle per account. Every charge (and any refund, e.g. if the last pac
 Per category, never mixed. Uses the existing engine price on each card; nothing new prices a card.
 
 - **Bins:** bulk < $0.25 · mid $0.25–$0.75 · top $0.75–$2.00 · bump $2.01–$3.99 (member stacks only) · hit $4–$9.99 · chase ≥ $10.
-- **Base pack (about 80 in 100):** 8 bulk + 3 mid + 1 top, summed **$1.80–$2.40**, never shown above $3.50.
-- **Hit pack (about 18 in 100):** 8 bulk + 3 mid + exactly one $4–$9.99 card, summed **$5–$11**.
-- **Chase pack (2 in 100, flag on only):** 8 bulk + 3 mid + one $10+ card, marked CHASE on the pull sheet.
+- **Base pack (about 80 in 100):** 7 bulk + 4 mid + 1 top (usually a $1–$2 card), summed **$3.20–$3.80**, close to the $3.99 keep; no card over $3.99.
+- **Hit pack (about 18 in 100):** 7 bulk + 4 mid + exactly one $4–$9.99 card, summed **$5–$12**.
+- **Chase pack (2 in 100, flag on only):** 7 bulk + 4 mid + one $10+ card, marked CHASE on the pull sheet.
 - The mix is counted over the last 100 packs built in that category. Every built pack counts, so a kept hit counts as a sold hit. No new hits while hits are over 20% of the last 100 or over a fifth of the ready queue. A draw outside its band is thrown out and drawn again; if a bin can't fill a slot the category stays closed (never padded).
 - Packs are drawn ahead, up to 50 ready per category, numbered for good ("Pokemon Pack 12"), after every batch, reprice, card save and pass, and with **Draw packs**. A purchase only reserves a pack that already exists, at random from the one queue peeks and blind buys share.
 - Each pack has a printable **pull sheet** (Admin → Packs → the pack number): 12 cards with prices, HIT / CHASE marked, a location note.
@@ -179,7 +179,7 @@ Any scanned card with an engine price of **$10 or more** is on that category's c
 
 ### Game shipping (hands-off)
 
-EasyPost (`EASYPOST_API_KEY`), one service: **USPS Ground Advantage**, from 1424 Orchid Lane, Kissimmee, FL 34744, fixed parcel 6 × 4 × 1 in, 4 oz. The address is verified at signup. At the reveal (and before a blind buy) the player sees one line with the returned price; Keep or the blind buy charges pack + shipping together. Then the label is bought, the PDF stored, tracking emailed (`RESEND_API_KEY` + `MAIL_FROM`), and **Admin → Orders** shows **Print Pack 12** and **Dropped off**. If EasyPost times out, $5.95 is charged and the order gets a **Buy label** button. Up to **3 packs share one parcel and one label**: the first pays shipping, the next two join for $0 while it hasn't shipped. A single pack never ships free (except the member mailer credit).
+A bought pack (keep or blind) is stored on the account, never auto-shipped. **Collection** (`/collection`) lists bought packs by category, date and pack number; tap one to see its 12 framed cards with tilt, **Exit** to go back. **Ship** at the bottom: pick one or more stored packs, confirm the address (EasyPost-verified), see one **USPS Ground Advantage** rate for one combined parcel (6 × 4 in; 4 oz plus 1.5 oz per extra pack, an inch taller per 4 packs), and pay shipping only. One label for the whole selection: the PDF is stored, tracking emailed (`RESEND_API_KEY` + `MAIL_FROM`), and **Admin → Orders** shows **Print Pack 12, Pack 14** and **Dropped off**. EasyPost (`EASYPOST_API_KEY`) ships from 1424 Orchid Lane, Kissimmee, FL 34744. If it times out, $5.95 is charged and the order gets a **Buy label** button. The member mailer credit zeros one parcel per billing period.
 
 ### Membership ($7.99/month, optional)
 

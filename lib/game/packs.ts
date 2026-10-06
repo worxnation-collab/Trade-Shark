@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { CATEGORY_KEYS, type Category } from "../categories";
 import { db } from "../db";
 import { getSettings } from "../settings";
-import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
+import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, isBump, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
 
 /**
  * Built packs for the reveal game, per category. Packs are drawn ahead of time from stock, so a purchase only
@@ -34,6 +34,7 @@ export async function bins(category: Category) {
   for (const c of cards) {
     const s = slotOf(c.listPrice);
     if (s) out[s]++;
+    if (isBump(c.listPrice)) out.bump++; // also counted in top: member stacks draw from these
   }
   return { ...out, short: shortages(cards.map((c) => ({ id: c.id, price: c.listPrice! }))) };
 }
@@ -168,16 +169,17 @@ export async function reservePack(category: Category, buyerId: string, opts: { r
   return null;
 }
 
-/** The member stack: swap the top-slot card of a just-reserved base pack for a $2.01–$3.99 card from stock. */
+/** The member stack: swap the top-slot card of a just-reserved base pack for a better $2.01–$3.99 card from stock. */
 async function bumpTopSlot(packId: string, category: Category, rng: Rng) {
-  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true } })).filter((c) => slotOf(c.listPrice) === "bump");
+  const current = await db.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
+  const top = current.cards.reduce<(typeof current.cards)[number] | null>((a, c) => (!a || (c.listPrice ?? 0) > (a.listPrice ?? 0) ? c : a), null);
+  if (!top) return false;
+  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true } })).filter((c) => isBump(c.listPrice) && c.listPrice! > (top.listPrice ?? 0));
   if (!pool.length) return false;
   const card = pool[rng(pool.length)];
   return db
     .$transaction(async (tx) => {
       const pack = await tx.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
-      const top = pack.cards.find((c) => slotOf(c.listPrice) === "top");
-      if (!top) throw new Error("no top slot");
       const took = await tx.card.updateMany({ where: { id: card.id, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: packId, status: "LilStack" } });
       if (!took.count) throw new Error("bump card taken");
       await tx.card.update({ where: { id: top.id }, data: { gamePackId: null, status: "Priced" } });

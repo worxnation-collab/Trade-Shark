@@ -12,6 +12,7 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <nav className="flex items-center gap-3 whitespace-nowrap text-xs font-semibold text-sand sm:gap-5 sm:text-sm">
             <Link href="/" className="hover:text-teal">Packs</Link>
+            <Link href="/collection" className="hover:text-teal">Collection</Link>
             <Link href="/about" className="hover:text-teal">About</Link>
             <Link href="/contact" className="hover:text-teal">Contact</Link>
             <MuteToggle className="-my-1" />

@@ -38,7 +38,7 @@ export default async function PackPage({ params }: { params: Promise<{ category:
         lockedUntil={state.lockedUntil ? new Date(state.lockedUntil).toISOString() : null}
         revealing={
           state.revealing && state.revealing.category === category
-            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack, ship: state.revealing.ship }
+            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack }
             : null
         }
         serverNow={new Date().toISOString()}

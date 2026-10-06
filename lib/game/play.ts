@@ -5,19 +5,18 @@ import { splitSale } from "../lilStack";
 import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
 import { buildGamePacks, categoryStatus, packView, releasePack, reservePack } from "./packs";
-import { placeInParcel, quoteShipping, validQuote, lineFor, type ShipLine } from "./ship";
 import { KEEP_GRACE_MS, PRICES, TIMER_SECONDS, cryptoRng, nextLocalMidnight, type Rng } from "./rules";
 
 /**
  * One play per account at a time:
- *   $1 reveal (charged first) → a reserved pack and its one shipping line, 30 s → Keep ($2.99 + shipping) | Pass / timer / leave.
+ *   $1 reveal (charged first) → a reserved pack, 30 s → Keep ($2.99 more) | Pass / timer / leave.
  *   After a pass the category is locked until local midnight, and the only action left is a $4.99 blind pack
- *   (+ shipping, charged first, then reserved and revealed; no reject). A keep or a blind buy unlocks a new cycle at once.
+ *   (charged first, then reserved and revealed; no reject). A keep or a blind buy unlocks a new cycle at once.
+ *   A bought pack goes into the player's Collection; shipping is its own step later (lib/game/ship.ts).
  *   Members skip the midnight lock, get one bumped member stack and one mailer credit a month, and see new drops first.
  * Nothing is ever charged by the timer.
  */
 
-export type { ShipLine };
 export type PlayError = { ok: false; error: string; code?: string };
 const err = (error: string, code?: string): PlayError => ({ ok: false, error, code });
 
@@ -53,7 +52,6 @@ export async function playState(buyerIn: Buyer | null, category: Category) {
     db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: "revealing" } }),
     perkLeft(buyer, "stack"),
   ]);
-  const quote = revealing?.shipQuoteId ? await db.shipQuote.findUnique({ where: { id: revealing.shipQuoteId } }) : null;
   return {
     ...status,
     signedIn: true as const,
@@ -69,18 +67,12 @@ export async function playState(buyerIn: Buyer | null, category: Category) {
           category: revealing.category,
           deadline: revealing.deadline!,
           pack: revealing.category === category && revealing.packId ? await packView(revealing.packId) : null,
-          ship: quote ? lineFor(quote) : null,
         }
       : null,
   };
 }
 
-/** The shipping line for the blind pack button (and a fresh one if a Keep finds its quote stale). */
-export async function shipQuote(buyer: Buyer) {
-  return { ok: true as const, ship: await quoteShipping(buyer) };
-}
-
-/** Step 2–4: charge $1, reserve a pack, quote its one shipping line, start the 30 s clock. */
+/** Step 2–4: charge $1, reserve a pack, start the 30 s clock. */
 export async function reveal(buyerIn: Buyer, category: string, opts: { api?: ChargeApi | null; rng?: Rng; now?: Date; memberStack?: boolean } = {}) {
   if (!isCategory(category)) return err("Pick baseball, football or Pokemon.");
   if (!buyerIn.paymentMethodId) return err("Save a card before your first reveal.", "no-card");
@@ -111,13 +103,13 @@ export async function reveal(buyerIn: Buyer, category: string, opts: { api?: Cha
   }
   // The member stack is used once it's shown with its bumped card (no $2–$4 card in stock = not used).
   if (memberStack && got.bumped) await usePerk(buyer, "stack");
-  const [ship, pack] = await Promise.all([quoteShipping(buyer), packView(got.pack.id)]);
+  const pack = await packView(got.pack.id);
   const deadline = new Date(now.getTime() + TIMER_SECONDS * 1000);
-  await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "revealing", packId: got.pack.id, revealedAt: now, deadline, member: memberStack && got.bumped, shipQuoteId: ship.quoteId } });
-  return { ok: true as const, cycleId: cycle.id, deadline, serverNow: new Date(), pack, ship };
+  await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "revealing", packId: got.pack.id, revealedAt: now, deadline, member: memberStack && got.bumped } });
+  return { ok: true as const, cycleId: cycle.id, deadline, serverNow: new Date(), pack };
 }
 
-/** Step 5: Keep. Charge $2.99 more ($3.99 in all) plus the shipping line shown, the cards are theirs, the cycle closes. */
+/** Step 5: Keep. Charge $2.99 more ($3.99 in all); the pack goes into their Collection; the cycle closes. */
 export async function keep(buyer: Buyer, cycleId: string, opts: { api?: ChargeApi | null; now?: Date } = {}) {
   const now = opts.now ?? new Date();
   const cycle = await db.gameCycle.findFirst({ where: { id: cycleId, buyerId: buyer.id } });
@@ -127,26 +119,17 @@ export async function keep(buyer: Buyer, cycleId: string, opts: { api?: ChargeAp
     await endWithoutPurchase(cycle.id, buyer, "expired", now);
     return err("Time ran out on that pack.", "expired");
   }
-  // The shipping they saw must still hold (a joined parcel can ship, a credit can get used elsewhere).
-  const quote = await validQuote(buyer, cycle.shipQuoteId, now);
-  if (!quote) {
-    const ship = await quoteShipping(buyer);
-    await db.gameCycle.update({ where: { id: cycle.id }, data: { shipQuoteId: ship.quoteId } });
-    return { ...err(`Shipping changed: ${ship.label}. Tap Keep again to confirm.`, "ship-changed"), ship };
-  }
   // One Keep at a time (double taps).
   const claimed = await db.gameCycle.updateMany({ where: { id: cycle.id, status: "revealing" }, data: { status: "keeping" } });
   if (!claimed.count) return err("This pack is closed.", "closed");
-  const total = Math.round((PRICES.keepMore + quote.amount) * 100) / 100;
-  const paid = await chargeSaved(buyer, total, "keep", cycle.id, `Trade Shark · ${productName(cycle.category)} kept${quote.amount ? " + shipping" : ""}`, opts.api !== undefined ? opts.api : chargeApi());
+  const paid = await chargeSaved(buyer, PRICES.keepMore, "keep", cycle.id, `Trade Shark · ${productName(cycle.category)} kept`, opts.api !== undefined ? opts.api : chargeApi());
   if (!paid.ok) {
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "revealing" } }); // the clock keeps running
     return err(paid.error, "declined");
   }
   await sellPack(cycle.packId, buyer, PRICES.keepTotal, "kept", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "kept", endedAt: now } });
-  const order = await placeInParcel(buyer, quote, cycle.packId);
-  return { ok: true as const, pack: await packView(cycle.packId), shipping: quote.amount, tracking: order.trackingUrl };
+  return { ok: true as const, pack: await packView(cycle.packId) };
 }
 
 /** Step 6: Pass, the timer, or leaving the screen. Never charges. */
@@ -169,8 +152,8 @@ async function endWithoutPurchase(cycleId: string, buyer: Pick<Buyer, "id" | "tz
   if (isCategory(cycle.category)) await buildGamePacks(cycle.category).catch((e) => console.error("redraw failed", e));
 }
 
-/** Step 7: the blind pack. Charge $4.99 + the shipping line first, then reserve from the same queue, then reveal. No reject. */
-export async function blind(buyerIn: Buyer, category: string, opts: { api?: ChargeApi | null; rng?: Rng; now?: Date; quoteId?: string } = {}) {
+/** Step 7: the blind pack. Charge $4.99 first, then reserve from the same queue, then reveal. No reject. */
+export async function blind(buyerIn: Buyer, category: string, opts: { api?: ChargeApi | null; rng?: Rng; now?: Date } = {}) {
   if (!isCategory(category)) return err("Pick baseball, football or Pokemon.");
   if (!buyerIn.paymentMethodId) return err("Save a card first.", "no-card");
   const now = opts.now ?? new Date();
@@ -182,16 +165,11 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
   const lock = await activeLock(buyer, category, now);
   if (!lock) return err("The $4.99 pack opens after you pass on a reveal.", "not-offered");
   if (!(await categoryStatus(category, member, now)).open) return err(`No ${productName(category)}s are ready right now.`, "closed");
-  const quote = await validQuote(buyer, opts.quoteId, now);
-  if (!quote) {
-    const ship = await quoteShipping(buyer);
-    return { ...err(`Shipping: ${ship.label}. Tap again to buy.`, "ship-changed"), ship };
-  }
 
-  const cycle = await db.gameCycle.create({ data: { buyerId: buyer.id, category, kind: "blind", status: "charging", shipQuoteId: quote.id } });
+  const cycle = await db.gameCycle.create({ data: { buyerId: buyer.id, category, kind: "blind", status: "charging" } });
   const api = opts.api !== undefined ? opts.api : chargeApi();
-  const total = Math.round((PRICES.blind + quote.amount) * 100) / 100;
-  const paid = await chargeSaved(buyer, total, "blind", cycle.id, `Trade Shark · ${productName(category)} blind pack${quote.amount ? " + shipping" : ""}`, api);
+  const total = PRICES.blind;
+  const paid = await chargeSaved(buyer, total, "blind", cycle.id, `Trade Shark · ${productName(category)} blind pack`, api);
   if (!paid.ok) {
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(paid.error, "declined");
@@ -206,8 +184,7 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "blind-bought", packId: got.pack.id, revealedAt: now, endedAt: now } });
   // A completed purchase unlocks a new cycle right away.
   await db.gameLock.deleteMany({ where: { category, OR: [{ buyerId: buyer.id }, ...(buyer.cardFingerprint ? [{ fingerprint: buyer.cardFingerprint }] : [])] } });
-  const order = await placeInParcel(buyer, quote, got.pack.id);
-  return { ok: true as const, pack: await packView(got.pack.id), shipping: quote.amount, tracking: order.trackingUrl };
+  return { ok: true as const, pack: await packView(got.pack.id) };
 }
 
 /** The pack and its cards are sold: assign them, split the money across the cards by engine price. */

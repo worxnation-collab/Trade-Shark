@@ -3,6 +3,8 @@ import {
   drawPack,
   drawPacks,
   HARD_CAP,
+  HIT_TARGET,
+  isBump,
   nextLocalMidnight,
   oddsLines,
   PRICES,
@@ -28,32 +30,36 @@ function seeded(seed = 7): Rng {
 }
 const many = (n: number, price: number, p: string): PoolCard[] => Array.from({ length: n }, (_, i) => ({ id: `${p}${i}`, price }));
 
-// Every draw from this pool is 8×0.10 + 3×0.30 + 1.00 = $2.70: over the band.
-const overBand = () => [...many(40, 0.1, "b"), ...many(15, 0.3, "m"), ...many(5, 1, "t")];
-// 8×0.05 + 3×0.30 + 0.75 = $2.05: inside it.
-const fitting = () => [...many(40, 0.05, "b"), ...many(15, 0.3, "m"), ...many(5, 0.75, "t")];
+// Every draw from this pool is 7×0.10 + 4×0.40 + 2.00 = $4.30: over the band.
+const overBand = () => [...many(40, 0.1, "b"), ...many(20, 0.4, "m"), ...many(5, 2, "t")];
+// 7×0.10 + 4×0.50 + 1.00 = $3.70: inside it.
+const fitting = () => [...many(40, 0.1, "b"), ...many(20, 0.5, "m"), ...many(5, 1, "t")];
 
 describe("value bins", () => {
-  it("bulk < $0.25 ≤ mid < $0.75 ≤ top ≤ $2 < bump < $4 ≤ hit < $10 ≤ chase", () => {
+  it("bulk < $0.25 ≤ mid < $1 ≤ top < $4 ≤ hit < $10 ≤ chase", () => {
     expect(slotOf(0.24)).toBe("bulk");
     expect(slotOf(0.25)).toBe("mid");
-    expect(slotOf(0.74)).toBe("mid");
-    expect(slotOf(0.75)).toBe("top");
-    expect(slotOf(2)).toBe("top");
-    expect(slotOf(2.01)).toBe("bump");
+    expect(slotOf(0.99)).toBe("mid");
+    expect(slotOf(1)).toBe("top");
+    expect(slotOf(3.99)).toBe("top");
+    expect(slotOf(4)).toBe("hit");
     expect(slotOf(9.99)).toBe("hit");
     expect(slotOf(10)).toBe("chase");
     expect(slotOf(null)).toBe(null);
+    expect(isBump(2.5)).toBe(true);
+    expect(isBump(2)).toBe(false);
+    expect(isBump(4)).toBe(false);
   });
 });
 
 describe("pack builder", () => {
-  it("draws 8 bulk + 3 mid + 1 top, one category's pool, value inside $1.80–$2.40", () => {
+  it("draws 7 bulk + 4 mid + 1 top, value inside $3.20–$3.80 (close to the $3.99 keep)", () => {
+    expect(TARGET).toEqual({ min: 3.2, max: 3.8 });
     const p = drawPack(fitting(), seeded())!;
     expect(p.ids).toHaveLength(12);
     expect(new Set(p.ids).size).toBe(12);
-    expect(p.ids.filter((id) => id.startsWith("b"))).toHaveLength(8);
-    expect(p.ids.filter((id) => id.startsWith("m"))).toHaveLength(3);
+    expect(p.ids.filter((id) => id.startsWith("b"))).toHaveLength(7);
+    expect(p.ids.filter((id) => id.startsWith("m"))).toHaveLength(4);
     expect(p.ids.filter((id) => id.startsWith("t"))).toHaveLength(1);
     expect(p.value).toBeGreaterThanOrEqual(TARGET.min);
     expect(p.value).toBeLessThanOrEqual(TARGET.max);
@@ -61,23 +67,23 @@ describe("pack builder", () => {
 
   it("rejects draws that miss the band and draws again; gives up rather than pad", () => {
     expect(drawPack(overBand(), seeded())).toBe(null);
-    // Mixed tops: only the cheap ones fit, so the builder keeps drawing until it lands one.
-    const mixed = [...many(40, 0.05, "b"), ...many(15, 0.3, "m"), ...many(4, 2, "x"), ...many(1, 0.8, "t")];
+    // Mixed tops: only the $1.50 one fits, so the builder keeps drawing until it lands it.
+    const mixed = [...many(40, 0.1, "b"), ...many(20, 0.4, "m"), ...many(4, 3.5, "x"), ...many(1, 1.5, "t")];
     const p = drawPack(mixed, seeded(3))!;
     expect(p.ids).toContain("t0");
-    expect(p.value).toBe(2.1);
+    expect(p.value).toBe(3.8);
   });
 
   it("a slot it can't fill leaves the category unable to start, never a wrong-value pad", () => {
-    const noTop = [...many(40, 0.05, "b"), ...many(15, 0.3, "m"), ...many(3, 5, "x")];
+    const noTop = [...many(40, 0.1, "b"), ...many(20, 0.5, "m"), ...many(3, 5, "x")];
     expect(drawPack(noTop, seeded())).toBe(null);
     expect(shortages(noTop)).toEqual([{ slot: "top", have: 0, need: 1 }]);
     expect(shortages(fitting())).toEqual([]);
   });
 
-  it("$10+ and $4+ cards never land in a base pack", () => {
-    const withChase = [...fitting(), ...many(5, 50, "c"), ...many(5, 6, "h")];
-    for (const p of drawPacks(withChase, 10, seeded())) expect(p.ids.some((id) => id.startsWith("c") || id.startsWith("h"))).toBe(false);
+  it("no card over $3.99 ever lands in a base pack", () => {
+    const withBig = [...fitting(), ...many(5, 50, "c"), ...many(5, 6, "h"), ...many(5, 4, "f")];
+    for (const p of drawPacks(withBig, 10, seeded())) expect(p.ids.some((id) => /^[chf]/.test(id))).toBe(false);
   });
 
   it("draws as many packs as the bins allow, each card once", () => {
@@ -86,27 +92,25 @@ describe("pack builder", () => {
     expect(new Set(packs.flatMap((p) => p.ids)).size).toBe(60);
   });
 
-  it("never shows a normal pack over $3.50 or outside the band; a chase pack may go over", () => {
-    expect(showable({ value: 2.0, chase: false })).toBe(true);
-    expect(showable({ value: 2.5, chase: false })).toBe(false);
-    expect(showable({ value: HARD_CAP + 1, chase: false })).toBe(false);
+  it("never shows a base pack outside the band; a chase pack may go over", () => {
+    expect(showable({ value: 3.5, chase: false })).toBe(true);
+    expect(showable({ value: 2.4, chase: false })).toBe(false);
+    expect(showable({ value: HARD_CAP + 0.1, chase: false })).toBe(false);
     expect(showable({ value: 14, kind: "chase" })).toBe(true);
     expect(sumValue([0.1, 0.2])).toBe(0.3);
   });
 
-  it("hit packs: 8 bulk + 3 mid + one $4–$9.99 card, summed $5–$11", () => {
+  it("hit packs: 7 bulk + 4 mid + one $4–$9.99 card", () => {
     const pool = [...fitting(), ...many(3, 6, "h"), ...many(2, 12, "x")];
     const p = drawPack(pool, seeded(), 400, "hit")!;
     expect(p.ids.filter((id) => id.startsWith("h"))).toHaveLength(1);
+    expect(p.ids.filter((id) => id.startsWith("b"))).toHaveLength(7);
+    expect(p.ids.filter((id) => id.startsWith("m"))).toHaveLength(4);
     expect(p.ids.filter((id) => id.startsWith("t") || id.startsWith("x"))).toHaveLength(0);
-    expect(p.value).toBeGreaterThanOrEqual(5);
-    expect(p.value).toBeLessThanOrEqual(11);
-    // A $9.99 hit with $0.24 bulk and $0.74 mid would be $14.13: over the band, never built.
-    expect(drawPack([...many(8, 0.24, "b"), ...many(3, 0.74, "m"), ...many(1, 9.99, "h")], seeded(), 50, "hit")).toBe(null);
-    expect(slotOf(4)).toBe("hit");
-    expect(slotOf(3.99)).toBe("bump");
+    expect(p.value).toBeGreaterThanOrEqual(HIT_TARGET.min);
+    expect(p.value).toBeLessThanOrEqual(HIT_TARGET.max);
     expect(showable({ value: 6.5, kind: "hit" })).toBe(true);
-    expect(showable({ value: 12, kind: "hit" })).toBe(false);
+    expect(showable({ value: 13, kind: "hit" })).toBe(false);
   });
 });
 
@@ -155,10 +159,10 @@ describe("game copy and prices", () => {
 
   it("odds: the same lines for peek and blind; the hit line always, the $10 line only with chase on", () => {
     const base = [
-      "8 of 12 cards are bulk, usually under $0.25",
-      "3 are modest, usually $0.25 to $0.75",
-      "1 is the best card in the pack, usually $0.75 to $2",
-      "Pack value is usually under the keep price",
+      "7 of 12 cards are bulk, usually under $0.25",
+      "4 are modest, usually $0.25 to $1",
+      "1 is the best card in the pack, usually $1 to $2",
+      "Pack value is usually close to the $3.99 keep price",
       "About 18 in 100 packs contain a card priced from $4 to $10.",
     ];
     expect(oddsLines(false)).toEqual([...base, "Chase cards are not in packs until that feature is turned on"]);
