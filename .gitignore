@@ -10,3 +10,4 @@ prisma/*.db
 prisma/*.db-journal
 .netlify
 /public/vendor
+.art-raw/

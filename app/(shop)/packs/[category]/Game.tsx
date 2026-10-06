@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CssPack } from "@/components/PackArt";
-import { confetti, pop } from "@/lib/client/feel";
+import { BrandClip } from "@/components/BrandClip";
+import { HIT_CLIP, openStill, packStill, passClip, tearClip } from "@/lib/brandAssets";
+import { confetti, pop, reducedMotion as reducedMotionNow } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { NUDGES, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
 import type { ShipLine } from "@/lib/game/ship";
@@ -28,7 +29,6 @@ export interface GameProps {
   lockedUntil: string | null;
   revealing: { cycleId: string; deadline: string; pack: PackView | null; ship: ShipLine | null } | null;
   serverNow: string;
-  art: { closed?: string; open?: string };
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -53,6 +53,13 @@ export function Game(p: GameProps) {
   const [nudge, setNudge] = useState(0);
   const [blindShip, setBlindShip] = useState<ShipLine | null>(null);
   const [stackLeft, setStackLeft] = useState(p.stackLeft);
+  // Brand clips: the tear on a reveal (and a blind buy), the puff on a pass, the sparkle over a hit pack.
+  const [clip, setClip] = useState<"tear" | "pass" | null>(null);
+  const [hitFx, setHitFx] = useState<"pending" | "play" | null>(null);
+  const special = (pk: PackView) => pk.kind === "hit" || pk.kind === "chase" || pk.cards.some((c) => c.hit || c.chase);
+  useEffect(() => {
+    if (clip === null && hitFx === "pending") setHitFx("play");
+  }, [clip, hitFx]);
   const packRef = useRef<HTMLDivElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const cycleRef = useRef<string | null>(null);
@@ -71,6 +78,8 @@ export function Game(p: GameProps) {
     if (memberStack) setStackLeft(false);
     skew.current = new Date(r.serverNow as string).getTime() - Date.now();
     pop();
+    setClip("tear");
+    setHitFx(special(r.pack as PackView) ? "pending" : null);
     setPhase({ k: "revealing", cycleId: r.cycleId as string, deadline: new Date(r.deadline as string).getTime(), pack: r.pack as PackView, ship: r.ship ?? null });
   }
 
@@ -78,6 +87,8 @@ export function Game(p: GameProps) {
     const id = cycleRef.current;
     if (!id) return;
     cycleRef.current = null;
+    setHitFx(null);
+    setClip("pass");
     setPhase({ k: "passed", why });
     await post("/api/play/pass", { cycleId: id });
   }, []);
@@ -115,6 +126,8 @@ export function Game(p: GameProps) {
     }
     setBlindShip(null);
     confetti(packRef.current);
+    setClip("tear");
+    setHitFx(special(r.pack as PackView) ? "pending" : null);
     setPhase({ k: "won", pack: r.pack as PackView, how: "blind", shipping: (r.shipping as number) ?? 0 });
   }
 
@@ -145,6 +158,7 @@ export function Game(p: GameProps) {
       const id = cycleRef.current;
       if (!id) return;
       cycleRef.current = null;
+      setClip("pass");
       navigator.sendBeacon?.("/api/play/pass", JSON.stringify({ cycleId: id }));
       setPhase({ k: "passed", why: "left" });
     };
@@ -157,13 +171,23 @@ export function Game(p: GameProps) {
     };
   }, [phase.k]);
 
-  const packArt = (torn = false) =>
-    (torn ? p.art.open : p.art.closed) ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={torn ? p.art.open : p.art.closed} alt="" className="w-full rounded-lg shadow-2xl" draggable={false} />
-    ) : (
-      <CssPack torn={torn} />
-    );
+  // This category's pack, drawn with Gemini (public/brand).
+  const packArt = (torn = false) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={torn ? openStill(p.category) : packStill(p.category)} alt="" className="clip-soft w-full" draggable={false} />
+  );
+  // The hit sparkle bursts from the hit (or chase) card itself.
+  const cardsWithFx = (pack: PackView) => (
+    <CardGrid
+      pack={pack}
+      fx={hitFx === "play" ? (pack.cards.find((c) => c.chase || c.hit)?.id ?? null) : null}
+      fxEl={
+        <div className="pointer-events-none absolute left-1/2 top-[38%] z-10 w-[230%] -translate-x-1/2 -translate-y-1/2">
+          <BrandClip src={HIT_CLIP} blend onDone={() => setHitFx(null)} className="hit-fx block w-full" />
+        </div>
+      }
+    />
+  );
 
   const opensAt = p.opensAt ? new Date(p.opensAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
   const keepTotal = phase.k === "revealing" ? PRICES.keepMore + (phase.ship?.amount ?? 0) : 0;
@@ -219,13 +243,17 @@ export function Game(p: GameProps) {
       {phase.k === "revealing" && (
         <>
           <div className="flex items-center gap-4">
-            <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
-              {packArt(true)}
-            </div>
+            {clip === "tear" ? (
+              <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
+            ) : (
+              <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
+                {packArt(true)}
+              </div>
+            )}
             <Timer left={left} />
           </div>
           {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-teal">Member stack: your best card is bumped.</p>}
-          <CardGrid pack={phase.pack} />
+          {cardsWithFx(phase.pack)}
           {/* Stays on screen while you scroll the cards: the clock, the one shipping line and both choices. */}
           <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-2xl bg-navy-2/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
             <p className="text-xs text-sand/75">Shipping · {phase.ship?.label ?? "…"}</p>
@@ -247,8 +275,8 @@ export function Game(p: GameProps) {
 
       {phase.k === "passed" && (
         <>
-          <div ref={packRef} className="w-40 opacity-90">
-            {packArt()}
+          <div ref={packRef} className="w-40">
+            {clip === "pass" ? <BrandClip src={passClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-full" /> : <div className="gone">{packArt()}</div>}
           </div>
           <p className="mt-5 text-lg font-bold text-white">
             {phase.why === "timer" ? "Time's up. That pack is gone." : phase.why === "locked" ? `You passed on a ${p.product} today.` : "That pack is gone."}
@@ -275,11 +303,12 @@ export function Game(p: GameProps) {
 
       {phase.k === "won" && (
         <>
+          {clip === "tear" && <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft mb-2 w-40 sm:w-48" />}
           <p className="text-2xl font-extrabold text-white">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
           <p className="mt-1 text-sm text-sand/75">
             {phase.pack.number ? `Pack ${phase.pack.number}. ` : ""}All 12 cards ship from Florida by USPS Ground Advantage. Tracking comes by email.
           </p>
-          <CardGrid pack={phase.pack} />
+          {cardsWithFx(phase.pack)}
           <button
             className="btn-coral mt-6 px-7 py-3"
             onClick={() => {
@@ -326,9 +355,13 @@ function Timer({ left }: { left: number }) {
 }
 
 /** The 12 real scans. Drag to tilt; tap to open one larger (it tilts there too). */
-function CardGrid({ pack }: { pack: PackView }) {
+function CardGrid({ pack, fx = null, fxEl = null }: { pack: PackView; fx?: string | null; fxEl?: React.ReactNode }) {
   const [open, setOpen] = useState<string | null>(null);
   const big = pack.cards.find((c) => c.id === open);
+  // The hit card is dealt last: bring it into view for its sparkle (above the pinned Keep bar).
+  useEffect(() => {
+    if (fx) document.getElementById(`card-${fx}`)?.scrollIntoView({ block: "center", behavior: reducedMotionNow() ? "auto" : "smooth" });
+  }, [fx]);
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
@@ -339,7 +372,8 @@ function CardGrid({ pack }: { pack: PackView }) {
     <>
       <ul className="mt-6 grid w-full grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 lg:grid-cols-6" aria-label="The 12 cards in this pack">
         {pack.cards.map((c, i) => (
-          <li key={c.id} className="card-in" style={{ "--i": i } as React.CSSProperties}>
+          <li key={c.id} id={`card-${c.id}`} className="card-in relative" style={{ "--i": i } as React.CSSProperties}>
+            {fx === c.id && fxEl}
             <TiltCard src={`/api/play/image/${c.id}`} alt={c.name} onTap={() => setOpen(c.id)} />
             <p className="-mt-1 truncate text-xs font-semibold text-white">{c.name}</p>
             <p className="truncate text-[11px] text-sand/60">

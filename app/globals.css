@@ -140,6 +140,27 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
+/* The hit sparkle (a Veo clip on black, screen-blended over the cards) fades in and out. */
+.hit-fx {
+  animation: hit-fx 1.8s ease-out both;
+}
+@keyframes hit-fx {
+  0% { opacity: 0; }
+  15% { opacity: 0.95; }
+  70% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+/* Veo's navy is a shade off the page's: feather the clip's edges so it sits in the page, not in a box. */
+.clip-soft {
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+}
+/* After the pass puff, the pack stays faded: it's gone for you. */
+.gone {
+  opacity: 0.25;
+  filter: grayscale(0.6);
+  transition: opacity 400ms, filter 400ms;
+}
 /* Reveal game: cards rise into place (no flip, no spin). */
 .card-in {
   animation: card-in 420ms cubic-bezier(0.2, 0.8, 0.25, 1) both;

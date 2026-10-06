@@ -185,6 +185,10 @@ EasyPost (`EASYPOST_API_KEY`), one service: **USPS Ground Advantage**, from 1424
 
 No midnight lockout · one mailer credit a month (zeros one label) · one member stack a month (the top slot bumped to a $2–$4 card) · the first hour of every new drop. It does not add reveals, make everyday packs cheaper, or ship every pack free. Join and cancel at `/play/member` (Stripe subscription; perks last to the end of the paid month).
 
+### Pack art and animations (Gemini)
+
+Each category has its own sealed and torn-open pack, drawn with Gemini, and short Veo clips made from those stills: a tear-open when a pack is revealed or bought blind, a puff when a pack is passed or the timer ends, and a teal-and-coral sparkle that bursts from the hit (or chase) card. They're static files in `public/brand/` (about 2 MB total), so visitors never wait on Gemini. Remake them with `GEMINI_API_KEY=... node scripts/gemini-art.mjs images` then `... videos`; `node scripts/gemini-art.mjs encode` re-trims without calling Gemini. Text prompts only, no card photos, no characters or logos. Clips play once, muted, and are skipped for anyone with reduced motion on.
+
 ### Card presentation
 
 Players see the real scan, framed: on upload it's straightened, the scanner background trimmed, and laid on a white rounded border with a thin inner edge and a soft shadow, kept sharp (scaled down only). Drag a card to tilt it a few degrees (max 8°, highlight follows your thumb, snaps back); tap it to open it larger, where it tilts too. No flips, no card backs, no gyroscope.

@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { Disclaimer } from "@/components/Disclaimer";
-import { artUrls } from "@/lib/brandArt";
 import { categoryOf, isCategory } from "@/lib/categories";
 import { currentBuyer } from "@/lib/game/buyer";
 import { playState } from "@/lib/game/play";
@@ -19,7 +18,7 @@ export default async function PackPage({ params }: { params: Promise<{ category:
   const { category } = await params;
   if (!isCategory(category)) notFound();
   const cat = categoryOf(category)!;
-  const [state, art] = await Promise.all([playState(await currentBuyer(), category), artUrls().catch(() => ({}))]);
+  const state = await playState(await currentBuyer(), category);
   return (
     <section className="-mx-4 -my-8 bg-navy px-4 py-10 text-sand sm:mx-0 sm:my-0 sm:rounded-2xl sm:px-8">
       <div className="text-center">
@@ -43,7 +42,6 @@ export default async function PackPage({ params }: { params: Promise<{ category:
             : null
         }
         serverNow={new Date().toISOString()}
-        art={art}
       />
       <Disclaimer dark className="mx-auto mt-10 max-w-md text-center" />
     </section>
