@@ -27,11 +27,17 @@ export async function purgeDemo(chunk = 300) {
     // A parcel left with no packs (and never shipped) goes too.
     await db.shipOrder.deleteMany({ where: { id: { in: orderIds }, shippedAt: null, packs: { none: {} } } });
   }
+  // Leftovers from earlier demo seeds: closed packs whose cards no longer exist, and parcels with no packs left.
+  const closed = await db.gamePack.findMany({ where: { status: { in: ["dissolved", "expired"] } }, select: { id: true, cardIds: true } });
+  const exist = new Set((await db.card.findMany({ where: { id: { in: closed.flatMap((p) => p.cardIds) } }, select: { id: true } })).map((c) => c.id));
+  const ghosts = closed.filter((p) => !p.cardIds.some((id) => exist.has(id))).map((p) => p.id);
+  if (ghosts.length) await db.gamePack.deleteMany({ where: { id: { in: ghosts } } });
+  const emptyOrders = await db.shipOrder.deleteMany({ where: { shippedAt: null, labelPath: null, packs: { none: {} } } });
   const batch = seedIds.slice(0, chunk);
   if (batch.length) await db.card.deleteMany({ where: { id: { in: batch } } }); // quotes and source runs cascade
   const left = await db.card.count({ where: seedCardWhere });
   if (!left) await db.batch.deleteMany({ where: { ...SEED_BATCH, cards: { none: {} } } });
-  return { packs: packIds.length, orders: orderIds.length, cards: batch.length, left };
+  return { packs: packIds.length + ghosts.length, orders: emptyOrders.count, cards: batch.length, left };
 }
 
 /** Delete the seed images (seed/…) from the scans bucket, a page at a time. Returns how many were removed. */
