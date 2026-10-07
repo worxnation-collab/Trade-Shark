@@ -6,7 +6,10 @@ import { chaseList } from "@/lib/game/packs";
 import { sweepExpired } from "@/lib/game/play";
 import { getSettings } from "@/lib/settings";
 import { money } from "@/lib/util";
+import cvPkg from "@techstark/opencv-js/package.json";
+import pdfPkg from "pdfjs-dist/package.json";
 import { IngestTicker } from "@/components/IngestTicker";
+import { PdfInbox } from "@/components/PdfInbox";
 import { ingestProgress } from "@/lib/ingestQueue";
 import { BuildButton, ConfirmPack, FacebookSale, HoldFix, PlaceButton, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
@@ -66,6 +69,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         {received && <p className="text-xl font-black">{received}</p>}
         {skipped && <p className="text-sm">Skipped, already ingested: {skipped}</p>}
         <IngestTicker initial={ingesting} />
+        <PdfInbox pdfjsVersion={pdfPkg.version} cvSrc={`/vendor/opencv-${cvPkg.version}.js`} />
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/admin/upload" className="btn-coral px-5 py-2.5 text-base">
             Upload scans

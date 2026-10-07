@@ -16,6 +16,11 @@ export interface PageResult {
 /** Register a PDF by its hash. Skipped (with the batch it went into) when this exact file was ingested before. */
 export async function registerPdf(batchId: string, name: string, hash: string, pages: number) {
   const seen = await db.pdfIngest.findUnique({ where: { hash } });
+  // A PDF from the Drive inbox (pages 0) is claimed by the first browser that splits it.
+  if (seen && seen.pages === 0 && seen.batchId === batchId) {
+    const claimed = await db.pdfIngest.updateMany({ where: { id: seen.id, pages: 0 }, data: { pages } });
+    if (claimed.count) return { skipped: false as const, pdfId: seen.id, pages };
+  }
   if (seen) {
     const b = await db.batch.findUnique({ where: { id: seen.batchId }, select: { name: true } });
     return { skipped: true as const, pdfId: seen.id, pages: seen.pages, batchName: b?.name ?? "an earlier batch" };
