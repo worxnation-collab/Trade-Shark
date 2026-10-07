@@ -4,7 +4,7 @@ import { buyAndStoreLabel } from "@/lib/game/ship";
 
 export const runtime = "nodejs";
 
-/** Buy the label from the order (after an EasyPost timeout charged the $5.95 fallback, or a failed buy). */
+/** Buy the label from the order (after a failed Shippo rate charged the $5.95 fallback, or a failed buy). */
 export const POST = guarded(async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const o = await buyAndStoreLabel(id);

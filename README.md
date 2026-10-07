@@ -73,7 +73,7 @@ Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` �
 | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` | no | eBay comps (client-credentials app keys). |
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
 | `STRIPE_SECRET_KEY` | to sell | Saves players' cards (Checkout setup mode) and charges them for reveal / keep / blind (PaymentIntents, off-session). A restricted key needs Customers, Checkout Sessions, PaymentIntents, Refunds and Payment Links (to expire old links) write. |
-| `EASYPOST_API_KEY` | to ship | USPS Ground Advantage rates, address checks and labels. Without it every parcel is the $5.95 fallback and you buy labels by hand. |
+| `SHIPPO_API_KEY` | to ship | USPS Ground Advantage rates, address checks and labels (Shippo). Without it every parcel is the $5.95 fallback and you buy labels by hand. |
 | `RESEND_API_KEY`, `MAIL_FROM` | for tracking emails | e.g. `MAIL_FROM="Trade Shark <ship@yourdomain>"` on a domain verified in Resend. Without them labels still work; the order says the email wasn't sent. |
 | `PLAYER_SECRET` | recommended | Signs the player cookie. Falls back to `TRADE_SHARK_PASSWORD`, so changing the desk password would sign every player out. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
@@ -179,7 +179,7 @@ Any scanned card with an engine price of **$10 or more** is on that category's c
 
 ### Game shipping (hands-off)
 
-A bought pack (keep or blind) is stored on the account, never auto-shipped. **Collection** (`/collection`) lists bought packs by category, date and pack number; tap one to see its 12 framed cards with tilt, **Exit** to go back. **Ship** at the bottom: pick one or more stored packs, confirm the address (EasyPost-verified), see one **USPS Ground Advantage** rate for one combined parcel (6 × 4 in; 4 oz plus 1.5 oz per extra pack, an inch taller per 4 packs), and pay shipping only. One label for the whole selection: the PDF is stored, tracking emailed (`RESEND_API_KEY` + `MAIL_FROM`), and **Admin → Orders** shows **Print Pack 12, Pack 14** and **Dropped off**. EasyPost (`EASYPOST_API_KEY`) ships from 1424 Orchid Lane, Kissimmee, FL 34744. If it times out, $5.95 is charged and the order gets a **Buy label** button. The member mailer credit zeros one parcel per billing period.
+A bought pack (keep or blind) is stored on the account, never auto-shipped. **Collection** (`/collection`) lists bought packs by category, date and pack number; tap one to see its 12 framed cards with tilt, **Exit** to go back. **Ship** at the bottom: pick one or more stored packs, confirm the address (Shippo-verified), see one **USPS Ground Advantage** rate for one combined parcel (6 × 4 in; 4 oz plus 1.5 oz per extra pack, an inch taller per 4 packs), and pay shipping only. One label for the whole selection: the PDF is stored, tracking emailed (`RESEND_API_KEY` + `MAIL_FROM`), and **Admin → Orders** shows **Print Pack 12, Pack 14** and **Dropped off**. Shippo (`SHIPPO_API_KEY`) ships from 1424 Orchid Lane, Kissimmee, FL 34744. If the rate call fails, $5.95 is charged and the order gets a **Buy label** button. The member mailer credit zeros one parcel per billing period.
 
 ### Membership ($7.99/month, optional)
 

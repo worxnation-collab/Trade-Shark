@@ -292,7 +292,7 @@ model Buyer {
   paymentMethodId      String?
   cardFingerprint      String? // locks follow the card too, so a fresh cookie doesn't reset them
   cardLabel            String? // "Visa ·· 4242"
-  // EasyPost-verified ship-to address (verified at signup and again at checkout).
+  // Shippo-verified ship-to address id (column name kept from EasyPost; verified at signup and again at checkout).
   easypostAddressId    String?
   addressVerified      Boolean      @default(false)
   // Membership ($7.99/mo Stripe subscription). Status is re-read from Stripe at most hourly.
@@ -406,9 +406,9 @@ model ShipQuote {
   buyerId     String
   amount      Float // what the player pays for shipping (0 = rides with an open order, or the member mailer credit)
   how         String // rate | join | credit | fallback
-  shipmentId  String? // EasyPost shipment the rate came from
+  shipmentId  String? // Shippo shipment the rate came from
   rateId      String?
-  rateAmount  Float? // what EasyPost charges me for the label
+  rateAmount  Float? // what Shippo charges me for the label
   joinOrderId String? // retired: packs no longer join a parcel at purchase
   packIds     String[] // the stored packs this quote ships together (Collection → Ship)
   error       String?

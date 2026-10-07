@@ -2,7 +2,7 @@ import type { Buyer, ShipQuote } from "@prisma/client";
 import { productName } from "../categories";
 import { db } from "../db";
 import { sendMail } from "../mail";
-import { buyLabel, downloadLabel, easypostReady, FALLBACK_SHIPPING, groundAdvantageRate, parcelFor, SERVICE, verifyAddress, type ShipToAddress } from "../ship/easypost";
+import { buyLabel, downloadLabel, FALLBACK_SHIPPING, groundAdvantageRate, isShippoAddressId, parcelFor, SERVICE, shippingReady, verifyAddress, type ShipToAddress } from "../ship/shippo";
 import { putObject } from "../storage";
 import { safeJson } from "../util";
 import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
@@ -12,7 +12,7 @@ import { perkLeft, usePerk } from "./member";
  * Shipping, from the Collection. Buying a pack never ships it: a kept or blind pack is stored on the account
  * (GamePack.orderId = null). The player picks one or more stored packs, confirms the address, sees one USPS Ground
  * Advantage rate for one combined parcel, and pays shipping only. One label for the whole selection. Nothing auto-ships.
- * The member mailer credit zeros one parcel a billing period. If EasyPost is down, $5.95 is charged and I buy the
+ * The member mailer credit zeros one parcel a billing period. If the Shippo rate fails, $5.95 is charged and I buy the
  * label from the order.
  */
 const QUOTE_TTL_MS = 30 * 60_000;
@@ -60,9 +60,10 @@ export function lineFor(q: Pick<ShipQuote, "id" | "amount" | "how" | "packIds">)
   return { quoteId: q.id, amount: q.amount, how: q.how, label, packs: q.packIds.length };
 }
 
-/** Verify the player's address with EasyPost and remember it (signup, and again before a rate if it wasn't verified). */
+/** Verify the player's address with Shippo and remember it (signup, and again before a rate if it wasn't verified). */
 export async function ensureVerified(buyer: Buyer): Promise<{ ok: true; id: string } | { ok: false; error: string; timeout: boolean }> {
-  if (buyer.addressVerified && buyer.easypostAddressId) return { ok: true, id: buyer.easypostAddressId };
+  // easypostAddressId holds the Shippo address id (column kept from EasyPost; old EasyPost ids are verified again).
+  if (buyer.addressVerified && isShippoAddressId(buyer.easypostAddressId)) return { ok: true, id: buyer.easypostAddressId! };
   const v = await verifyAddress(shipAddress(buyer));
   if (v.ok) await db.buyer.update({ where: { id: buyer.id }, data: { easypostAddressId: v.id, addressVerified: true } });
   return v;
@@ -106,7 +107,7 @@ export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?:
   const credit = await perkLeft(buyer, "mailer");
   let rate: { shipmentId: string; rateId: string; amount: number } | null = null;
   let error: string | null = null;
-  if (!easypostReady()) error = "EasyPost isn't set up";
+  if (!shippingReady()) error = "no shipping key: flat rate";
   else {
     const v = await ensureVerified(buyer);
     if (!v.ok && !v.timeout) return { ok: false as const, error: `USPS can't deliver to that address: ${v.error}`, code: "address" };

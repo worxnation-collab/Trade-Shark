@@ -116,7 +116,7 @@ export default async function OrdersPage() {
                     </div>
                     <div className="mt-1 text-sm">
                       Shipping paid {money(o.shippingCharged)}
-                      {o.how === "credit" ? " (member mailer credit)" : o.how === "fallback" ? " (EasyPost was down: flat $5.95)" : ""}
+                      {o.how === "credit" ? " (member mailer credit)" : o.how === "fallback" ? " (no Shippo rate: flat $5.95)" : ""}
                       {o.labelCost != null && <span className="text-navy/60"> · label {money(o.labelCost)}</span>}
                     </div>
                   </div>

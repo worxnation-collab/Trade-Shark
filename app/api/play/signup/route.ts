@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
 import { currentBuyer, PLAYER_COOKIE, PLAYER_COOKIE_OPTS, playerToken } from "@/lib/game/buyer";
 import { isValidZone } from "@/lib/game/rules";
-import { easypostReady, verifyAddress } from "@/lib/ship/easypost";
+import { shippingReady, verifyAddress } from "@/lib/ship/shippo";
 import { stripe, stripeErrorMessage } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -30,8 +30,8 @@ export async function POST(req: Request) {
       if (!ship.name || !ship.line1 || !ship.city || !/^[A-Z]{2}$/.test(ship.state) || !/^\d{5}(-\d{4})?$/.test(ship.postal) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
         return back("Fill in your name, email and US shipping address.");
       const tz = isValidZone(field(f, "tz", 64)) ? field(f, "tz", 64) : "America/New_York";
-      // USPS has to be able to deliver it. If EasyPost is down, it's verified again at checkout.
-      const v = easypostReady() ? await verifyAddress({ name: ship.name, street1: ship.line1, street2: ship.line2, city: ship.city, state: ship.state, zip: ship.postal }) : null;
+      // USPS has to be able to deliver it. If Shippo is down, it's verified again at checkout.
+      const v = shippingReady() ? await verifyAddress({ name: ship.name, street1: ship.line1, street2: ship.line2, city: ship.city, state: ship.state, zip: ship.postal }) : null;
       if (v && !v.ok && !v.timeout) return back(`USPS can't deliver to that address: ${v.error}`);
       const customer = await s.customers.create({
         email,
