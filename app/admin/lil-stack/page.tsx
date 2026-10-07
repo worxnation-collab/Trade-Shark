@@ -11,7 +11,7 @@ import pdfPkg from "pdfjs-dist/package.json";
 import { IngestTicker } from "@/components/IngestTicker";
 import { PdfInbox } from "@/components/PdfInbox";
 import { ingestProgress } from "@/lib/ingestQueue";
-import { BuildButton, ConfirmPack, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
+import { ConfirmPack, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
 export const metadata = { title: "Pack desk" };
@@ -107,7 +107,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         ) : (
           <p className="text-sm text-navy/70">Every card is in its slot.</p>
         )}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           {d.columns.map((col) => (
             <div key={col.tray} className={`rounded-xl border-2 ${col.tray === "H" ? "border-coral/50 bg-coral/5" : "border-navy/15 bg-white"}`}>
               <div className="border-b-2 border-navy/10 px-3 py-2">
@@ -170,63 +170,47 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         )}
       </Step>
 
-      <Step n={3} title="Build when the mix is ready" done={false}>
-        {d.canBuild >= 10 ? (
-          <BuildButton category={category} />
+      <Step n={3} title="Pull the next pack" done={false}>
+        {d.next ? (
+          <div className="rounded-xl border-2 border-navy p-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-2xl font-black">
+                Pack {d.next.number} <span className="text-base font-bold text-navy/60">{product}</span>
+                {d.next.kind !== "base" && <span className="ml-2 rounded bg-coral px-2 py-0.5 text-sm text-white">{d.next.kind.toUpperCase()}</span>}
+              </h3>
+              <span className="text-sm text-navy/60">
+                value {money(d.next.value)} ·{" "}
+                <Link href={`/admin/packs/${d.next.id}`} className="underline">
+                  print
+                </Link>
+              </span>
+            </div>
+            <ol className="mt-2 divide-y divide-navy/10">
+              {d.next.cards.map((c, i) => (
+                <li key={c.id} className={`grid grid-cols-[2rem_1fr_auto_auto] items-baseline gap-3 py-1.5 ${c.hit ? "bg-coral/5" : ""}`}>
+                  <span className="text-sm text-navy/50">{i + 1}.</span>
+                  <span className="truncate font-semibold">
+                    {c.name}
+                    {c.hit && <span className="ml-1 text-xs font-black text-coral">HIT</span>}
+                  </span>
+                  <span className="text-sm">{money(c.price)}</span>
+                  <span className="font-mono text-2xl font-black">{c.code}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-3">
+              <ConfirmPack id={d.next.id} label={`Pack ${d.next.number}`} />
+            </div>
+          </div>
         ) : (
           <p className="text-lg font-bold">
-            {d.canBuild} of 10 packs can be built. <span className="text-coral">Missing: {d.short ?? "nothing"}.</span>
+            No pack ready yet. <span className="text-coral">Missing: {d.short ?? "placed, priced cards"}.</span>
           </p>
         )}
         <p className="text-sm text-navy/60">
-          A pack is 7 bulk + 4 mid + 1 top (worth $3.20–$3.80), or a hit pack with one $4–$9.99 card. Never two of the same card, never more than two of one Pokémon type, never
-          more than two cards of one player.
+          One pack at a time: pull the 12 cards by their codes, then press Packed. The next pack prints after that. Never two of the same card, never an energy card, never more than two
+          of one Pokémon type, never more than two cards of one player, never an unpriced card.
         </p>
-      </Step>
-
-      <Step n={4} title="Pull the sheet" done={d.pulling.length === 0}>
-        {d.pulling.length === 0 ? (
-          <p className="text-sm text-navy/70">No packs waiting to be pulled.</p>
-        ) : (
-          d.pulling.map((p) => (
-            <div key={p.id} className="rounded-xl border-2 border-navy p-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-2xl font-black">
-                  {product} {p.number}
-                  {p.kind !== "base" && <span className="ml-2 rounded bg-coral px-2 py-0.5 text-sm text-white">{p.kind.toUpperCase()}</span>}
-                </h3>
-                <span className="text-sm text-navy/60">
-                  value {money(p.value)} ·{" "}
-                  <Link href={`/admin/packs/${p.id}`} className="underline">
-                    printable sheet
-                  </Link>
-                </span>
-              </div>
-              <ol className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                {p.cards.map((c) => (
-                  <li key={c.id} className={`rounded-lg border-2 p-2 text-center ${c.hit ? "border-coral bg-coral/5" : "border-navy/15 bg-white"}`}>
-                    <span className="block font-mono text-3xl font-black leading-none">{c.code}</span>
-                    <span className="mt-1 block truncate text-xs">{c.name}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))
-        )}
-      </Step>
-
-      <Step n={5} title="Confirm the pack" done={d.pulling.length === 0}>
-        {d.pulling.length === 0 ? (
-          <p className="text-sm text-navy/70">Nothing to confirm. Confirmed packs go on sale (members see a new drop first, for an hour).</p>
-        ) : (
-          <ul className="flex flex-wrap gap-3">
-            {d.pulling.map((p) => (
-              <li key={p.id}>
-                <ConfirmPack id={p.id} label={`${product} ${p.number}`} />
-              </li>
-            ))}
-          </ul>
-        )}
       </Step>
 
       <section className="card space-y-2 p-4">

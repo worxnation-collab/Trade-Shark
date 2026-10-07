@@ -38,31 +38,12 @@ export function PlaceButton({ ids }: { ids: string[] }) {
   );
 }
 
-export function BuildButton({ category }: { category: string }) {
-  const { busy, msg, setMsg, post } = useDesk();
-  return (
-    <div>
-      <button
-        className="btn-coral px-8 py-4 text-2xl font-black"
-        disabled={busy}
-        onClick={async () => {
-          const j = await post("/api/admin/desk", { action: "build", category });
-          if (j) setMsg(`Built ${j.built}. Pull them below.${j.short ? ` Next: ${j.short}.` : ""}`);
-        }}
-      >
-        {busy ? "Building…" : "Build next 10"}
-      </button>
-      {msg && <p className="mt-2 text-sm font-semibold">{msg}</p>}
-    </div>
-  );
-}
-
 export function ConfirmPack({ id, label }: { id: string; label: string }) {
   const { busy, msg, post } = useDesk();
   return (
     <div className="flex flex-col gap-1">
       <button className="btn-primary px-5 py-3 text-base font-black" disabled={busy} onClick={() => post("/api/admin/desk", { action: "confirm", packId: id })}>
-        {busy ? "…" : `Confirm ${label}: all 12 pulled`}
+        {busy ? "…" : `Packed: ${label}`}
       </button>
       <button
         className="text-xs text-navy/60 underline"

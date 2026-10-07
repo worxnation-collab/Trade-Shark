@@ -1,7 +1,7 @@
 import type { Card } from "@prisma/client";
 import type { Category } from "./categories";
 import { db } from "./db";
-import { BUILD_BATCH, TRAY, previewBuild, shortLine } from "./game/packs";
+import { TRAY, isEnergy, nextPack, previewBuild, shortLine } from "./game/packs";
 import { BIN, slotOf } from "./game/rules";
 import { demoCardCount } from "./purge";
 import { getSettings } from "./settings";
@@ -29,7 +29,8 @@ export function holdWhy(c: Pick<Card, "status" | "holdReason" | "listPrice" | "p
   return null;
 }
 
-export function trayFor(c: Pick<Card, "status" | "holdReason" | "listPrice" | "partnerId" | "senderId">, chaseOn: boolean, consignOk = false): Tray {
+export function trayFor(c: Pick<Card, "status" | "holdReason" | "listPrice" | "partnerId" | "senderId"> & { name?: string | null }, chaseOn: boolean, consignOk = false): Tray {
+  if (isEnergy(c.name)) return TRAY.energy; // side bin: never pulled into a pack
   const why = holdWhy(c, chaseOn);
   if (why === NO_PRICE) return TRAY.unpriced; // named and owned, waiting only for a typed price
   if (why && !(consignOk && c.senderId && why.startsWith("consignment"))) return TRAY.hold;
@@ -71,14 +72,15 @@ export async function deskData(category: Category) {
   await assignLocations(category);
   const s = await getSettings();
   const chaseOn = !!s.chaseOn?.[category];
+  const nextId = await nextPack(category);
   const [demo, real, inbox, cards, pulling, onSale, plan] = await Promise.all([
     demoCardCount(),
     db.card.count({ where: { status: { not: "Archived" } } }),
     db.card.count({ where: { status: "Inbox" } }),
     db.card.findMany({ where: { category, status: { in: ON_DESK }, gamePackId: null } }),
-    db.gamePack.findMany({ where: { category, status: "pulling" }, orderBy: { number: "asc" }, include: { cards: true } }),
+    db.gamePack.findMany({ where: { id: nextId ?? "-" }, include: { cards: true } }),
     db.gamePack.count({ where: { category, status: "available" } }),
-    previewBuild(category, BUILD_BATCH),
+    nextId ? Promise.resolve(null) : previewBuild(category, 1),
   ]);
   const row = (c: Card) => ({
     id: c.id,
@@ -101,11 +103,11 @@ export async function deskData(category: Category) {
       { tray: TRAY.hit, label: "Hit", note: chaseOn ? "$4 and up" : "$4–$9.99", cards: byTray(TRAY.hit) },
       { tray: TRAY.unpriced, label: "Unpriced", note: "no source priced it: type a price", cards: byTray(TRAY.unpriced) },
       { tray: TRAY.hold, label: "Hold", note: "fix before packing", cards: byTray(TRAY.hold) },
+      { tray: TRAY.energy, label: "Energy", note: "side bin: never pulled", cards: byTray(TRAY.energy) },
     ],
     toPlace: cards.filter((c) => c.location && !c.sortedAt).sort((a, b) => codeOrder(a.location, b.location)).map(row),
-    canBuild: plan.packs.length,
-    short: shortLine(plan, BUILD_BATCH),
-    pulling: pulling.map((p) => {
+    short: plan ? shortLine(plan, 1) : null,
+    next: pulling.map((p) => {
       const byId = new Map(p.cards.map((c) => [c.id, c]));
       return {
         id: p.id,
@@ -118,7 +120,7 @@ export async function deskData(category: Category) {
           .sort((a, b) => codeOrder(a.location, b.location))
           .map((c) => ({ id: c.id, code: c.location ?? "—", name: nameOf(c), price: c.listPrice ?? 0, hit: c.id === p.hitCardId })),
       };
-    }),
+    })[0] ?? null,
     onSale,
   };
 }

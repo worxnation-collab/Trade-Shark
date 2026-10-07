@@ -45,3 +45,14 @@ describe("unpriced cards", () => {
     expect(trayFor({ ...base, listPrice: 0.2 }, false)).toBe("A");
   });
 });
+
+describe("energy cards", () => {
+  it("go to the side bin, never a value tray", async () => {
+    const { isEnergy } = await import("@/lib/game/packs");
+    expect(isEnergy("Basic Grass Energy")).toBe(true);
+    expect(isEnergy("Double Turbo Energy")).toBe(true);
+    expect(isEnergy("Energy")).toBe(true);
+    expect(isEnergy("Snom")).toBe(false);
+    expect(trayFor({ status: "Priced", holdReason: null, listPrice: 0.1, partnerId: "matthew", senderId: null, name: "Basic Grass Energy" }, false)).toBe("E");
+  });
+});

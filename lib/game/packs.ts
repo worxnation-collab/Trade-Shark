@@ -15,6 +15,9 @@ export const STOCK = ["Priced", "BulkHold"];
 /** Keep up to this many available packs per category (more stock stays loose for later draws). */
 export const AVAILABLE_TARGET = 50;
 
+/** Energy cards (basic, special, anything named Energy) never go in a pack: they wait in the desk's side bin. */
+export const isEnergy = (name?: string | null) => /\benergy\b/i.test(name ?? "");
+
 const poolWhere = (category: string): Prisma.CardWhereInput => ({
   category,
   status: { in: STOCK },
@@ -26,6 +29,7 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   OR: [{ partnerId: { not: null } }, { senderId: { not: null } }],
   gamePackId: null,
   lilStackId: null,
+  NOT: { name: { contains: "energy", mode: "insensitive" } },
 });
 
 /** A new drop is members-only for this long. */
@@ -50,7 +54,7 @@ async function recentKinds(category: string) {
 }
 
 /** Tray letters on the desk, one per value bin (H = hold: needs a look, no owner, chase off, reserve can't cover). */
-export const TRAY = { bulk: "A", mid: "B", top: "C", hit: "D", hold: "H", unpriced: "U" } as const;
+export const TRAY = { bulk: "A", mid: "B", top: "C", hit: "D", hold: "H", unpriced: "U", energy: "E" } as const;
 /** How many packs one press of the desk button builds. */
 export const BUILD_BATCH = 10;
 
@@ -188,6 +192,19 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; coun
     kinds[draw.kind] = (kinds[draw.kind] ?? 0) + 1;
   }
   return { category, built, kinds, short: shortLine(plan, Math.min(opts.count ?? BUILD_BATCH, room)), full: room === 0 };
+}
+
+/**
+ * The desk names one exact stack at a time: the pack being pulled now, or (if none) the next legal pack, built here
+ * from placed, priced, owned cards. Pack 2 only exists after Pack 1 is marked Packed. Null = not enough for a pack.
+ */
+export async function nextPack(category: Category) {
+  const open = await db.gamePack.findFirst({ where: { category, status: "pulling" }, orderBy: { number: "asc" }, select: { id: true } });
+  if (open) return open.id;
+  const plan = await previewBuild(category, 1);
+  if (!plan.packs.length) return null;
+  await buildGamePacks(category, { count: 1 });
+  return (await db.gamePack.findFirst({ where: { category, status: "pulling" }, orderBy: { number: "asc" }, select: { id: true } }))?.id ?? null;
 }
 
 /** Step 5: the pack was pulled. It goes on sale (a new drop: members get the first hour) and its cards are out of the trays. */
