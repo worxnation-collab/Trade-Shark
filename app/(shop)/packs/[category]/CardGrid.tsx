@@ -8,7 +8,7 @@ import { TiltCard } from "./TiltCard";
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 /** The 12 real scans. Drag to tilt; tap to open one larger (it tilts there too). */
-export function CardGrid({ pack, fx = null, fxEl = null }: { pack: PackView; fx?: string | null; fxEl?: React.ReactNode }) {
+export function CardGrid({ pack, fx = null, fxEl = null, light = false }: { pack: PackView; fx?: string | null; fxEl?: React.ReactNode; light?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const big = pack.cards.find((c) => c.id === open);
   // The hit card is dealt last: bring it into view for its sparkle (above the pinned Keep bar).
@@ -28,8 +28,8 @@ export function CardGrid({ pack, fx = null, fxEl = null }: { pack: PackView; fx?
           <li key={c.id} id={`card-${c.id}`} className="card-in relative" style={{ "--i": i } as React.CSSProperties}>
             {fx === c.id && fxEl}
             <TiltCard src={`/api/play/image/${c.id}`} alt={c.name} onTap={() => setOpen(c.id)} />
-            <p className="-mt-1 truncate text-xs font-semibold text-white">{c.name}</p>
-            <p className="truncate text-[11px] text-sand/60">
+            <p className={`-mt-1 truncate text-xs font-semibold ${light ? "text-navy" : "text-white"}`}>{c.name}</p>
+            <p className={`truncate text-[11px] ${light ? "text-navy/60" : "text-sand/60"}`}>
               {usd(c.price)}
               {c.chase && <span className="ml-1 font-bold text-coral">CHASE</span>}
               {c.hit && <span className="ml-1 font-bold text-teal">HIT</span>}

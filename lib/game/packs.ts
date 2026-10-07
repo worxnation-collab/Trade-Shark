@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { CATEGORY_KEYS, type Category } from "../categories";
 import { db } from "../db";
 import { getSettings } from "../settings";
+import { fitsReserve } from "../partners/split";
 import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, isBump, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
 
 /**
@@ -9,7 +10,7 @@ import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, isBump, nextKind, round2, 
  * ever reserves a pack that already exists; it never assembles one on the spot.
  */
 
-/** Cards that may be drawn: identified, priced stock with a photo, tagged to a partner, not in any pack. */
+/** Cards that may be drawn: identified, priced stock with a photo, tagged to an owner (founder or sender), not in any pack. */
 export const STOCK = ["Priced", "BulkHold"];
 /** Keep up to this many available packs per category (more stock stays loose for later draws). */
 export const AVAILABLE_TARGET = 50;
@@ -20,7 +21,7 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   readable: true,
   frontImage: { not: null },
   listPrice: { not: null },
-  partnerId: { not: null },
+  OR: [{ partnerId: { not: null } }, { senderId: { not: null } }],
   gamePackId: null,
   lilStackId: null,
 });
@@ -59,8 +60,12 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
   if (!want) return { category, built: 0, available: ready.length, kinds: {} as Record<string, number> };
   const settings = await getSettings();
   const chaseOn = !!settings.chaseOn?.[category];
-  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true }, orderBy: { createdAt: "asc" } });
-  const ownerOf = new Map(rows.map((c) => [c.id, c.partnerId!]));
+  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true, senderId: true }, orderBy: { createdAt: "asc" } });
+  const ownerOf = new Map(rows.map((c) => [c.id, c]));
+  // Consignment cards go in only while consignment is open and only inside the reserve's headroom; the rest wait (hold bin).
+  const { reserveNow } = await import("../partners");
+  let headroom = settings.consignOpen ? (await reserveNow()).headroom : 0;
+  const consigned = (ids: string[]) => ids.map((id) => ownerOf.get(id)!).filter((c) => c.senderId).map((c) => c.listPrice!);
   const left = new Map<string, PoolCard>(rows.map((c) => [c.id, { id: c.id, price: c.listPrice! }]));
   const recent = await recentKinds(category);
   const readyCount = { total: ready.length, hit: ready.filter((p) => p.kind === "hit").length };
@@ -68,13 +73,18 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
   const kinds: Record<string, number> = {};
   let built = 0;
   while (built < want) {
-    const pool = [...left.values()];
+    const pool = [...left.values()].filter((c) => !ownerOf.get(c.id)!.senderId || c.price <= headroom);
     const has = (bin: string) => pool.some((c) => slotOf(c.price) === bin);
     let kind = nextKind({ recent, ready: readyCount, hitCards: has("hit"), chaseOn, chaseCards: has("chase") });
     let p = drawPack(pool, rng, 400, kind);
     if (!p && kind !== "base") {
       kind = "base";
       p = drawPack(pool, rng, 400, "base");
+    }
+    // The reserve must cover every consignment card in this stack together; if not, draw it from founder cards only.
+    if (p && !fitsReserve(consigned(p.ids), headroom)) {
+      const founders = pool.filter((c) => !ownerOf.get(c.id)!.senderId);
+      p = drawPack(founders, rng, 400, kind) ?? (kind !== "base" ? ((kind = "base"), drawPack(founders, rng, 400, "base")) : null);
     }
     if (!p) break;
     const draw = p;
@@ -88,7 +98,8 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
             number,
             kind,
             cardIds: draw.ids,
-            partnerIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!))].sort(),
+            partnerIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.partnerId).filter((x): x is string => !!x))].sort(),
+            senderIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.senderId).filter((x): x is string => !!x))].sort(),
             value: draw.value,
             hitCardId: kind === "base" ? null : draw.best,
             chase: kind === "chase",
@@ -107,6 +118,7 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
       continue;
     }
     built++;
+    headroom = Math.max(0, Math.round((headroom - consigned(draw.ids).reduce((a, b) => a + b, 0)) * 100) / 100);
     recent.unshift(kind);
     readyCount.total++;
     if (kind === "hit") readyCount.hit++;
@@ -177,7 +189,7 @@ async function bumpTopSlot(packId: string, category: Category, rng: Rng) {
   const current = await db.gamePack.findUniqueOrThrow({ where: { id: packId }, include: { cards: { select: { id: true, listPrice: true } } } });
   const top = current.cards.reduce<(typeof current.cards)[number] | null>((a, c) => (!a || (c.listPrice ?? 0) > (a.listPrice ?? 0) ? c : a), null);
   if (!top) return false;
-  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true } })).filter((c) => isBump(c.listPrice) && c.listPrice! > (top.listPrice ?? 0));
+  const pool = (await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true } })).filter((c) => isBump(c.listPrice) && c.listPrice! > (top.listPrice ?? 0) && !!c.partnerId); // founder cards only: no reserve check at reservation
   if (!pool.length) return false;
   const card = pool[rng(pool.length)];
   return db

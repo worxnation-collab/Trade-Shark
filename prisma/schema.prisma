@@ -20,7 +20,8 @@ model Batch {
   notes        String?
   pairMode     String       @default("auto") // auto | filename | order | fronts
   pairDecision String? // JSON BackDecision from Auto pairing: did this batch contain backs?
-  partnerId    String? // who owns every card in this upload (required for new uploads); copied onto each card
+  partnerId    String? // founder who owns every card in this upload; copied onto each card
+  senderId     String? // or: the outside sender (consignment) who owns every card in it. Exactly one of the two.
   createdAt    DateTime     @default(now())
   cards        Card[]
   files        UploadFile[]
@@ -65,7 +66,8 @@ model Card {
 
   // identity
   game           String  @default("Other") // Pokemon | Sports | Magic | Other
-  partnerId      String? // owner: matthew | adrian | mike (Partner.id). No partner = can't enter a bin
+  partnerId      String? // founder owner: matthew | adrian | mike (Partner.id)
+  senderId       String? // consignment owner (Sender.id). A card needs a founder or a sender to enter a bin
   category       String? // baseball | football | pokemon: which pack product it goes in (null = never packed)
   categorySource String? // auto | manual
   name           String?
@@ -314,7 +316,8 @@ model GamePack {
   category       String // baseball | football | pokemon
   cardIds        String[]
   cards          Card[]
-  partnerIds     String[] // partners whose cards are in this stack (copied from the cards when built)
+  partnerIds     String[] // founders whose cards are in this stack (copied from the cards when built)
+  senderIds      String[] // consignment senders whose cards are in this stack
   value          Float // summed engine prices of the 12 cards
   status         String     @default("available") // available | reserved | kept | expired | sold-blind | dissolved
   chase          Boolean    @default(false) // top slot swapped for a $10+ chase card (flag on only)
@@ -495,9 +498,71 @@ model PartnerPayout {
   partnerId  String
   partner    Partner          @relation(fields: [partnerId], references: [id])
   amount     Float
-  status     String // pending | paid | failed
+  status     String // pending | paid | failed | retained (moved into the reserve instead of paid out)
   transferId String?
   error      String?
   createdAt  DateTime         @default(now())
   earnings   PartnerEarning[]
+}
+
+/// An outside sender who consigns cards. Created by me from an accepted submission, only while consignment is unlocked.
+model Sender {
+  id              String          @id @default(cuid())
+  name            String
+  email           String?
+  stripeAccountId String?
+  createdAt       DateTime        @default(now())
+  earnings        SenderEarning[]
+  payouts         SenderPayout[]
+}
+
+/// A sold consignment card: the sender is owed the card's engine price (not a share of the pack).
+model SenderEarning {
+  id        String        @id @default(cuid())
+  senderId  String
+  sender    Sender        @relation(fields: [senderId], references: [id])
+  cardId    String        @unique
+  packId    String
+  amount    Float
+  payoutId  String?
+  payout    SenderPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdAt DateTime      @default(now())
+
+  @@index([senderId, payoutId])
+}
+
+model SenderPayout {
+  id         String          @id @default(cuid())
+  senderId   String
+  sender     Sender          @relation(fields: [senderId], references: [id])
+  amount     Float
+  status     String // pending | paid | failed
+  transferId String?
+  error      String?
+  createdAt  DateTime        @default(now())
+  earnings   SenderEarning[]
+}
+
+/// The consignment reserve, as a ledger. In: peeks, memberships, the company's part of sold packs, founder shares
+/// retained. Out: sender payouts. Never filled from one sender's money to cover another's card.
+model ReserveEntry {
+  id        String   @id @default(cuid())
+  kind      String // peek | membership | pack | retained | sender-payout | adjust
+  amount    Float
+  ref       String?  @unique // idempotency: peek:<cycle>, member:<invoice>, pack:<pack>, payout:<id>
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([kind])
+}
+
+/// A public request to mail in bulk for consignment. Only accepted (and only open to the public) while unlocked.
+model ConsignSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  about     String
+  status    String   @default("pending") // pending | accepted | declined
+  senderId  String?
+  createdAt DateTime @default(now())
 }

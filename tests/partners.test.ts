@@ -48,3 +48,48 @@ describe("partner split", () => {
     expect(estimateFee(3.99)).toBe(0.42);
   });
 });
+
+import { fitsReserve, KEEP_SPLIT_INCLUDES_REVEAL, ownerValue, parseOwner, reserveState } from "@/lib/partners/split";
+
+describe("owners", () => {
+  it("a tag is a founder or a sender, never both, never blank", () => {
+    expect(parseOwner("f:adrian")).toEqual({ partnerId: "adrian", senderId: null });
+    expect(parseOwner("s:cmabc12345")).toEqual({ partnerId: null, senderId: "cmabc12345" });
+    expect(parseOwner("f:bob")).toBe(null);
+    expect(parseOwner("")).toBe(null);
+    expect(ownerValue({ partnerId: "mike" })).toBe("f:mike");
+    expect(ownerValue({ senderId: "x1" })).toBe("s:x1");
+  });
+
+  it("the $1 peek is company money: a keep splits the $2.99 keep charge only", () => {
+    expect(KEEP_SPLIT_INCLUDES_REVEAL).toBe(false);
+  });
+
+  it("a consignment card takes no founder share; its part of the net stays with the company", () => {
+    // $4.99 blind, $0.44 fee → $4.55 net. Founder cards $3, a $50 consignment card: founders split by $3/$53.
+    const shares = splitNet(4.55, [
+      { partnerId: "matthew", value: 2 },
+      { partnerId: "adrian", value: 1 },
+      { partnerId: null, value: 50 }, // consignment: owed $50 from the reserve, no share
+    ]);
+    expect(shares.map((s) => s.partnerId).sort()).toEqual(["adrian", "matthew"]);
+    const founders = shares.reduce((a, s) => a + s.amount, 0);
+    expect(founders).toBeCloseTo(0.26, 2); // 4.55 × 3/53
+  });
+});
+
+describe("reserve", () => {
+  it("on hand = balance − payable; headroom also takes off what's already in stacks; shortfall vs every unsold card", () => {
+    const r = reserveState({ balance: 120, payable: 20, committed: 30, liability: 150 });
+    expect(r.onHand).toBe(100);
+    expect(r.headroom).toBe(70);
+    expect(r.shortfall).toBe(50);
+    expect(reserveState({ balance: 10, payable: 20, committed: 0, liability: 0 }).headroom).toBe(0);
+  });
+
+  it("a stack's consignment cards must fit together", () => {
+    expect(fitsReserve([50], 70)).toBe(true);
+    expect(fitsReserve([50, 25], 70)).toBe(false);
+    expect(fitsReserve([], 0)).toBe(true);
+  });
+});

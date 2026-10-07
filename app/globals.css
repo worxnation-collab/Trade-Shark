@@ -8,6 +8,7 @@
   --color-sand: #f4efe6;
   --color-sand-2: #e9e1d2;
   --color-coral: #e85d4c;
+  --color-gold: #d9a441;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -219,4 +220,24 @@ kbd {
   .ls-arrow {
     animation: none !important;
   }
+}
+
+/* Gemini scene art (lib/brandScenes.json). Art sits behind the pack only; text never sits on busy art. */
+.stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--color-navy);
+}
+.stage > .stage-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pattern-band {
+  background-repeat: repeat;
+  background-size: 160px;
 }

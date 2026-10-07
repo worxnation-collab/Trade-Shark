@@ -6,6 +6,7 @@ import { useState } from "react";
 import { confetti, pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import type { ShipLine, ShipToFields } from "@/lib/game/ship";
+import { ACCENT } from "@/lib/brandAssets";
 import { CardGrid } from "../packs/[category]/CardGrid";
 
 export interface StoredPack {
@@ -29,7 +30,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: "shor
 
 type Ship = { k: "off" } | { k: "pick" } | { k: "address" } | { k: "quote"; line: ShipLine } | { k: "done"; shipping: number; packs: number; tracking: string | null };
 
-export function Collection({ packs, order, address }: { packs: StoredPack[]; order: string[]; address: ShipToFields }) {
+export function Collection({ packs, order, address, pattern }: { packs: StoredPack[]; order: string[]; address: ShipToFields; pattern: string | null }) {
   const router = useRouter();
   const [open, setOpen] = useState<PackView | null>(null);
   const [loading, setLoading] = useState("");
@@ -87,11 +88,11 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
   if (open)
     return (
       <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
-        <p className="text-lg font-bold text-white">
+        <p className="text-2xl font-black uppercase tracking-tight text-navy">
           {packs.find((p) => p.id === open.id)?.product ?? "Pack"} {open.number ?? ""}
         </p>
-        <p className="text-xs text-sand/60">12 cards · pack value {usd(open.value)} · drag a card to tilt it, tap to see it bigger</p>
-        <CardGrid pack={open} />
+        <p className="text-xs text-navy/60">12 cards · pack value {usd(open.value)} · drag a card to tilt it, tap to see it bigger</p>
+        <CardGrid pack={open} light />
         <button className="btn-coral mt-6 px-7 py-3" onClick={() => setOpen(null)}>
           Exit
         </button>
@@ -100,7 +101,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
 
   if (!packs.length)
     return (
-      <p className="mt-8 text-center text-sm text-sand/75">
+      <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={pattern ? { backgroundImage: `url(${pattern})` } : undefined}>
         No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
       </p>
     );
@@ -115,38 +116,38 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
 
   return (
     <div className="mx-auto mt-6 max-w-2xl">
-      {error && <p className="mb-4 rounded bg-coral/20 px-3 py-2 text-center text-sm text-white">{error}</p>}
+      {error && <p className="mb-4 rounded bg-coral/15 px-3 py-2 text-center text-sm font-semibold text-navy">{error}</p>}
       {groups.map((g) => (
         <div key={g.c} className="mt-6">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-teal">{g.list[0].product}s</h2>
-          <ul className="mt-2 divide-y divide-white/10 rounded-2xl bg-navy-2/70 ring-1 ring-white/10">
+          <h2 className="text-sm font-black uppercase tracking-widest" style={{ color: ACCENT[g.c] === "#FFD23F" ? "#0B1F3A" : ACCENT[g.c] }}>{g.list[0].product}s</h2>
+          <ul className="mt-2 divide-y divide-navy/10 overflow-hidden rounded-2xl border-2 border-navy bg-white">
             {g.list.map((p) => {
               const can = picking && p.state === "stored";
               return (
                 <li key={p.id}>
                   <button
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/5 disabled:opacity-60"
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-sand disabled:opacity-60"
                     onClick={() => (picking ? can && toggle(p.id) : view(p.id))}
                     disabled={!!loading || (picking && !can)}
                   >
-                    {picking && <span className={`flex h-5 w-5 items-center justify-center rounded border ${picked.has(p.id) ? "border-teal bg-teal text-navy" : "border-sand/40"}`}>{picked.has(p.id) ? "✓" : ""}</span>}
+                    {picking && <span className={`flex h-5 w-5 items-center justify-center rounded border-2 ${picked.has(p.id) ? "border-navy bg-gold text-navy" : "border-navy/40"}`}>{picked.has(p.id) ? "✓" : ""}</span>}
                     <span className="flex-1">
-                      <span className="block font-semibold text-white">
+                      <span className="block font-extrabold text-navy">
                         {p.product} {p.number ?? ""}
                       </span>
-                      <span className="block text-xs text-sand/60">
+                      <span className="block text-xs text-navy/60">
                         {day(p.at)} · {p.how}
                       </span>
                     </span>
                     <span className="text-xs">
                       {p.state === "stored" ? (
-                        <span className="text-sand/70">{loading === p.id ? "Opening…" : "In collection"}</span>
+                        <span className="font-semibold text-navy/70">{loading === p.id ? "Opening…" : "In collection"}</span>
                       ) : p.tracking ? (
-                        <a href={p.tracking} target="_blank" rel="noreferrer" className="text-teal underline" onClick={(e) => e.stopPropagation()}>
+                        <a href={p.tracking} target="_blank" rel="noreferrer" className="font-semibold text-teal-2 underline" onClick={(e) => e.stopPropagation()}>
                           {p.state === "shipped" ? "Shipped · track" : "Shipping · track"}
                         </a>
                       ) : (
-                        <span className="text-teal">Shipping soon</span>
+                        <span className="font-semibold text-teal-2">Shipping soon</span>
                       )}
                     </span>
                   </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { CategoryPicker, PartnerPicker } from "@/app/admin/lil-stack/LilStackTools";
+import { ownerValue } from "@/lib/partners/split";
 import type { Card, SourceRun } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -31,6 +32,7 @@ interface Props {
   defaultTitle: string;
   defaultDescription: string;
   pack: { id: string; label: string } | null;
+  consign: { owedTo: string; price: number; onHand: number; headroom: number; shortfall: number; open: boolean } | null;
 }
 
 const FIELDS: { k: keyof Form; label: string; conf?: IdentField; wide?: boolean }[] = [
@@ -288,11 +290,23 @@ export function ReviewScreen(p: Props) {
               <CategoryPicker key={c.category ?? "none"} cardId={c.id} value={c.category} />
             </div>
             <div className="flex items-center gap-2 pt-1 text-xs text-navy/60">
-              Partner
-              <PartnerPicker key={c.partnerId ?? "none"} cardId={c.id} value={c.partnerId} locked={c.status === "Sold"} />
+              Owner
+              <PartnerPicker key={ownerValue(c) || "none"} cardId={c.id} value={ownerValue(c) || null} locked={c.status === "Sold"} />
             </div>
           </div>
         </div>
+        {p.consign && (
+          <div className={`card p-2 text-sm ${p.consign.shortfall > 0 || !p.consign.open ? "border-coral" : "border-teal"}`}>
+            <div className="font-semibold">Consignment · owed to {p.consign.owedTo} if its pack sells</div>
+            <div className="text-xs text-navy/70">
+              Card price ${p.consign.price.toFixed(2)} · reserve on hand ${p.consign.onHand.toFixed(2)} · room for new stacks ${p.consign.headroom.toFixed(2)} · shortfall{" "}
+              <b className={p.consign.shortfall > 0 ? "text-coral" : ""}>${p.consign.shortfall.toFixed(2)}</b>
+            </div>
+            <div className="text-xs">
+              {!p.consign.open ? "Consignment is locked: this card stays in the hold bin." : p.consign.shortfall > 0 ? "Hold bin: the reserve can't cover it yet." : "Covered: it can go in a stack."}
+            </div>
+          </div>
+        )}
         {p.dupOf && (
           <div className="card flex items-center gap-3 border-coral p-2 text-sm">
             {p.dupOf.frontImage && (

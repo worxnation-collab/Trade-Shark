@@ -1,7 +1,8 @@
 /**
- * Partner payouts, the pure part. Three partners own the cards; the shop sells them in packs.
- * A sold pack (keep or blind only) pays out: pack price minus the Stripe fee, split by each partner's share of the
- * stack's engine value. The $1 on a peek that isn't kept, and every shipping charge, are never split.
+ * Owner payouts, the pure part. Every card has an owner: a founder (Matthew, Adrian, Mike) or an outside sender
+ * (consignment). A sold pack (keep or blind only): pack price − Stripe fee − any stamp credit = net, split among
+ * founders by engine value. A consignment card takes no share: its sender is owed the card's engine price, paid
+ * from the reserve. The $1 peek, memberships and shipping are company money and never split.
  */
 
 export const PARTNERS = [
@@ -14,10 +15,38 @@ export const isPartner = (v: unknown): v is PartnerId => typeof v === "string" &
 export const partnerName = (id: string | null | undefined) => PARTNERS.find((p) => p.id === id)?.name ?? "No partner";
 
 /**
- * A keep is a $3.99 pack: the $1 reveal and the $2.99 keep together, so both charges and both fees count.
- * Set this false to split only the $2.99 keep charge (the $1 then stays with the shop on every peek).
+ * The $1 peek is company revenue (it goes to the reserve), so a keep splits only the $2.99 keep charge.
+ * Set true to split the whole $3.99 instead (both charges and both fees).
  */
-export const KEEP_SPLIT_INCLUDES_REVEAL = true;
+export const KEEP_SPLIT_INCLUDES_REVEAL = false;
+
+/** A stamp-card credit takes this off the pack price before the split. */
+export const STAMP_CREDIT = 4;
+
+/** An owner tag as one string: "f:<founder>" or "s:<sender id>". */
+export type OwnerTag = { partnerId: string; senderId: null } | { partnerId: null; senderId: string };
+export function parseOwner(v: unknown): OwnerTag | null {
+  if (typeof v !== "string") return null;
+  if (v.startsWith("f:") && isPartner(v.slice(2))) return { partnerId: v.slice(2), senderId: null };
+  if (v.startsWith("s:") && /^[a-z0-9]{8,40}$/i.test(v.slice(2))) return { partnerId: null, senderId: v.slice(2) };
+  return null;
+}
+export const ownerValue = (c: { partnerId?: string | null; senderId?: string | null }) => (c.partnerId ? `f:${c.partnerId}` : c.senderId ? `s:${c.senderId}` : "");
+
+/**
+ * The reserve. `balance` = company money put in minus sender payouts sent. `payable` = sold consignment cards not
+ * paid yet. `committed` = consignment cards already sitting in built stacks. `liability` = every unsold consignment
+ * card's engine price. Headroom = what one more stack's consignment cards may add up to.
+ */
+export function reserveState(r: { balance: number; payable: number; committed: number; liability: number }) {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const onHand = r2(r.balance - r.payable);
+  const headroom = r2(Math.max(0, onHand - r.committed));
+  return { ...r, onHand, headroom, shortfall: r2(Math.max(0, r.liability - onHand)) };
+}
+
+/** Can a stack with these consignment card prices be built inside the headroom? */
+export const fitsReserve = (consignedPrices: number[], headroom: number) => consignedPrices.reduce((a, b) => a + b, 0) <= headroom + 1e-9;
 
 /** Stripe's standard US card fee, used only when Stripe doesn't report the real one. */
 export const estimateFee = (amount: number) => Math.round((amount * 0.029 + 0.3) * 100) / 100;

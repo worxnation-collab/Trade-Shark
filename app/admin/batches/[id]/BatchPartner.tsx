@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { PartnerSelect } from "@/components/PartnerSelect";
+import { OwnerSelect } from "@/components/PartnerSelect";
 
 /** Whose batch this is. Tags every untagged card in it, so they can enter the bins. */
 export function BatchPartner({ batchId, value, untagged }: { batchId: string; value: string | null; untagged: number }) {
@@ -11,15 +11,15 @@ export function BatchPartner({ batchId, value, untagged }: { batchId: string; va
   const [msg, setMsg] = useState("");
   async function save() {
     setMsg("Saving…");
-    const r = await fetch(`/api/admin/batches/${batchId}/partner`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partnerId: v }) });
+    const r = await fetch(`/api/admin/batches/${batchId}/partner`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner: v }) });
     const j = await r.json().catch(() => ({}));
     setMsg(r.ok ? `Tagged ${j.tagged} card(s).` : j.error || r.statusText);
     router.refresh();
   }
   return (
     <div className={`mt-2 flex flex-wrap items-center gap-2 text-sm ${untagged ? "rounded-lg bg-coral/10 p-2" : ""}`}>
-      <span className="font-semibold">Partner</span>
-      <PartnerSelect value={v} onChange={setV} className="input py-1 text-sm" />
+      <span className="font-semibold">Owner</span>
+      <OwnerSelect value={v} onChange={setV} className="input py-1 text-sm" />
       <button className="btn-ghost py-1" disabled={!v || (v === value && !untagged)} onClick={save}>
         {untagged ? `Tag ${untagged} untagged card(s)` : "Save"}
       </button>

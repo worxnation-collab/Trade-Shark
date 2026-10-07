@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { MuteToggle } from "@/components/Feel";
 import { Wordmark } from "@/components/SharkFin";
+import { patternArt, titleArt } from "@/lib/brandAssets";
+import { consignOpen } from "@/lib/partners";
 
-export default function ShopLayout({ children }: { children: React.ReactNode }) {
+export default async function ShopLayout({ children }: { children: React.ReactNode }) {
+  const open = await consignOpen().catch(() => false);
+  const pattern = patternArt();
+  const title = titleArt("tradeshark");
   return (
     <div className="flex min-h-screen flex-col">
       <header className="bg-navy">
@@ -20,10 +25,22 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-      <footer className="border-t border-navy/10 bg-sand-2/50">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-xs text-navy/60">
-          <span>Trade Shark · Scan it. Price it. List it. · Ships from Florida with tracking.</span>
-          <span>Trademarks and card art belong to their respective owners. Trade Shark is not affiliated with any card publisher or league.</span>
+      <footer className="border-t-4 border-navy bg-sand-2/60">
+        {pattern && <div className="pattern-band h-10 opacity-70" style={{ backgroundImage: `url(${pattern})` }} aria-hidden />}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-xs text-navy/60">
+          {title ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={title} alt="TradeShark" className="h-10 w-auto -rotate-2" />
+          ) : (
+            <span className="font-black text-navy">TradeShark</span>
+          )}
+          <span>
+            Ships from Florida with tracking ·{" "}
+            <Link href="/consign" className="underline">
+              {open ? "Send in your bulk" : "Send in your bulk (coming soon)"}
+            </Link>
+          </span>
+          <span className="w-full">Trademarks and card art belong to their respective owners. Trade Shark is not affiliated with any card publisher or league.</span>
         </div>
       </footer>
     </div>

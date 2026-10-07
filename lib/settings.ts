@@ -33,6 +33,8 @@ export interface Settings {
   buyerShipping: { pwe: number; bubble: number; freeAt: number };
   /** Chase cards ($10+) in the reveal game, per category. Off until I turn it on (needs one chase card scanned). */
   chaseOn: { baseball: boolean; football: boolean; pokemon: boolean };
+  /** Consignment (outside senders): public page, submissions, sender tags and sender payouts. Locked until I open it. */
+  consignOpen: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chaseNames: ["Pikachu", "Charizard", "Umbreon"],
   buyerShipping: { pwe: 1.5, bubble: 6, freeAt: 35 },
   chaseOn: { baseball: false, football: false, pokemon: false },
+  consignOpen: false,
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
-import { PartnerSelect } from "@/components/PartnerSelect";
+import { OwnerSelect } from "@/components/PartnerSelect";
 import { createBatch, organize, processAll, uploadItems, type UploadItem } from "@/lib/client/upload";
 import { cropCard, detectCards, manualBox } from "@/lib/flatbed/detect";
 import { readDpi } from "@/lib/flatbed/dpi";
@@ -362,8 +362,8 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
           <div className="grid grid-cols-2 gap-2">
             {!batchId && (
               <div className="col-span-2">
-                <label className="label">Whose cards? (required)</label>
-                <PartnerSelect value={partner} onChange={setPartner} />
+                <label className="label">Whose cards? Founder or sender (required)</label>
+                <OwnerSelect value={partner} onChange={setPartner} />
               </div>
             )}
             {!batchId && (

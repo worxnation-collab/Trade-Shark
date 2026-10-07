@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { PartnerSelect } from "@/components/PartnerSelect";
+import { OwnerSelect } from "@/components/PartnerSelect";
 import { CATEGORIES } from "@/lib/categories";
 
 type Kind = "closed" | "open";
@@ -158,7 +158,7 @@ export function CategoryPicker({ cardId, value }: { cardId: string; value: strin
   );
 }
 
-/** Set a card's partner by hand. No partner = it can't go in a pack. */
+/** Set a card's owner (founder or sender) by hand. No owner = it can't go in a pack. `value` is "f:…" / "s:…". */
 export function PartnerPicker({ cardId, value, locked = false }: { cardId: string; value: string | null; locked?: boolean }) {
   const router = useRouter();
   const [v, setV] = useState(value ?? "");
@@ -169,7 +169,7 @@ export function PartnerPicker({ cardId, value, locked = false }: { cardId: strin
     setBusy(true);
     setErr("");
     try {
-      const r = await fetch(`/api/admin/cards/${cardId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partnerId: partnerId || null }) });
+      const r = await fetch(`/api/admin/cards/${cardId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner: partnerId || null }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) setErr(j.error || r.statusText);
     } finally {
@@ -180,7 +180,7 @@ export function PartnerPicker({ cardId, value, locked = false }: { cardId: strin
   if (locked) return <span className="font-semibold text-navy">{value ?? "none"} (sold)</span>;
   return (
     <span className={`flex items-center gap-2 ${busy ? "opacity-60" : ""}`}>
-      <PartnerSelect value={v} onChange={save} allowNone className={`input py-1 text-xs ${v ? "" : "border-coral"}`} />
+      <OwnerSelect value={v} onChange={save} allowNone className={`input py-1 text-xs ${v ? "" : "border-coral"}`} />
       {err && <span className="text-xs text-coral">{err}</span>}
     </span>
   );

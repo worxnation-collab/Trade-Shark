@@ -71,6 +71,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
         defaultTitle={renderTitle(card, s)}
         defaultDescription={renderDescription(card, s)}
         pack={await packOf(card.gamePackId)}
+        consign={await consignCheck(card)}
       />
     </div>
   );
@@ -81,4 +82,13 @@ async function packOf(id: string | null) {
   if (!id) return null;
   const p = await db.gamePack.findUnique({ where: { id }, select: { id: true, status: true, category: true, value: true } });
   return p ? { id: p.id, label: `${productName(p.category)} · ${p.status === "available" ? "ready" : p.status} · $${p.value.toFixed(2)}` } : null;
+}
+
+/** A consignment card: who is owed, its price, the reserve on hand and the shortfall, before it can enter a stack. */
+async function consignCheck(card: { senderId: string | null; listPrice: number | null; status: string }) {
+  if (!card.senderId || card.status === "Sold") return null;
+  const { consignOpen, reserveNow } = await import("@/lib/partners");
+  const [r, sender, open] = await Promise.all([reserveNow(), db.sender.findUnique({ where: { id: card.senderId }, select: { name: true } }), consignOpen()]);
+  const price = card.listPrice ?? 0;
+  return { owedTo: sender?.name ?? "?", price, onHand: r.onHand, headroom: r.headroom, shortfall: Math.max(0, Math.round((price - r.headroom) * 100) / 100), open };
 }

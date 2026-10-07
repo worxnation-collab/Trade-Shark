@@ -4,6 +4,7 @@ import { categoryOf, isCategory } from "@/lib/categories";
 import { currentBuyer } from "@/lib/game/buyer";
 import { playState } from "@/lib/game/play";
 import { oddsLines } from "@/lib/game/rules";
+import { ACCENT } from "@/lib/brandAssets";
 import { Game } from "./Game";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +23,10 @@ export default async function PackPage({ params }: { params: Promise<{ category:
   return (
     <section className="-mx-4 -my-8 bg-navy px-4 py-10 text-sand sm:mx-0 sm:my-0 sm:rounded-2xl sm:px-8">
       <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.3em] text-teal">{cat.name}</p>
-        <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-white sm:text-5xl">{cat.product}</h1>
+        <p className="text-xs font-black uppercase tracking-[0.35em] text-gold">{cat.name}</p>
+        <h1 className="mt-2 inline-block -rotate-1 text-4xl font-black uppercase tracking-tight text-sand sm:text-6xl" style={{ textShadow: `4px 4px 0 ${ACCENT[category]}` }}>
+          {cat.product}
+        </h1>
       </div>
       <Game
         category={category}

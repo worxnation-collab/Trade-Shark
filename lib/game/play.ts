@@ -5,7 +5,7 @@ import { splitSale } from "../lilStack";
 import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
 import { buildGamePacks, categoryStatus, packView, releasePack, reservePack } from "./packs";
-import { recordSale } from "../partners";
+import { addReserve, recordSale, reservePeek } from "../partners";
 import { KEEP_GRACE_MS, PRICES, TIMER_SECONDS, cryptoRng, nextLocalMidnight, type Rng } from "./rules";
 
 /**
@@ -95,10 +95,12 @@ export async function reveal(buyerIn: Buyer, category: string, opts: { api?: Cha
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(paid.error, "declined");
   }
+  await reservePeek(cycle.id); // the $1 is company money: into the consignment reserve
   const got = await reservePack(category, buyer.id, { rng: opts.rng ?? cryptoRng, member, memberStack, now });
   if (!got) {
     // Took the $1 but the last pack went to someone else a moment ago: give it back.
     await refund(buyer.id, cycle.id, paid.paymentIntentId, PRICES.reveal, api);
+    await addReserve("peek", -PRICES.reveal, `peek-refund:${cycle.id}`, "$1 peek refunded").catch((e) => console.error(e));
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(`The last ${productName(category)} just went. Your $1 was refunded.`, "closed");
   }

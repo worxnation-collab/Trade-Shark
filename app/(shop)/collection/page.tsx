@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Disclaimer } from "@/components/Disclaimer";
+import { HeaderBand } from "@/components/Stage";
+import { headerArt, patternArt } from "@/lib/brandAssets";
 import { CATEGORIES, productName } from "@/lib/categories";
 import { currentBuyer } from "@/lib/game/buyer";
 import { collection, shipFields } from "@/lib/game/ship";
@@ -24,13 +26,14 @@ export default async function CollectionPage() {
       }))
     : [];
   return (
-    <section className="-mx-4 -my-8 bg-navy px-4 py-10 text-sand sm:mx-0 sm:my-0 sm:rounded-2xl sm:px-8">
-      <div className="text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.3em] text-teal">My shop, your packs</p>
-        <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-white sm:text-5xl">Collection</h1>
-      </div>
+    <section>
+      <HeaderBand art={headerArt("collection")}>
+        <h1 className="-rotate-1 rounded-xl border-4 border-sand bg-navy px-5 py-2 text-4xl font-black uppercase tracking-tight text-sand shadow-[5px_5px_0_#d9a441] sm:text-5xl">
+          Collection
+        </h1>
+      </HeaderBand>
       {!buyer ? (
-        <p className="mt-8 text-center text-sm text-sand/75">
+        <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={patternArt() ? { backgroundImage: `url(${patternArt()})` } : undefined}>
           Your packs show up here once you play.{" "}
           <Link href="/play/card" className="underline">
             Save a card to start
@@ -38,9 +41,9 @@ export default async function CollectionPage() {
           .
         </p>
       ) : (
-        <Collection packs={packs} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} />
+        <Collection packs={packs} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} pattern={patternArt()} />
       )}
-      <Disclaimer dark className="mx-auto mt-10 max-w-md text-center" />
+      <Disclaimer className="mx-auto mt-10 max-w-md text-center" />
     </section>
   );
 }

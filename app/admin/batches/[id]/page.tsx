@@ -26,8 +26,8 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
   const s = await getSettings();
   const queue = { batch: id, pile };
   const cards = await db.card.findMany({ where: await queueWhere(queue), orderBy: QUEUE_ORDER });
-  const all = await db.card.findMany({ where: { batchId: id }, select: { pile: true, processedAt: true, partnerId: true, status: true } });
-  const untagged = all.filter((c) => !c.partnerId && c.status !== "Sold").length;
+  const all = await db.card.findMany({ where: { batchId: id }, select: { pile: true, processedAt: true, partnerId: true, senderId: true, status: true } });
+  const untagged = all.filter((c) => !c.partnerId && !c.senderId && c.status !== "Sold").length;
   const reviewCount = await db.card.count({ where: await queueWhere({ batch: id, pile: "review" }) });
   const unprocessed = all.filter((c) => !c.processedAt).length;
   const tabs: [string, string, number][] = [
@@ -44,7 +44,7 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
           <div className="text-sm text-navy/60">
             {batch._count.files} file(s) → {all.length} card(s) · pairing: {batch.pairMode} · {batch.createdAt.toLocaleString()}
           </div>
-          <BatchPartner batchId={id} value={batch.partnerId} untagged={untagged} />
+          <BatchPartner batchId={id} value={batch.partnerId ? `f:${batch.partnerId}` : batch.senderId ? `s:${batch.senderId}` : null} untagged={untagged} />
           {batch.pairDecision &&
             (() => {
               const d = JSON.parse(batch.pairDecision) as { result: string; reason: string };

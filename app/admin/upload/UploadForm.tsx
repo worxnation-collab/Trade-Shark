@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
-import { PartnerSelect } from "@/components/PartnerSelect";
+import { OwnerSelect } from "@/components/PartnerSelect";
 import { createBatch, organize, processAll, uploadItems } from "@/lib/client/upload";
 
 type Picked = { file: File; path: string };
@@ -146,8 +146,8 @@ export function UploadForm() {
 
       <div className="card space-y-4 p-4">
         <div>
-          <label className="label">Whose cards? (required)</label>
-          <PartnerSelect value={partner} onChange={setPartner} />
+          <label className="label">Whose cards? Founder or sender (required)</label>
+          <OwnerSelect value={partner} onChange={setPartner} />
         </div>
         <div>
           <label className="label">Batch name</label>

@@ -9,6 +9,18 @@ import { markPackSold, packForLink } from "./lilStack";
  */
 export async function handleStripeEvent(event: Stripe.Event): Promise<{ handled: boolean; note: string }> {
   // Membership changes (renewals, cancels). The game also re-reads the subscription hourly, so this is a speed-up.
+  // A paid membership invoice is company money: it goes into the consignment reserve.
+  if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
+    const inv = event.data.object as Stripe.Invoice & { subscription?: string | null; parent?: { subscription_details?: { subscription?: string } | null } | null };
+    const sub = inv.subscription ?? inv.parent?.subscription_details?.subscription ?? null;
+    // The only subscription the shop sells is the membership: match it to a player's membership.
+    const member = sub ? await db.buyer.findFirst({ where: { memberSubscriptionId: sub }, select: { id: true } }) : null;
+    if (member && inv.amount_paid > 0) {
+      const { reserveMembership } = await import("./partners");
+      await reserveMembership(inv.id!, inv.amount_paid / 100);
+      return { handled: true, note: `membership ${inv.id} into the reserve` };
+    }
+  }
   if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted" || event.type === "customer.subscription.created") {
     const { applySubscription } = await import("./game/member");
     const r = await applySubscription(event.data.object as Stripe.Subscription);

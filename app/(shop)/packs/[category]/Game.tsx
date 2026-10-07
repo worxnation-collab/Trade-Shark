@@ -7,6 +7,7 @@ import { HIT_CLIP, openStill, packStill, passClip, tearClip } from "@/lib/brandA
 import { confetti, pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { NUDGES, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
+import { Stage } from "@/components/Stage";
 import { CardGrid } from "./CardGrid";
 
 type Phase =
@@ -184,7 +185,10 @@ export function Game(p: GameProps) {
 
       {phase.k === "intro" && (
         <>
-          <div className="w-44 sm:w-52">{packArt()}</div>
+          {/* The stage art sits behind the pack only; the rules and the $1 button stay on plain navy below. */}
+          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl ring-2 ring-white/10">
+            <div className="w-44 drop-shadow-[0_16px_20px_rgba(0,0,0,0.6)] sm:w-52">{packArt()}</div>
+          </Stage>
           <Rules odds={p.odds} />
           {!p.open ? (
             <p className="mt-6 text-sm text-sand/75">
@@ -228,13 +232,15 @@ export function Game(p: GameProps) {
       {phase.k === "revealing" && (
         <>
           <div className="flex items-center gap-4">
-            {clip === "tear" ? (
-              <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
-            ) : (
-              <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
-                {packArt(true)}
-              </div>
-            )}
+            <Stage category={p.category} className="flex items-center justify-center rounded-2xl p-3 ring-2 ring-white/10">
+              {clip === "tear" ? (
+                <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
+              ) : (
+                <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
+                  {packArt(true)}
+                </div>
+              )}
+            </Stage>
             <Timer left={left} />
           </div>
           {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-teal">Member stack: your best card is bumped.</p>}
@@ -260,9 +266,11 @@ export function Game(p: GameProps) {
 
       {phase.k === "passed" && (
         <>
-          <div ref={packRef} className="w-40">
-            {clip === "pass" ? <BrandClip src={passClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-full" /> : <div className="gone">{packArt()}</div>}
-          </div>
+          <Stage category={p.category} className="flex items-center justify-center rounded-2xl p-5 ring-2 ring-white/10">
+            <div ref={packRef} className="w-40">
+              {clip === "pass" ? <BrandClip src={passClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-full" /> : <div className="gone">{packArt()}</div>}
+            </div>
+          </Stage>
           <p className="mt-5 text-lg font-bold text-white">
             {phase.why === "timer" ? "Time's up. That pack is gone." : phase.why === "locked" ? `You passed on a ${p.product} today.` : "That pack is gone."}
           </p>
@@ -287,7 +295,11 @@ export function Game(p: GameProps) {
 
       {phase.k === "won" && (
         <>
-          {clip === "tear" && <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft mb-2 w-40 sm:w-48" />}
+          {clip === "tear" && (
+            <Stage category={p.category} className="mb-3 flex items-center justify-center rounded-2xl p-4 ring-2 ring-white/10">
+              <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
+            </Stage>
+          )}
           <p className="text-2xl font-extrabold text-white">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
           <p className="mt-1 text-sm text-sand/75">
             {phase.pack.number ? `Pack ${phase.pack.number} is` : "It's"} in your{" "}
