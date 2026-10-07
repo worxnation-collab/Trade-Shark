@@ -1,3 +1,5 @@
+import cvPkg from "@techstark/opencv-js/package.json";
+import pdfPkg from "pdfjs-dist/package.json";
 import Link from "next/link";
 import { UploadForm } from "./UploadForm";
 
@@ -10,7 +12,7 @@ export default function UploadPage() {
         <h1 className="text-2xl font-extrabold">Upload a batch</h1>
         <Link href="/admin/flatbed" className="btn-ghost">Several cards on one copier scan? Use Flatbed split →</Link>
       </div>
-      <UploadForm />
+      <UploadForm pdfjsVersion={pdfPkg.version} cvSrc={`/vendor/opencv-${cvPkg.version}.js`} />
     </div>
   );
 }

@@ -1,13 +1,11 @@
-import { createHash } from "node:crypto";
 import { db } from "./db";
-import { renderPage, splitPage } from "./pdf";
-import { storeBatchFiles } from "./pipeline";
-import { getObject } from "./storage";
+import { trimToCard } from "./pdf";
 
 /**
- * PDF uploads: register the PDF (skipped if the same file was ingested before), then split it one page per call.
- * Each page's cards are stored as crops (front scans) and go through organize → orient → identify → price → owner → bin
- * like any other scan. A page with no card found is kept whole and flagged; a page that can't be read is recorded.
+ * PDF uploads. The browser renders each page (pdf.js) and crops several-card pages itself (the flatbed detector);
+ * a one-card page is sent whole and trimmed to the card here. Every crop is a front scan that goes through the usual
+ * background flow (orient → identify → price → owner → bin). A page with no card edge is kept whole and flagged;
+ * a blank page is noted; the same PDF (sha-256) is never ingested twice.
  */
 export interface PageResult {
   page: number;
@@ -15,67 +13,37 @@ export interface PageResult {
   note?: string; // why this page needs a look
 }
 
-const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
-
-export async function registerPdf(batchId: string, name: string, buf: Uint8Array, rel?: string) {
-  const hash = sha(buf);
+/** Register a PDF by its hash. Skipped (with the batch it went into) when this exact file was ingested before. */
+export async function registerPdf(batchId: string, name: string, hash: string, pages: number) {
   const seen = await db.pdfIngest.findUnique({ where: { hash } });
   if (seen) {
     const b = await db.batch.findUnique({ where: { id: seen.batchId }, select: { name: true } });
     return { skipped: true as const, pdfId: seen.id, pages: seen.pages, batchName: b?.name ?? "an earlier batch" };
   }
-  const { pdfPageCount } = await import("./pdf");
-  const pages = await pdfPageCount(buf);
-  // Keep the original PDF with the batch (never a card itself).
-  const [file] = await storeBatchFiles(batchId, [{ name: `pdf/${name}`, buf, rel, meta: { kind: "sheet" } }]);
-  const p = await db.pdfIngest.create({ data: { batchId, name, hash, rel: file.rel, pages } });
+  const p = await db.pdfIngest.create({ data: { batchId, name, hash, rel: "", pages } });
   return { skipped: false as const, pdfId: p.id, pages };
 }
 
-async function saveResult(pdfId: string, r: PageResult) {
-  const p = await db.pdfIngest.findUniqueOrThrow({ where: { id: pdfId } });
-  const list = (JSON.parse(p.results) as PageResult[]).filter((x) => x.page !== r.page);
-  list.push(r);
-  list.sort((a, b) => a.page - b.page);
-  await db.pdfIngest.update({ where: { id: pdfId }, data: { results: JSON.stringify(list) } });
-  return r;
+/** Add to one page's result (cards found, or why it needs a look). */
+export async function recordPdfPage(pdfId: string, page: number, add: { cards?: number; note?: string }) {
+  const p = await db.pdfIngest.findUnique({ where: { id: pdfId } });
+  if (!p) return;
+  const list = JSON.parse(p.results) as PageResult[];
+  const cur = list.find((x) => x.page === page) ?? { page, cards: 0 };
+  const next = { ...cur, cards: cur.cards + (add.cards ?? 0), note: add.note ?? cur.note };
+  const out = [...list.filter((x) => x.page !== page), next].sort((a, b) => a.page - b.page);
+  await db.pdfIngest.update({ where: { id: pdfId }, data: { results: JSON.stringify(out) } });
 }
 
-/** Split one page (1-based) into card crops and store them. Never throws: a bad page is recorded and flagged. */
-export async function ingestPdfPage(batchId: string, pdfId: string, page: number): Promise<PageResult> {
-  const p = await db.pdfIngest.findFirstOrThrow({ where: { id: pdfId, batchId } });
-  const done = (JSON.parse(p.results) as PageResult[]).find((x) => x.page === page);
-  if (done) return done; // a retried request doesn't add the page twice
-  if (page < 1 || page > p.pages) return { page, cards: 0, note: "no such page" };
-  try {
-    const buf = await getObject(p.rel);
-    if (!buf) throw new Error("PDF not found in storage");
-    const r = await renderPage(buf, page - 1);
-    const split = await splitPage(r.png);
-    const base = { kind: "crop" as const, side: "front" as const, sheetName: `${p.name} · page ${page}`, sheetRel: p.rel, sheetHash: p.hash, page };
-    const stem = p.name.replace(/\.pdf$/i, "").replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
-    if (split.crops.length) {
-      await storeBatchFiles(
-        batchId,
-        split.crops.map((c) => ({
-          name: `${stem}-p${String(page).padStart(3, "0")}-${c.index}.jpg`,
-          buf: new Uint8Array(c.jpeg),
-          meta: { ...base, pairKey: `pdf${p.hash.slice(0, 10)}-p${page}-${c.index}`, cropIndex: c.index, cropBox: c.box },
-        })),
-      );
-      return saveResult(pdfId, { page, cards: split.crops.length });
-    }
-    if (split.blank) return saveResult(pdfId, { page, cards: 0, note: "blank page" });
-    // No card found: keep the whole page as one scan and hold it for a look (never dropped).
-    const flag = `PDF page ${page}: no card edge found, check the crop`;
-    await storeBatchFiles(batchId, [
-      { name: `${stem}-p${String(page).padStart(3, "0")}-page.jpg`, buf: new Uint8Array(split.whole), meta: { ...base, pairKey: `pdf${p.hash.slice(0, 10)}-p${page}-0`, flag } },
-    ]);
-    return saveResult(pdfId, { page, cards: 1, note: "no card edge found" });
-  } catch (e) {
-    console.error("pdf page failed", page, e);
-    return saveResult(pdfId, { page, cards: 0, note: `couldn't read this page (${e instanceof Error ? e.message.slice(0, 80) : "error"})` });
-  }
+/**
+ * A whole page sent by the browser: trim it to the card. Returns the image to store and its flag, or null for a
+ * blank page (noted, nothing stored).
+ */
+export async function preparePdfPage(buf: Uint8Array, page: number) {
+  const t = await trimToCard(buf).catch(() => null);
+  if (t?.blank) return null;
+  if (t) return { buf: new Uint8Array(t.jpeg), box: t.box, flag: undefined as string | undefined };
+  return { buf, box: undefined, flag: `PDF page ${page}: no card edge found, check the crop` };
 }
 
 /** "12 cards from this PDF, 2 need a look (pages 3, 7)" for every PDF in a batch. */
@@ -90,21 +58,23 @@ export async function pdfSummaries(batchId: string) {
       select: { id: true, status: true, holdReason: true },
     });
     const pageOf = new Map(files.map((f) => [f.cardId, f.page]));
+    const needs = (c: { status: string; holdReason: string | null }) => c.status === "NeedsLook" || c.status === "Inbox" || !!c.holdReason;
     const look = new Set<number>();
-    for (const c of cards) if (c.status === "NeedsLook" || c.status === "Inbox" || c.holdReason) look.add(pageOf.get(c.id) ?? 0);
-    for (const r of results) if (r.note && r.note !== "blank page") look.add(r.page);
+    for (const c of cards) if (needs(c)) look.add(pageOf.get(c.id) ?? 0);
+    const failed = results.filter((r) => r.note && r.note !== "blank page" && r.cards === 0);
+    for (const r of failed) look.add(r.page);
     look.delete(0);
-    const needLook = cards.filter((c) => c.status === "NeedsLook" || c.status === "Inbox" || c.holdReason).length + results.filter((r) => r.note && r.cards === 0 && r.note !== "blank page").length;
+    const needLook = cards.filter(needs).length + failed.length;
+    const pagesList = [...look].sort((a, b) => a - b);
     out.push({
       id: p.id,
       name: p.name,
       pages: p.pages,
-      split: results.length,
       cards: cards.length,
       needLook,
-      lookPages: [...look].sort((a, b) => a - b),
+      lookPages: pagesList,
       blankPages: results.filter((r) => r.note === "blank page").map((r) => r.page),
-      line: `${cards.length} card${cards.length === 1 ? "" : "s"} from this PDF, ${needLook} need${needLook === 1 ? "s" : ""} a look${look.size ? ` (page${look.size === 1 ? "" : "s"} ${[...look].sort((a, b) => a - b).join(", ")})` : ""}`,
+      line: `${cards.length} card${cards.length === 1 ? "" : "s"} from this PDF, ${needLook} need${needLook === 1 ? "s" : ""} a look${pagesList.length ? ` (page${pagesList.length === 1 ? "" : "s"} ${pagesList.join(", ")})` : ""}`,
     });
   }
   return out;

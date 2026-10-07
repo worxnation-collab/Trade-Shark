@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { db } from "./db";
 import { refreshPacks } from "./lilStack";
-import { ingestPdfPage, type PageResult } from "./pdfIngest";
 import { organizeBatch, processCard, type OrganizeInput } from "./pipeline";
 
 /**
@@ -38,16 +37,7 @@ async function claim(batchId: string, now: Date) {
 async function step(batchId: string): Promise<boolean> {
   const b = await db.batch.findUniqueOrThrow({ where: { id: batchId } });
   const opts = JSON.parse(b.ingestOptions ?? "{}") as OrganizeInput;
-  // 1) The next unsplit PDF page: crop it, then make its card(s) right away.
-  for (const p of await db.pdfIngest.findMany({ where: { batchId }, orderBy: { createdAt: "asc" } })) {
-    const done = new Set((JSON.parse(p.results) as PageResult[]).map((r) => r.page));
-    const next = Array.from({ length: p.pages }, (_, i) => i + 1).find((n) => !done.has(n));
-    if (next) {
-      await ingestPdfPage(batchId, p.id, next);
-      await organizeBatch(batchId, { pairMode: opts.pairMode ?? "auto", manifest: opts.manifest, pastedLines: opts.pastedLines });
-      return true;
-    }
-  }
+  // 1) Files not made into cards yet (PDF pages arrive already cropped / trimmed by the upload).
   // 2) Image files not made into cards yet (pairing needs the whole set, so they're all uploaded by now).
   if (await db.uploadFile.count({ where: { batchId, cardId: null, OR: [{ side: null }, { side: { not: "sheet" } }] } })) {
     await organizeBatch(batchId, { pairMode: opts.pairMode ?? "auto", manifest: opts.manifest, pastedLines: opts.pastedLines });
@@ -95,14 +85,12 @@ export async function ingestProgress() {
   const batches = await db.batch.findMany({ where: { ingestState: "queued" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true } });
   return Promise.all(
     batches.map(async (b) => {
-      const [cards, priced, pdfs, looseFiles] = await Promise.all([
+      const [cards, priced, looseFiles] = await Promise.all([
         db.card.count({ where: { batchId: b.id } }),
         db.card.count({ where: { batchId: b.id, processedAt: { not: null } } }),
-        db.pdfIngest.findMany({ where: { batchId: b.id }, select: { pages: true, results: true } }),
         db.uploadFile.count({ where: { batchId: b.id, cardId: null, readable: true, OR: [{ side: null }, { side: { not: "sheet" } }] } }),
       ]);
-      const unsplit = pdfs.reduce((n, p) => n + p.pages - (JSON.parse(p.results) as unknown[]).length, 0);
-      const total = cards + unsplit + looseFiles;
+      const total = cards + looseFiles;
       return { id: b.id, name: b.name, priced, total, line: `${priced} of ${total} priced` };
     }),
   );

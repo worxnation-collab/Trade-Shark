@@ -31,7 +31,7 @@ async function walkEntry(entry: FileSystemEntry, prefix = ""): Promise<Picked[]>
   return [];
 }
 
-export function UploadForm() {
+export function UploadForm({ pdfjsVersion, cvSrc }: { pdfjsVersion: string; cvSrc: string }) {
   const router = useRouter();
   const [files, setFiles] = useState<Picked[]>([]);
   const [manifest, setManifest] = useState("");
@@ -86,8 +86,7 @@ export function UploadForm() {
       const pdfs = files.filter((p) => PDF_RE.test(p.path));
       const skipped: string[] = [];
       for (const p of pdfs) {
-        setProgress({ label: `Storing ${p.path}`, done: 0, total: 1 });
-        const r = await uploadPdf(id, p.file as File);
+        const r = await uploadPdf(id, p.file as File, { pdfjsVersion, cvSrc, onPage: (page, pages) => setProgress({ label: `Reading ${p.path}: page`, done: page, total: pages }) });
         if (r.skipped) skipped.push(`${p.path} (already in ${r.skipped})`);
       }
       if (skipped.length && skipped.length === files.length) {

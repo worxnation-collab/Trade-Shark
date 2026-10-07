@@ -55,7 +55,7 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
           {skipped && <p className="mt-2 rounded bg-sand-2 p-2 text-sm">Skipped, already ingested: {skipped}</p>}
           {pdfs.map((p) => (
             <div key={p.id} className={`mt-2 rounded-lg p-2 text-sm ${p.needLook ? "bg-coral/10" : "bg-teal/10"}`}>
-              <b>{p.name}</b>: {p.line}.{p.split < p.pages && ` Split ${p.split} of ${p.pages} pages.`}
+              <b>{p.name}</b>: {p.line}.
               {p.blankPages.length > 0 && ` Blank page${p.blankPages.length === 1 ? "" : "s"}: ${p.blankPages.join(", ")}.`}
             </div>
           ))}

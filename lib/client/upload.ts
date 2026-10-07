@@ -84,20 +84,23 @@ export async function processAll(batchId: string, total: number, onProgress?: (d
   onProgress?.(total, total);
 }
 
-/** Store a PDF of scanned cards (straight to Storage) and register it. Splitting happens in the background. */
-export async function uploadPdf(batchId: string, file: File): Promise<{ name: string; skipped?: string; pages: number }> {
-  const urls = await postJson(`/api/admin/batches/${batchId}/upload-urls`, { names: [file.name] });
-  let reg;
-  if (urls.mode === "direct") {
-    const res = await fetch(urls.items[0].signedUrl, { method: "PUT", headers: { "Content-Type": "application/pdf", "x-upsert": "true" }, body: file });
-    if (!res.ok) throw new Error(`Upload failed for ${file.name}: ${res.status}`);
-    reg = await postJson(`/api/admin/batches/${batchId}/pdf`, { rel: urls.items[0].rel, name: file.name });
-  } else {
-    const fd = new FormData();
-    fd.append("file", file, file.name);
-    reg = await post(`/api/admin/batches/${batchId}/pdf`, fd);
-  }
-  return { name: file.name, skipped: reg.skipped ? reg.batchName : undefined, pages: reg.pages };
+/**
+ * A PDF of scanned cards: register it by hash (skipped if ingested before), then render and split it page by page in
+ * the browser, uploading each page's images as soon as they're ready. Unreadable pages are recorded, not dropped.
+ */
+export async function uploadPdf(
+  batchId: string,
+  file: File,
+  o: { pdfjsVersion: string; cvSrc: string; onPage?: (page: number, pages: number) => void },
+): Promise<{ name: string; skipped?: string; pages: number; failed: number[] }> {
+  const { pdfPageCount, sha256, splitPdf } = await import("./pdfSplit");
+  const hash = await sha256(file);
+  const pages = await pdfPageCount(file, o.pdfjsVersion);
+  const reg = await postJson(`/api/admin/batches/${batchId}/pdf`, { name: file.name, hash, pages });
+  if (reg.skipped) return { name: file.name, skipped: reg.batchName, pages: reg.pages, failed: [] };
+  const r = await splitPdf(file, { ...o, hash, pdfId: reg.pdfId, send: (items) => uploadItems(batchId, items) });
+  for (const f of r.failed) await postJson(`/api/admin/batches/${batchId}/pdf/${reg.pdfId}`, f).catch(() => null);
+  return { name: file.name, pages: r.pages, failed: r.failed.map((f) => f.page) };
 }
 
 /** Hand the stored upload to the background queue. Returns e.g. "19 pages received." */

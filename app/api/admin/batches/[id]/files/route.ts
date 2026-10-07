@@ -27,6 +27,9 @@ export const POST = guarded(async (req: Request, { params }: { params: Promise<{
         sheetHash: typeof m.sheetHash === "string" ? m.sheetHash.slice(0, 64) : undefined,
         cropIndex: Number.isInteger(m.cropIndex) ? m.cropIndex : undefined,
         cropBox: m.cropBox,
+        page: Number.isInteger(m.page) ? m.page : undefined,
+        pdfId: typeof m.pdfId === "string" ? m.pdfId.slice(0, 40) : undefined,
+        trim: m.trim === true,
       };
     } catch {
       return undefined;

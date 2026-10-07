@@ -11,3 +11,10 @@ mkdirSync("public/vendor", { recursive: true });
 const dest = path.join("public/vendor", `opencv-${pkg.version}.js`);
 copyFileSync(src, dest);
 console.log(`copied ${dest}`);
+
+// pdf.js for PDF uploads: rendered in the browser (keeps PDF parsing out of the server bundle).
+const pdfPkg = require("pdfjs-dist/package.json");
+const pdfDir = path.join("public/vendor", `pdfjs-${pdfPkg.version}`);
+mkdirSync(pdfDir, { recursive: true });
+for (const f of ["pdf.min.mjs", "pdf.worker.min.mjs"]) copyFileSync(path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "build", f), path.join(pdfDir, f));
+console.log(`copied ${pdfDir}`);

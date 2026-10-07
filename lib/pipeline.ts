@@ -33,14 +33,29 @@ export interface SheetMeta {
   cropBox?: unknown;
   page?: number;
   flag?: string;
+  /** A whole PDF page with one card: trim it to the card on the server (lib/pdf.ts). */
+  trim?: boolean;
+  pdfId?: string;
 }
 
 /** Phase 1: store files as they stream in (chunked uploads). Original flatbed sheets are kept but never become cards. */
 export async function storeBatchFiles(batchId: string, files: { name: string; buf: Uint8Array; rel?: string; meta?: SheetMeta }[]) {
   const out = [];
-  for (const f of files) {
+  for (const f0 of files) {
+    let f = f0;
+    let m = f.meta ?? {};
+    // A one-card PDF page: trim to the card, or keep the whole page flagged; a blank page is only noted.
+    if (m.trim && m.page) {
+      const { preparePdfPage, recordPdfPage } = await import("./pdfIngest");
+      const prep = await preparePdfPage(f.buf, m.page);
+      if (!prep) {
+        if (m.pdfId) await recordPdfPage(m.pdfId, m.page, { note: "blank page" });
+        continue;
+      }
+      f = { ...f, buf: prep.buf, rel: undefined };
+      m = { ...m, cropBox: prep.box ?? m.cropBox, flag: prep.flag ?? m.flag };
+    }
     const st = await storeUpload(batchId, f.buf, f.rel);
-    const m = f.meta ?? {};
     out.push(
       await db.uploadFile.create({
         data: {
@@ -64,6 +79,10 @@ export async function storeBatchFiles(batchId: string, files: { name: string; bu
         },
       }),
     );
+    if (m.pdfId && m.page) {
+      const { recordPdfPage } = await import("./pdfIngest");
+      await recordPdfPage(m.pdfId, m.page, { cards: 1, note: m.flag ? "no card edge found" : undefined });
+    }
   }
   return out;
 }
