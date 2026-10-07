@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
 import { OwnerSelect } from "@/components/PartnerSelect";
-import { createBatch, organize, processAll, uploadItems, type UploadItem } from "@/lib/client/upload";
+import { createBatch, queueBatch, uploadItems, type UploadItem } from "@/lib/client/upload";
 import { cropCard, detectCards, manualBox } from "@/lib/flatbed/detect";
 import { readDpi } from "@/lib/flatbed/dpi";
 import { CARD_RATIO, type CardBox, center, checkSheetPairing, cropName, type Pt, quadSize, readingOrder } from "@/lib/flatbed/geometry";
@@ -235,9 +235,8 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
 
       // 3) Same pipeline as feeder scans from here on.
       setProgress({ label: "Pairing + deduping", done: 0, total: 1 });
-      const org = await organize(id, { pairMode: "auto" });
-      await processAll(id, org.cards, (done, total) => setProgress({ label: "Identifying + pricing", done, total }));
-      router.push(`/admin/batches/${id}`);
+      const q = await queueBatch(id, { pairMode: "auto" });
+      router.push(`/admin/lil-stack?received=${encodeURIComponent(q.message)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy("");

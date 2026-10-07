@@ -8,6 +8,9 @@ import { getSettings } from "@/lib/settings";
 import { PILE_LABEL, PILES } from "@/lib/types";
 import { BatchActions } from "./BatchActions";
 import { BatchPartner } from "./BatchPartner";
+import { pdfSummaries } from "@/lib/pdfIngest";
+import { ingestProgress } from "@/lib/ingestQueue";
+import { IngestTicker } from "@/components/IngestTicker";
 
 const PILE_HELP: Record<string, string> = {
   review: "Every card here is confident or already confirmed. Nice.",
@@ -18,9 +21,11 @@ const PILE_HELP: Record<string, string> = {
   none: "All cards are in a review pile; check the other tabs.",
 };
 
-export default async function BatchPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ pile?: string }> }) {
+export default async function BatchPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ pile?: string; skipped?: string }> }) {
   const { id } = await params;
-  const { pile = "all" } = await searchParams;
+  const { pile = "all", skipped } = await searchParams;
+  const pdfs = await pdfSummaries(id);
+  const ingesting = (await ingestProgress()).filter((p) => p.id === id);
   const batch = await db.batch.findUnique({ where: { id }, include: { _count: { select: { files: true } } } });
   if (!batch) notFound();
   const s = await getSettings();
@@ -44,6 +49,16 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
           <div className="text-sm text-navy/60">
             {batch._count.files} file(s) → {all.length} card(s) · pairing: {batch.pairMode} · {batch.createdAt.toLocaleString()}
           </div>
+          <div className="mt-2">
+            <IngestTicker initial={ingesting} batch={id} />
+          </div>
+          {skipped && <p className="mt-2 rounded bg-sand-2 p-2 text-sm">Skipped, already ingested: {skipped}</p>}
+          {pdfs.map((p) => (
+            <div key={p.id} className={`mt-2 rounded-lg p-2 text-sm ${p.needLook ? "bg-coral/10" : "bg-teal/10"}`}>
+              <b>{p.name}</b>: {p.line}.{p.split < p.pages && ` Split ${p.split} of ${p.pages} pages.`}
+              {p.blankPages.length > 0 && ` Blank page${p.blankPages.length === 1 ? "" : "s"}: ${p.blankPages.join(", ")}.`}
+            </div>
+          ))}
           <BatchPartner batchId={id} value={batch.partnerId ? `f:${batch.partnerId}` : batch.senderId ? `s:${batch.senderId}` : null} untagged={untagged} />
           {batch.pairDecision &&
             (() => {

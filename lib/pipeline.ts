@@ -31,6 +31,8 @@ export interface SheetMeta {
   sheetHash?: string;
   cropIndex?: number;
   cropBox?: unknown;
+  page?: number;
+  flag?: string;
 }
 
 /** Phase 1: store files as they stream in (chunked uploads). Original flatbed sheets are kept but never become cards. */
@@ -57,6 +59,8 @@ export async function storeBatchFiles(batchId: string, files: { name: string; bu
           sheetHash: m.sheetHash,
           cropIndex: m.cropIndex,
           cropBox: m.cropBox ? JSON.stringify(m.cropBox) : null,
+          page: m.page,
+          flag: m.flag,
         },
       }),
     );
@@ -156,6 +160,7 @@ export async function organizeBatch(batchId: string, input: OrganizeInput) {
         batchId,
         partnerId,
         senderId,
+        holdReason: front?.flag ?? null, // e.g. a PDF page where no card was found: it waits for a look
         pairId: `${batchId.slice(-6)}-${String(already + created.length + 1).padStart(4, "0")}`,
         pile,
         readable: g.pile !== "unreadable",
@@ -483,6 +488,8 @@ export async function processBatch(batchId: string, limit = 6) {
           await db.sourceRun.create({
             data: { cardId: c.id, source: "pipeline", phase: "identify", status: "error", reason: e instanceof Error ? e.message : String(e) },
           });
+          // Failed once: flag it for a look, never retried in a loop.
+          await db.card.update({ where: { id: c.id }, data: { status: "NeedsLook", holdReason: c.holdReason ?? "couldn't identify or price, check it" } });
         } finally {
           await db.card.update({ where: { id: c.id }, data: { processedAt: new Date() } });
         }
@@ -494,6 +501,41 @@ export async function processBatch(batchId: string, limit = 6) {
   // The batch is identified and priced: draw new game packs from each category's bins.
   const packs = todo.length && !remaining ? await refreshPacks().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) })) : undefined;
   return { processed: todo.length, remaining, decisions, packs };
+}
+
+/**
+ * One card, start to finish: stand it upright, frame it, identify it, price it, and file it (stock / Needs a look).
+ * Only the upright crop goes to identify. It runs once: a failure flags the card for a look, it is never retried in a loop.
+ * A priced card is on the desk (its bin) as soon as this returns.
+ */
+export async function processCard(cardId: string) {
+  const s = await getSettings();
+  const claimed = await db.card.updateMany({ where: { id: cardId, processedAt: null }, data: { processedAt: new Date() } });
+  if (!claimed.count) return "done already";
+  let c = await db.card.findUniqueOrThrow({ where: { id: cardId } });
+  try {
+    if (c.readable && c.frontImage && !c.orientedAt) {
+      c = await orientCard(c).catch(async (e) => {
+        await db.sourceRun.create({ data: { cardId, source: "orient", phase: "identify", status: "error", reason: String(e instanceof Error ? e.message : e).slice(0, 500) } });
+        return db.card.update({ where: { id: cardId }, data: { orientedAt: new Date(), rotationNote: "unsure", holdReason: "rotation" } });
+      });
+      if (!c.holdReason) {
+        const rel = await presentCard(c).catch(() => null);
+        if (rel) c = await db.card.update({ where: { id: cardId }, data: { frontDisplay: rel } });
+      }
+    }
+    if (!c.readable) return "hold";
+    let card = await identifyCard(c, s);
+    card = await flagNameDuplicate(card);
+    card = await priceCard(card, s);
+    return await autoPublish(card, s);
+  } catch (e) {
+    const reason = String(e instanceof Error ? e.message : e).slice(0, 300);
+    await db.sourceRun.create({ data: { cardId, source: "pipeline", phase: "identify", status: "error", reason } });
+    // Failed once: flag it for a person instead of trying again.
+    await db.card.update({ where: { id: cardId }, data: { status: "NeedsLook", holdReason: c.holdReason ?? "couldn't identify or price, check it" } });
+    return "failed";
+  }
 }
 
 /** Refresh quotes older than staleHours for every card in a batch (chunked like processBatch). */

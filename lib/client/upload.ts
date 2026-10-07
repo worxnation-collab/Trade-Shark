@@ -83,3 +83,24 @@ export async function processAll(batchId: string, total: number, onProgress?: (d
   }
   onProgress?.(total, total);
 }
+
+/** Store a PDF of scanned cards (straight to Storage) and register it. Splitting happens in the background. */
+export async function uploadPdf(batchId: string, file: File): Promise<{ name: string; skipped?: string; pages: number }> {
+  const urls = await postJson(`/api/admin/batches/${batchId}/upload-urls`, { names: [file.name] });
+  let reg;
+  if (urls.mode === "direct") {
+    const res = await fetch(urls.items[0].signedUrl, { method: "PUT", headers: { "Content-Type": "application/pdf", "x-upsert": "true" }, body: file });
+    if (!res.ok) throw new Error(`Upload failed for ${file.name}: ${res.status}`);
+    reg = await postJson(`/api/admin/batches/${batchId}/pdf`, { rel: urls.items[0].rel, name: file.name });
+  } else {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    reg = await post(`/api/admin/batches/${batchId}/pdf`, fd);
+  }
+  return { name: file.name, skipped: reg.skipped ? reg.batchName : undefined, pages: reg.pages };
+}
+
+/** Hand the stored upload to the background queue. Returns e.g. "19 pages received." */
+export async function queueBatch(batchId: string, body: { pairMode: string; manifest?: string; pastedLines?: string }) {
+  return postJson(`/api/admin/batches/${batchId}/queue`, body) as Promise<{ message: string; pages: number; images: number }>;
+}
