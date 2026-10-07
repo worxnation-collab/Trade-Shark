@@ -4,12 +4,11 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { SharkFin } from "@/components/SharkFin";
 import { OwnerSelect } from "@/components/PartnerSelect";
-import { createBatch, queueBatch, uploadItems, uploadPdf } from "@/lib/client/upload";
+import { createBatch, organize, processAll, uploadItems } from "@/lib/client/upload";
 
 type Picked = { file: File; path: string };
 
 const IMG_RE = /\.(jpe?g|png|webp|gif|tiff?|heic|heif)$/i;
-const PDF_RE = /\.pdf$/i;
 
 async function walkEntry(entry: FileSystemEntry, prefix = ""): Promise<Picked[]> {
   if (entry.isFile) {
@@ -43,7 +42,6 @@ export function UploadForm() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [error, setError] = useState("");
-  const [received, setReceived] = useState("");
   const [over, setOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
@@ -82,31 +80,15 @@ export function UploadForm() {
     setError("");
     try {
       const id = await createBatch(name, partner);
-      // PDFs are split on the server, page by page; every other file uploads as before.
-      const pdfs = files.filter((p) => PDF_RE.test(p.path));
-      const skipped: string[] = [];
-      for (const p of pdfs) {
-        setProgress({ label: `Storing ${p.path}`, done: 0, total: 1 });
-        const r = await uploadPdf(id, p.file as File);
-        if (r.skipped) skipped.push(`${p.path} (already in ${r.skipped})`);
-      }
-      if (skipped.length && skipped.length === files.length) {
-        setError(`Already ingested, skipped: ${skipped.join(", ")}.`);
-        setBusy(false);
-        setProgress(null);
-        return;
-      }
       await uploadItems(
         id,
-        files.filter((p) => !PDF_RE.test(p.path)).map((p) => ({ file: p.file, name: p.path })),
+        files.map((p) => ({ file: p.file, name: p.path })),
         (done, total) => setProgress({ label: "Uploading", done, total }),
       );
-      // Stored. Crop, rotate, identify and price happen in the background; cards land in their bins one by one.
-      const q = await queueBatch(id, { pairMode, manifest, pastedLines: lines });
-      setReceived(q.message);
-      setProgress(null);
-      setBusy(false);
-      router.push(`/admin/lil-stack?received=${encodeURIComponent(q.message)}${skipped.length ? `&skipped=${encodeURIComponent(skipped.join("; "))}` : ""}`);
+      setProgress({ label: "Pairing + deduping", done: files.length, total: files.length });
+      const org = await organize(id, { pairMode, manifest, pastedLines: lines });
+      await processAll(id, org.cards, (done, total) => setProgress({ label: "Identifying + pricing", done, total }));
+      router.push(`/admin/batches/${id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -114,7 +96,6 @@ export function UploadForm() {
   }
 
   const images = files.filter((f) => IMG_RE.test(f.path)).length;
-  const pdfCount = files.filter((f) => PDF_RE.test(f.path)).length;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
@@ -149,8 +130,7 @@ export function UploadForm() {
           <div className="card p-4">
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="font-semibold">
-                {files.length} file(s) · {images} image(s){pdfCount > 0 && <> · {pdfCount} PDF(s), split into one scan per card</>}
-                {files.length - images - pdfCount > 0 && <span className="text-coral"> · {files.length - images - pdfCount} other file(s) → Unreadable pile</span>}
+                {files.length} file(s) · {images} image(s){files.length - images > 0 && <span className="text-coral"> · {files.length - images} non-image → Unreadable pile</span>}
               </span>
               <button className="text-xs font-semibold text-coral" onClick={() => setFiles([])} disabled={busy}>Clear</button>
             </div>
@@ -203,8 +183,7 @@ export function UploadForm() {
           <label className="label">Pasted lines (optional, one per card in order)</label>
           <textarea className="input h-28 font-mono text-xs" value={lines} onChange={(e) => setLines(e.target.value)} placeholder={"1999 Base Set 4/102 Charizard Holo\n2018 Topps Chrome Shohei Ohtani #150 RC"} />
         </div>
-        {received && <p className="rounded bg-teal/15 p-2 text-sm font-bold">{received}</p>}
-      {error && <p className="rounded bg-coral/10 p-2 text-sm text-coral">{error}</p>}
+        {error && <p className="rounded bg-coral/10 p-2 text-sm text-coral">{error}</p>}
         {progress && (
           <div>
             <div className="mb-1 flex justify-between text-xs font-semibold">

@@ -75,12 +75,9 @@ export async function layoutGuess(buf: Uint8Array, landscape: boolean): Promise<
   return { deg: 0, how: "layout guess", sure: true, margin: Math.abs(s), suspect: s <= -LAYOUT_SURE };
 }
 
-const ORIENT_PROMPT = `This is a scan crop of ONE trading card (Pokemon, sports, etc.), possibly rotated by 90, 180 or 270 degrees.
-Upright means: the card name and HP are at the top, the artwork is under the name, and the attack or rules text is below the artwork.
-For a full-art card: the illustration reads top to bottom and the small set number sits in a bottom corner.
-Energy and Trainer cards follow the same rule (title at the top). Cards may be in English, Japanese or Chinese.
-Ignore holo foil patterns and sparkles; judge only by the printed text and layout.
-Which edge of THIS IMAGE is the top of the card (where the name is printed)? Answer top, right, bottom or left.
+const ORIENT_PROMPT = `This is a photo or scan crop of ONE trading card (Pokemon, Magic, sports, etc.).
+Look at the printed text (card name, attack text, copyright line) and the card frame.
+Which edge of THIS IMAGE is the top of the card, where the card's name / title is printed? Answer top, right, bottom or left.
 Set sure=false if you cannot tell.`;
 
 const ORIENT_SCHEMA = {

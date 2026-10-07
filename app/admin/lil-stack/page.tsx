@@ -6,8 +6,6 @@ import { chaseList } from "@/lib/game/packs";
 import { sweepExpired } from "@/lib/game/play";
 import { getSettings } from "@/lib/settings";
 import { money } from "@/lib/util";
-import { IngestTicker } from "@/components/IngestTicker";
-import { ingestProgress } from "@/lib/ingestQueue";
 import { BuildButton, ConfirmPack, HoldFix, PlaceButton } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
@@ -27,10 +25,9 @@ function Step({ n, title, children, done }: { n: number; title: string; children
 }
 
 /** The founder pack desk: scan → sort by slot code → build 10 → pull by slot code → confirm. One category at a time. */
-export default async function PackDesk({ searchParams }: { searchParams: Promise<{ c?: string; received?: string; skipped?: string }> }) {
+export default async function PackDesk({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   await sweepExpired();
-  const { c, received, skipped } = await searchParams;
-  const ingesting = await ingestProgress();
+  const { c } = await searchParams;
   const category: Category = isCategory(c) ? c : "pokemon";
   const [d, s, chase, noCategory] = await Promise.all([
     deskData(category),
@@ -61,10 +58,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         </nav>
       </div>
 
-      <Step n={1} title="Scan a batch" done={d.counts.inbox === 0 && onDesk > 0 && !ingesting.length}>
-        {received && <p className="text-xl font-black">{received}</p>}
-        {skipped && <p className="text-sm">Skipped, already ingested: {skipped}</p>}
-        <IngestTicker initial={ingesting} />
+      <Step n={1} title="Scan a batch" done={d.counts.inbox === 0 && onDesk > 0}>
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/admin/upload" className="btn-coral px-5 py-2.5 text-base">
             Upload scans
@@ -73,7 +67,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
             Flatbed sheet
           </Link>
           <span className="text-sm text-navy/70">
-            Images, flatbed sheets and PDFs. Every scan is cropped and turned upright first; each card lands in its bin as soon as it is priced. {d.counts.inbox ? `${d.counts.inbox} card(s) still in the Inbox (no name yet).` : ""}
+            Every scan is turned upright on the way in. {d.counts.inbox ? `${d.counts.inbox} card(s) still in the Inbox (no name yet).` : ""}
           </span>
         </div>
       </Step>

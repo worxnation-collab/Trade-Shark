@@ -15,20 +15,17 @@ datasource db {
 }
 
 model Batch {
-  id              String       @id @default(cuid())
-  name            String
-  notes           String?
-  pairMode        String       @default("auto") // auto | filename | order | fronts
-  pairDecision    String? // JSON BackDecision from Auto pairing: did this batch contain backs?
-  partnerId       String? // founder who owns every card in this upload; copied onto each card
-  senderId        String? // or: the outside sender (consignment) who owns every card in it. Exactly one of the two.
-  ingestState     String? // queued (processing in the background) | done
-  ingestOptions   String? // JSON { pairMode, manifest, pastedLines } for organizing its image files
-  ingestLockUntil DateTime? // one background worker per batch at a time
-  createdAt       DateTime     @default(now())
-  cards           Card[]
-  files           UploadFile[]
-  lilStacks       LilStack[]
+  id           String       @id @default(cuid())
+  name         String
+  notes        String?
+  pairMode     String       @default("auto") // auto | filename | order | fronts
+  pairDecision String? // JSON BackDecision from Auto pairing: did this batch contain backs?
+  partnerId    String? // founder who owns every card in this upload; copied onto each card
+  senderId     String? // or: the outside sender (consignment) who owns every card in it. Exactly one of the two.
+  createdAt    DateTime     @default(now())
+  cards        Card[]
+  files        UploadFile[]
+  lilStacks    LilStack[]
 }
 
 // Every file I dropped, kept even if it never becomes a card.
@@ -52,8 +49,6 @@ model UploadFile {
   sheetHash String?
   cropIndex Int?
   cropBox   String? // JSON corners in sheet pixels
-  page      Int? // PDF crops: the page it came from (1-based)
-  flag      String? // why its card must wait for a look (e.g. "PDF page 3: no card found"); copied to Card.holdReason
   createdAt DateTime @default(now())
 
   @@index([batchId])
@@ -574,19 +569,4 @@ model ConsignSubmission {
   status    String   @default("pending") // pending | accepted | declined
   senderId  String?
   createdAt DateTime @default(now())
-}
-
-/// A PDF of scanned cards. Split on the server one page per request; each card on a page becomes its own crop.
-/// The same PDF (by hash) is never ingested twice.
-model PdfIngest {
-  id        String   @id @default(cuid())
-  batchId   String
-  name      String
-  hash      String   @unique
-  rel       String // the original PDF in storage
-  pages     Int
-  results   String   @default("[]") // JSON [{ page, cards, note? }] filled in as pages are split
-  createdAt DateTime @default(now())
-
-  @@index([batchId])
 }

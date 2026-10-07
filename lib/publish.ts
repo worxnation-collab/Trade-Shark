@@ -26,11 +26,9 @@ export function decide(
   c: Pick<Card, "name" | "player" | "identSource" | "readable" | "frontImage" | "listPrice"> & Partial<Pick<Card, "holdReason">>,
   sameScanTwice = false,
 ): Decision {
-  if (c.holdReason?.startsWith("PDF") && c.readable && c.frontImage) return "review"; // flagged PDF page: a person checks it
   if (!c.readable || !c.frontImage || !isIdentified(c) || c.listPrice == null) return "hold";
   if (sameScanTwice) return "review"; // the exact same file uploaded again: don't sell one card twice
   if (c.holdReason === "rotation") return "review"; // never sell a card sideways
-  if (c.holdReason?.startsWith("PDF")) return "review"; // a PDF page the splitter wasn't sure about
   return c.listPrice <= AUTO_PUBLISH_MAX ? "stock" : "review";
 }
 
