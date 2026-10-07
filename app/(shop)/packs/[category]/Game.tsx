@@ -156,7 +156,7 @@ export function Game(p: GameProps) {
   // This category's sealed shark pack (public/brand). The only object with a shadow.
   const packArt = (cls = "") => (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={packStill(p.category)} alt="" className={`clip-soft pack-shadow w-full ${cls}`} draggable={false} />
+    <img src={packStill(p.category)} alt="" className={`pack-shadow w-full ${cls}`} draggable={false} />
   );
   // The seal split: the crimped top lifts away while the body drops and fades.
   const sealSplit = (

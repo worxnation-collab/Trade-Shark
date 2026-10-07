@@ -30,7 +30,7 @@ export default async function Home() {
               <Stage category={it.key} className="flex aspect-[4/5] items-center justify-center rounded-lg border-b-2 border-gold p-12">
                 <div className={`w-36 transition-transform duration-200 group-hover:-translate-y-1 ${it.open ? "" : "opacity-50 grayscale"}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={packStill(it.key)} alt="" className="clip-soft pack-shadow w-full" />
+                  <img src={packStill(it.key)} alt="" className="pack-shadow w-full" />
                 </div>
               </Stage>
               <div className="pt-3 text-center">

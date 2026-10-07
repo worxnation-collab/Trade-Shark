@@ -180,11 +180,6 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
-/* Veo's navy is a shade off the page's: feather the clip's edges so it sits in the page, not in a box. */
-.clip-soft {
-  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
-  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
-}
 /* After the pass puff, the pack stays faded: it's gone for you. */
 .gone {
   opacity: 0.25;
