@@ -102,7 +102,9 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
   if (!packs.length)
     return (
       <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={pattern ? { backgroundImage: `url(${pattern})` } : undefined}>
-        No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
+        <span className="inline-block rounded-lg border-2 border-navy bg-sand px-4 py-2">
+          No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
+        </span>
       </p>
     );
 

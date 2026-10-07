@@ -34,11 +34,13 @@ export default async function CollectionPage() {
       </HeaderBand>
       {!buyer ? (
         <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={patternArt() ? { backgroundImage: `url(${patternArt()})` } : undefined}>
-          Your packs show up here once you play.{" "}
-          <Link href="/play/card" className="underline">
-            Save a card to start
-          </Link>
-          .
+          <span className="inline-block rounded-lg border-2 border-navy bg-sand px-4 py-2">
+            Your packs show up here once you play.{" "}
+            <Link href="/play/card" className="underline">
+              Save a card to start
+            </Link>
+            .
+          </span>
         </p>
       ) : (
         <Collection packs={packs} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} pattern={patternArt()} />
