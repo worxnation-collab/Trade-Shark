@@ -16,12 +16,14 @@ const ON_DESK = ["Identified", "Priced", "BulkHold", "NeedsLook"];
 export const nameOf = (c: Pick<Card, "game" | "name" | "player">) => (c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed card";
 export const thumbOf = (c: Pick<Card, "frontImage" | "rotation">) => (c.frontImage ? `/api/admin/images/${c.frontImage}?r=${c.rotation}` : null);
 
-/** Why a card sits in the Hold tray, in a few words (null = it belongs in a value tray). */
+export const NO_PRICE = "no price yet: type one";
+
+/** Why a card sits in the Hold (or Unpriced) tray, in a few words (null = it belongs in a value tray). */
 export function holdWhy(c: Pick<Card, "status" | "holdReason" | "listPrice" | "partnerId" | "senderId">, chaseOn: boolean): string | null {
   if (c.holdReason === "rotation") return "sideways? tap to turn";
   if (c.status === "NeedsLook") return c.holdReason ? c.holdReason : (c.listPrice ?? 0) > 5 ? "over $5: approve it" : "needs a look";
-  if (c.listPrice == null) return "no price yet";
   if (!c.partnerId && !c.senderId) return "no owner tag";
+  if (c.listPrice == null) return NO_PRICE;
   if (c.senderId) return "consignment (locked or reserve short)";
   if ((c.listPrice ?? 0) >= BIN.chaseFrom && !chaseOn) return "chase card, chase is off";
   return null;
@@ -29,6 +31,7 @@ export function holdWhy(c: Pick<Card, "status" | "holdReason" | "listPrice" | "p
 
 export function trayFor(c: Pick<Card, "status" | "holdReason" | "listPrice" | "partnerId" | "senderId">, chaseOn: boolean, consignOk = false): Tray {
   const why = holdWhy(c, chaseOn);
+  if (why === NO_PRICE) return TRAY.unpriced; // named and owned, waiting only for a typed price
   if (why && !(consignOk && c.senderId && why.startsWith("consignment"))) return TRAY.hold;
   const b = slotOf(c.listPrice);
   return b === "bulk" ? TRAY.bulk : b === "mid" ? TRAY.mid : b === "top" ? TRAY.top : TRAY.hit; // hit and (chase on) chase
@@ -96,6 +99,7 @@ export async function deskData(category: Category) {
       { tray: TRAY.mid, label: "Mid", note: "$0.25–$0.99", cards: byTray(TRAY.mid) },
       { tray: TRAY.top, label: "Top", note: "$1–$3.99", cards: byTray(TRAY.top) },
       { tray: TRAY.hit, label: "Hit", note: chaseOn ? "$4 and up" : "$4–$9.99", cards: byTray(TRAY.hit) },
+      { tray: TRAY.unpriced, label: "Unpriced", note: "no source priced it: type a price", cards: byTray(TRAY.unpriced) },
       { tray: TRAY.hold, label: "Hold", note: "fix before packing", cards: byTray(TRAY.hold) },
     ],
     toPlace: cards.filter((c) => c.location && !c.sortedAt).sort((a, b) => codeOrder(a.location, b.location)).map(row),

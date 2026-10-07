@@ -79,14 +79,14 @@ describe("suggested price rule", () => {
     // Two sources: the median is their average
     expect(suggest([m, q({ amount: 12 })], card, S).price).toBe(10);
   });
-  it("shop price: nearest dollar, minimum $1, $1 with no source, exact under $1 (Lil' Stack)", async () => {
+  it("shop price: nearest dollar, minimum $1, unpriced (null) with no source, exact under $1", async () => {
     const { shopPrice } = await import("@/lib/pricing/engine");
     expect(shopPrice(4.49)).toBe(4);
     expect(shopPrice(4.5)).toBe(5);
     expect(shopPrice(5.4)).toBe(5);
     expect(shopPrice(5.5)).toBe(6);
     expect(shopPrice(1.2)).toBe(1);
-    expect(shopPrice(null)).toBe(1);
+    expect(shopPrice(null)).toBeNull(); // never a default price
     expect(shopPrice(0.37)).toBe(0.37);
     expect(shopPrice(3.2, 9.99)).toBe(9.99); // manual wins as typed
   });

@@ -50,7 +50,7 @@ async function recentKinds(category: string) {
 }
 
 /** Tray letters on the desk, one per value bin (H = hold: needs a look, no owner, chase off, reserve can't cover). */
-export const TRAY = { bulk: "A", mid: "B", top: "C", hit: "D", hold: "H" } as const;
+export const TRAY = { bulk: "A", mid: "B", top: "C", hit: "D", hold: "H", unpriced: "U" } as const;
 /** How many packs one press of the desk button builds. */
 export const BUILD_BATCH = 10;
 

@@ -12,7 +12,7 @@ import type { Settings } from "./settings";
  */
 export const AUTO_PUBLISH_MAX = 5;
 
-export type Decision = "hold" | "stock" | "review";
+export type Decision = "hold" | "stock" | "review" | "unpriced";
 
 /** Statuses the upload run may still decide for. Anything I touched by hand is left alone. */
 const UNDECIDED = ["Inbox", "Identified", "Priced", "BulkHold"];
@@ -27,10 +27,11 @@ export function decide(
   sameScanTwice = false,
 ): Decision {
   if (c.holdReason?.startsWith("PDF") && c.readable && c.frontImage) return "review"; // flagged PDF page: a person checks it
-  if (!c.readable || !c.frontImage || !isIdentified(c) || c.listPrice == null) return "hold";
+  if (!c.readable || !c.frontImage || !isIdentified(c)) return "hold";
   if (sameScanTwice) return "review"; // the exact same file uploaded again: don't sell one card twice
   if (c.holdReason === "rotation") return "review"; // never sell a card sideways
   if (c.holdReason?.startsWith("PDF")) return "review"; // a PDF page the splitter wasn't sure about
+  if (c.listPrice == null) return "unpriced"; // named, but no source priced it: the desk's Unpriced column, never a default price
   return c.listPrice <= AUTO_PUBLISH_MAX ? "stock" : "review";
 }
 
@@ -54,6 +55,8 @@ export async function autoPublish(card: Card, _s?: Settings): Promise<Decision |
   const d = decide(card, same);
   if (d === "hold") {
     await db.card.update({ where: { id: card.id }, data: { status: "Inbox" } });
+  } else if (d === "unpriced") {
+    await db.card.update({ where: { id: card.id }, data: { status: "Identified" } });
   } else if (d === "review") {
     const why = card.holdReason ?? (same ? "same scan uploaded twice" : null);
     await db.card.update({ where: { id: card.id }, data: { status: "NeedsLook", holdReason: why } });

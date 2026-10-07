@@ -13,7 +13,7 @@ import { orientCard } from "./orient";
 import { autoPublish } from "./publish";
 import { shopPrice, statusAfterPricing, suggest, type QuoteRow } from "./pricing/engine";
 import { getSettings, type Settings } from "./settings";
-import { appliesTo, CATALOG_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sources";
+import { appliesTo, CATALOG_SOURCES, FALLBACK_PRICE_SOURCES, PRICE_SOURCES, VISION_SOURCES } from "./sources";
 import type { RunStatus } from "./sources/types";
 import type { CardFields, Game, IdentCandidate, IdentField, Pile } from "./types";
 import { limiter, norm, normNumber, safeJson } from "./util";
@@ -354,21 +354,20 @@ export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boo
   const newest = (src: string[]) =>
     Math.max(0, ...existing.filter((q) => src.includes(q.source)).map((q) => q.fetchedAt.getTime()));
 
-  for (const a of PRICE_SOURCES) {
-    if (opts.sources && !opts.sources.includes(a.id)) continue;
+  const run = async (a: (typeof PRICE_SOURCES)[number]) => {
     const t0 = Date.now();
-    if (!appliesTo(a, game)) continue;
+    if (!appliesTo(a, game)) return;
     const cfg = a.configured();
     if (!cfg.ok) {
       await recordRun(card.id, a.id, "price", "skipped", cfg.reason, t0);
-      continue;
+      return;
     }
     const srcIds = a.id === "ebay" ? ["ebay_sold", "ebay_active"] : a.id === "pokemontcg" ? ["pokemontcg", "cardmarket"] : [a.id];
     // Pasted comps are my data: parse once per paste (the card PATCH asks for it explicitly).
-    if (a.id === "pasted" && !opts.sources?.includes("pasted") && newest(srcIds)) continue;
+    if (a.id === "pasted" && !opts.sources?.includes("pasted") && newest(srcIds)) return;
     if (opts.onlyStale) {
       const last = newest(srcIds);
-      if (last && Date.now() - last < staleMs) continue;
+      if (last && Date.now() - last < staleMs) return;
     }
     const r = await a.price({
       cardId: card.id,
@@ -417,6 +416,14 @@ export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boo
         })),
       });
     }
+  };
+  for (const a of PRICE_SOURCES) if (!opts.sources || opts.sources.includes(a.id)) await run(a);
+  // A named card the usual sources couldn't price: ask the fallback (JustTCG for Pokemon, PriceCharting for sports).
+  // Still nothing = unpriced; it never gets a made-up price.
+  if (card.name && card.manualPrice == null) {
+    const quotes = (await db.priceQuote.findMany({ where: { cardId: card.id } })) as QuoteRow[];
+    if (suggest(quotes, card, s).price == null)
+      for (const a of FALLBACK_PRICE_SOURCES) if (!opts.sources || opts.sources.includes(a.id)) await run(a);
   }
   return applySuggestion(card.id, s, { allowLivePriceChange: opts.allowLivePriceChange });
 }
@@ -428,7 +435,7 @@ export async function applySuggestion(cardId: string, s: Settings, opts: { allow
   const sug = suggest(quotes, card, s);
   const identOk = !!card.confirmedAt || card.sourceConfidence >= s.confidenceThreshold;
   // A card a player is looking at (or bought) keeps the price they saw. An old live pay link does too, unless I save by hand.
-  // Shop price: nearest dollar (min $1, $1 when no source), exact under $1; manual wins.
+  // Shop price: nearest dollar (min $1), exact under $1; manual wins; no source = unpriced (null), never a default.
   const pack = card.gamePackId ? await db.gamePack.findUnique({ where: { id: card.gamePackId }, select: { id: true, status: true } }) : null;
   const frozen = !!pack && pack.status !== "available";
   const raw = sug.basis === "manual" ? sug.basisAmount : sug.price;

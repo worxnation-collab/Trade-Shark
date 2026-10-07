@@ -11,7 +11,7 @@ import pdfPkg from "pdfjs-dist/package.json";
 import { IngestTicker } from "@/components/IngestTicker";
 import { PdfInbox } from "@/components/PdfInbox";
 import { ingestProgress } from "@/lib/ingestQueue";
-import { BuildButton, ConfirmPack, FacebookSale, HoldFix, PlaceButton, VoidFacebook } from "./DeskActions";
+import { BuildButton, ConfirmPack, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
 export const metadata = { title: "Pack desk" };
@@ -107,7 +107,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         ) : (
           <p className="text-sm text-navy/70">Every card is in its slot.</p>
         )}
-        <div className="grid gap-3 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {d.columns.map((col) => (
             <div key={col.tray} className={`rounded-xl border-2 ${col.tray === "H" ? "border-coral/50 bg-coral/5" : "border-navy/15 bg-white"}`}>
               <div className="border-b-2 border-navy/10 px-3 py-2">
@@ -136,7 +136,9 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
                         {c.chase && " · CHASE"}
                         {!c.sorted && " · not placed yet"}
                       </span>
-                      {c.why && (
+                      {col.tray === "U" ? (
+                        <PriceBox id={c.id} />
+                      ) : c.why && (
                         <Link href={`/admin/review/${c.id}`} className="block text-xs font-semibold text-coral underline">
                           {c.why}
                         </Link>

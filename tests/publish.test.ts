@@ -39,9 +39,11 @@ describe("after upload (cards go to stock for packs, never sold alone)", () => {
     expect(decide(c(), true)).toBe("review");
   });
 
-  it("a named card with no price source goes to stock at $1 (shopPrice gives it $1)", async () => {
+  it("a named card no source priced is unpriced, never given a default price", async () => {
     const { shopPrice } = await import("@/lib/pricing/engine");
-    expect(decide(c({ listPrice: shopPrice(null) }))).toBe("stock");
+    expect(shopPrice(null)).toBeNull();
+    expect(decide(c({ listPrice: shopPrice(null) }))).toBe("unpriced");
+    expect(decide(c({ listPrice: null, name: null }))).toBe("hold");
   });
 });
 

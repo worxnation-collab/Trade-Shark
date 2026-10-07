@@ -97,6 +97,41 @@ export function HoldFix({ id }: { id: string }) {
   );
 }
 
+/** Unpriced column: type the price; saving it bins the card like any priced card (a manual price always wins). */
+export function PriceBox({ id }: { id: string }) {
+  const router = useRouter();
+  const [v, setV] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const save = async () => {
+    const n = Number(v.replace(/[$,\s]/g, ""));
+    if (!(n > 0)) return setMsg("Type a price above $0.");
+    setBusy(true);
+    setMsg("");
+    const r = await fetch(`/api/admin/cards/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ manualPrice: Math.round(n * 100) / 100 }) });
+    setBusy(false);
+    if (!r.ok) return setMsg("Didn't save. Try again.");
+    router.refresh();
+  };
+  return (
+    <span className="mt-1 flex items-center gap-1">
+      <input
+        className="w-20 rounded border border-navy/30 px-1.5 py-0.5 text-sm"
+        inputMode="decimal"
+        placeholder="$0.00"
+        aria-label="Price"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && save()}
+      />
+      <button className="rounded border border-navy/30 bg-white px-2 py-0.5 text-xs font-bold" disabled={busy || !v} onClick={save}>
+        {busy ? "…" : "Save"}
+      </button>
+      {msg && <span className="text-xs text-coral">{msg}</span>}
+    </span>
+  );
+}
+
 /** Facebook sale: pick a category, the next ready stack comes off the site; then pull it. */
 export function FacebookSale() {
   const { busy, msg, post } = useDesk();

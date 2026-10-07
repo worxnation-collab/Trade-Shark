@@ -46,6 +46,8 @@ const SOURCE_NAME: Record<string, string> = {
   pokemontcg: "TCGplayer market",
   scryfall: "Scryfall ask",
   ebay_active: "eBay active asks",
+  justtcg: "JustTCG",
+  pricecharting: "PriceCharting",
   cardmarket: "Cardmarket (EUR)",
   manual: "Manual",
 };
@@ -53,8 +55,8 @@ export const sourceName = (s: string) => SOURCE_NAME[s] ?? s;
 
 /**
  * Cute-shop pricing: one headline per source (sold-comp median, TCGplayer market, Scryfall ask,
- * eBay active-ask median), then the median of those. One source = that number. None = null
- * (the shop then lists a named card at $1). Disagreement is recorded, never a reason to hold a card.
+ * eBay active-ask median, and the JustTCG / PriceCharting fallbacks), then the median of those. One source = that
+ * number. None = null: the card is unpriced (never a default price). Disagreement is recorded, never a reason to hold.
  */
 export function suggest(
   allQuotes: QuoteRow[],
@@ -78,6 +80,7 @@ export function suggest(
   const market = quotes.find((q) => q.source === "pokemontcg" && q.label === "market" && usd(q) && !q.excluded);
   const ask = quotes.find((q) => q.kind === "retail_ask" && q.source === "scryfall" && usd(q) && !q.excluded);
   const activeAsks = quotes.filter((q) => q.source === "ebay_active" && !q.excluded && usd(q));
+  const fallbacks = quotes.filter((q) => (q.source === "justtcg" || q.source === "pricecharting") && !q.excluded && usd(q) && q.amount > 0);
 
   const headlines: (Suggestion["headlines"][number] & { nm: boolean })[] = [];
   if (soldStats) headlines.push({ source: "sold", label: `Sold median (${soldStats.n})`, amount: soldStats.median, nm: sold.every((q) => q.condition === "NM") });
@@ -85,6 +88,7 @@ export function suggest(
   if (ask) headlines.push({ source: "scryfall", label: `Scryfall ${ask.label}`, amount: ask.amount, nm: ask.condition === "NM" });
   if (activeAsks.length)
     headlines.push({ source: "ebay_active", label: `eBay active median (${activeAsks.length})`, amount: round2(median(activeAsks.map((q) => q.amount))!), nm: false });
+  for (const f of fallbacks) headlines.push({ source: f.source, label: sourceName(f.source), amount: f.amount, nm: f.condition === "NM" });
 
   const amts = headlines.map((h) => h.amount).filter((a) => a > 0);
   const conflict = amts.length >= 2 && Math.max(...amts) / Math.min(...amts) > s.conflictRatio;
@@ -132,11 +136,12 @@ export function suggest(
 /**
  * The shop price of a card from its suggestion.
  * - Under $1 stays exact; the pack price adds those up.
- * - Otherwise round to the nearest dollar, minimum $1. No source at all = $1.
+ * - Otherwise round to the nearest dollar, minimum $1.
+ * - No source at all = null (unpriced). Never a default: an unpriced card stays out of packs until I type a price.
  */
-export function shopPrice(raw: number | null, manual?: number | null): number {
+export function shopPrice(raw: number | null, manual?: number | null): number | null {
   if (manual != null) return manual;
-  if (raw == null) return 1;
+  if (raw == null) return null;
   if (raw < LIL_STACK_UNDER) return round2(raw);
   return Math.max(1, Math.round(raw));
 }
