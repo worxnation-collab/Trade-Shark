@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { isCategory } from "@/lib/categories";
 import { consignOpen } from "@/lib/partners";
 import { parseOwner } from "@/lib/partners/split";
-import { buildGamePacks, releaseCardFromGame } from "@/lib/game/packs";
+import { releaseCardFromGame } from "@/lib/game/packs";
 import { retirePaymentLink } from "@/lib/payLink";
 import { CONDITIONS, FOR_SALE, GAMES, PILES, SHIPPING_PROFILES, STATUSES } from "@/lib/types";
 
@@ -108,9 +108,7 @@ export const PATCH = guarded(async (req: Request, { params }: { params: Promise<
   if (status === "Sold" && !card.soldAt) extra.soldAt = new Date();
   card = await db.card.update({ where: { id }, data: { status, ...extra } });
 
-  // Draw new packs in the categories this card touched (its bins may now fill one).
-  const cats = new Set([before.category, card.category].filter(isCategory));
-  for (const c of cats) await buildGamePacks(c).catch((e) => console.error("pack build failed", e));
+  // Packs are only built from the desk (Build next 10), so a save never draws new ones.
   card = await db.card.findUniqueOrThrow({ where: { id } });
 
   if (linkError) return NextResponse.json({ ok: false, error: linkError, card }, { status: 422 });

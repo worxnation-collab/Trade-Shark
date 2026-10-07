@@ -3,14 +3,14 @@ import { CATEGORY_KEYS, type Category } from "../categories";
 import { db } from "../db";
 import { getSettings } from "../settings";
 import { fitsReserve } from "../partners/split";
-import { BIN, CHASE_RESERVE_CAP, cryptoRng, drawPack, isBump, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
+import { BIN, CHASE_RESERVE_CAP, SLOTS, cryptoRng, drawPack, isBump, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
 
 /**
  * Built packs for the reveal game, per category. Packs are drawn ahead of time from stock, so a purchase only
  * ever reserves a pack that already exists; it never assembles one on the spot.
  */
 
-/** Cards that may be drawn: identified, priced stock with a photo, tagged to an owner (founder or sender), not in any pack. */
+/** Cards that may be drawn: identified, priced, upright stock with a photo, tagged to an owner, sorted into a tray slot, not in any pack. */
 export const STOCK = ["Priced", "BulkHold"];
 /** Keep up to this many available packs per category (more stock stays loose for later draws). */
 export const AVAILABLE_TARGET = 50;
@@ -21,6 +21,8 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   readable: true,
   frontImage: { not: null },
   listPrice: { not: null },
+  location: { not: null },
+  sortedAt: { not: null }, // only cards a founder put in their tray slot can be pulled
   OR: [{ partnerId: { not: null } }, { senderId: { not: null } }],
   gamePackId: null,
   lilStackId: null,
@@ -47,47 +49,112 @@ async function recentKinds(category: string) {
   return rows.map((r) => r.kind as PackKind);
 }
 
-/**
- * Draw new packs for one category until it has AVAILABLE_TARGET ready, or the bins run out.
- * Each pack's kind comes from the 80 / 18 / 2 mix (`nextKind`); a hit or chase pack that can't be drawn falls back
- * to base. `drop: true` (a batch finished, or I pressed Draw packs) makes the new packs members-only for an hour.
- */
-export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop?: boolean; now?: Date } = {}) {
-  const rng = opts.rng ?? cryptoRng;
-  const now = opts.now ?? new Date();
-  const ready = await db.gamePack.findMany({ where: { category, status: "available" }, select: { kind: true } });
-  const want = Math.max(0, AVAILABLE_TARGET - ready.length);
-  if (!want) return { category, built: 0, available: ready.length, kinds: {} as Record<string, number> };
+/** Tray letters on the desk, one per value bin (H = hold: needs a look, no owner, chase off, reserve can't cover). */
+export const TRAY = { bulk: "A", mid: "B", top: "C", hit: "D", hold: "H" } as const;
+/** How many packs one press of the desk button builds. */
+export const BUILD_BATCH = 10;
+
+/** Everything the planner needs, loaded once. */
+async function buildContext(category: Category) {
   const settings = await getSettings();
-  const chaseOn = !!settings.chaseOn?.[category];
-  const rows = await db.card.findMany({ where: poolWhere(category), select: { id: true, listPrice: true, partnerId: true, senderId: true }, orderBy: { createdAt: "asc" } });
-  const ownerOf = new Map(rows.map((c) => [c.id, c]));
-  // Consignment cards go in only while consignment is open and only inside the reserve's headroom; the rest wait (hold bin).
+  const rows = await db.card.findMany({
+    where: poolWhere(category),
+    select: { id: true, listPrice: true, partnerId: true, senderId: true, catalogId: true, name: true, setName: true, number: true, player: true, game: true, cardType: true },
+    orderBy: { createdAt: "asc" },
+  });
   const { reserveNow } = await import("../partners");
-  let headroom = settings.consignOpen ? (await reserveNow()).headroom : 0;
+  const queued = await db.gamePack.findMany({ where: { category, status: { in: ["available", "pulling"] } }, select: { kind: true } });
+  return {
+    chaseOn: !!settings.chaseOn?.[category],
+    headroom: settings.consignOpen ? (await reserveNow()).headroom : 0,
+    rows,
+    recent: await recentKinds(category),
+    ready: { total: queued.length, hit: queued.filter((p) => p.kind === "hit").length },
+  };
+}
+type BuildContext = Awaited<ReturnType<typeof buildContext>>;
+
+const identOf = (c: BuildContext["rows"][number]) => c.catalogId || [c.name, c.setName, c.number].map((x) => (x ?? "").trim().toLowerCase()).join("|");
+
+/**
+ * Plan up to `count` legal packs from what's sorted into the trays, without touching the database.
+ * Mix from `nextKind` (80 / 18 / 2), a hit or chase that can't be drawn falls back to base; consignment cards only
+ * inside the reserve's headroom. Also reports what's missing and why draws were thrown out, for the desk.
+ */
+export function planPacks(ctx: BuildContext, count: number, rng: Rng = cryptoRng) {
+  const ownerOf = new Map(ctx.rows.map((c) => [c.id, c]));
+  const left = new Map<string, PoolCard>(
+    ctx.rows.map((c) => [c.id, { id: c.id, price: c.listPrice!, ident: identOf(c), type: c.game === "Pokemon" ? c.cardType : null, player: c.game === "Sports" ? c.player : null }]),
+  );
   const consigned = (ids: string[]) => ids.map((id) => ownerOf.get(id)!).filter((c) => c.senderId).map((c) => c.listPrice!);
-  const left = new Map<string, PoolCard>(rows.map((c) => [c.id, { id: c.id, price: c.listPrice! }]));
-  const recent = await recentKinds(category);
-  const readyCount = { total: ready.length, hit: ready.filter((p) => p.kind === "hit").length };
-  let number = (await db.gamePack.aggregate({ where: { category }, _max: { number: true } }))._max.number ?? 0;
-  const kinds: Record<string, number> = {};
-  let built = 0;
-  while (built < want) {
+  let headroom = ctx.headroom;
+  const recent = [...ctx.recent];
+  const ready = { ...ctx.ready };
+  const why = new Map<string, number>();
+  const packs: { kind: "base" | "hit" | "chase"; ids: string[]; value: number; best: string }[] = [];
+  while (packs.length < count) {
     const pool = [...left.values()].filter((c) => !ownerOf.get(c.id)!.senderId || c.price <= headroom);
     const has = (bin: string) => pool.some((c) => slotOf(c.price) === bin);
-    let kind = nextKind({ recent, ready: readyCount, hitCards: has("hit"), chaseOn, chaseCards: has("chase") });
-    let p = drawPack(pool, rng, 400, kind);
+    let kind = nextKind({ recent, ready, hitCards: has("hit"), chaseOn: ctx.chaseOn, chaseCards: has("chase") });
+    let p = drawPack(pool, rng, 400, kind, why);
     if (!p && kind !== "base") {
       kind = "base";
-      p = drawPack(pool, rng, 400, "base");
+      p = drawPack(pool, rng, 400, "base", why);
     }
     // The reserve must cover every consignment card in this stack together; if not, draw it from founder cards only.
     if (p && !fitsReserve(consigned(p.ids), headroom)) {
       const founders = pool.filter((c) => !ownerOf.get(c.id)!.senderId);
-      p = drawPack(founders, rng, 400, kind) ?? (kind !== "base" ? ((kind = "base"), drawPack(founders, rng, 400, "base")) : null);
+      p = drawPack(founders, rng, 400, kind, why) ?? (kind !== "base" ? ((kind = "base"), drawPack(founders, rng, 400, "base", why)) : null);
     }
     if (!p) break;
-    const draw = p;
+    packs.push({ kind, ...p });
+    p.ids.forEach((id) => left.delete(id));
+    headroom = Math.max(0, Math.round((headroom - consigned(p.ids).reduce((a, b) => a + b, 0)) * 100) / 100);
+    recent.unshift(kind);
+    ready.total++;
+    if (kind === "hit") ready.hit++;
+  }
+  // What the trays still need for the packs that couldn't be drawn (as base packs).
+  const short = count - packs.length;
+  const have = { bulk: 0, mid: 0, top: 0 };
+  for (const c of left.values()) {
+    const b = slotOf(c.price);
+    if (b === "bulk" || b === "mid" || b === "top") have[b]++;
+  }
+  const missing = short
+    ? (Object.keys(SLOTS) as (keyof typeof SLOTS)[]).map((s) => ({ slot: s, need: Math.max(0, SLOTS[s] * short - have[s]) })).filter((m) => m.need > 0)
+    : [];
+  return { packs, missing, rejected: [...why.entries()].sort((a, b) => b[1] - a[1]) };
+}
+
+/** One line on what stops the next packs: missing cards per bin, or the rule that kept throwing draws out. */
+export function shortLine(plan: ReturnType<typeof planPacks>, count = BUILD_BATCH) {
+  if (plan.packs.length >= count) return null;
+  const parts = plan.missing.map((m) => `${m.need} more ${m.slot}`);
+  const rule = plan.rejected[0] ? `draws rejected for ${plan.rejected[0][0]}` : null;
+  if (!parts.length && !rule) return `the cards in the trays don't add up to a pack worth $3.20–$3.80`;
+  return [parts.length ? `need ${parts.join(", ")}` : null, rule].filter(Boolean).join("; ");
+}
+
+/** How many legal packs the trays allow right now (up to `count`), without building them. */
+export async function previewBuild(category: Category, count = BUILD_BATCH) {
+  return planPacks(await buildContext(category), count);
+}
+
+/**
+ * Build packs from the trays: they start as "pulling" (pull sheet out, not for sale) until someone confirms the pack
+ * was pulled. Only the desk calls this (Build next 10). Each category keeps at most AVAILABLE_TARGET queued.
+ */
+export async function buildGamePacks(category: Category, opts: { rng?: Rng; count?: number; now?: Date } = {}) {
+  const now = opts.now ?? new Date();
+  const ctx = await buildContext(category);
+  const room = Math.max(0, AVAILABLE_TARGET - ctx.ready.total);
+  const plan = planPacks(ctx, Math.min(opts.count ?? BUILD_BATCH, room), opts.rng);
+  const ownerOf = new Map(ctx.rows.map((c) => [c.id, c]));
+  let number = (await db.gamePack.aggregate({ where: { category }, _max: { number: true } }))._max.number ?? 0;
+  const kinds: Record<string, number> = {};
+  let built = 0;
+  for (const draw of plan.packs) {
     number++;
     // Claim the cards only if they're still free (a save or another build may have taken one).
     const ok = await db
@@ -96,15 +163,16 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
           data: {
             category,
             number,
-            kind,
+            kind: draw.kind,
+            status: "pulling",
             cardIds: draw.ids,
             partnerIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.partnerId).filter((x): x is string => !!x))].sort(),
             senderIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.senderId).filter((x): x is string => !!x))].sort(),
             value: draw.value,
-            hitCardId: kind === "base" ? null : draw.best,
-            chase: kind === "chase",
-            chaseCardId: kind === "chase" ? draw.best : null,
-            publicAt: opts.drop ? new Date(now.getTime() + EARLY_ACCESS_MS) : now,
+            hitCardId: draw.kind === "base" ? null : draw.best,
+            chase: draw.kind === "chase",
+            chaseCardId: draw.kind === "chase" ? draw.best : null,
+            publicAt: now, // set again when the pack is confirmed
           },
         });
         const n = await tx.card.updateMany({ where: { id: { in: draw.ids }, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: pack.id, status: "LilStack" } });
@@ -112,25 +180,24 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; drop
         return true;
       })
       .catch(() => false);
-    draw.ids.forEach((id) => left.delete(id));
     if (!ok) {
       number = (await db.gamePack.aggregate({ where: { category }, _max: { number: true } }))._max.number ?? number;
       continue;
     }
     built++;
-    headroom = Math.max(0, Math.round((headroom - consigned(draw.ids).reduce((a, b) => a + b, 0)) * 100) / 100);
-    recent.unshift(kind);
-    readyCount.total++;
-    if (kind === "hit") readyCount.hit++;
-    kinds[kind] = (kinds[kind] ?? 0) + 1;
+    kinds[draw.kind] = (kinds[draw.kind] ?? 0) + 1;
   }
-  return { category, built, available: ready.length + built, kinds };
+  return { category, built, kinds, short: shortLine(plan, Math.min(opts.count ?? BUILD_BATCH, room)), full: room === 0 };
 }
 
-export async function buildAllGamePacks(opts: { drop?: boolean } = {}) {
-  const out = [];
-  for (const c of CATEGORY_KEYS) out.push(await buildGamePacks(c, opts));
-  return out;
+/** Step 5: the pack was pulled. It goes on sale (a new drop: members get the first hour) and its cards are out of the trays. */
+export async function confirmPack(packId: string, now = new Date()) {
+  return db.$transaction(async (tx) => {
+    const n = await tx.gamePack.updateMany({ where: { id: packId, status: "pulling" }, data: { status: "available", publicAt: new Date(now.getTime() + EARLY_ACCESS_MS) } });
+    if (!n.count) return false;
+    await tx.card.updateMany({ where: { gamePackId: packId }, data: { pulledAt: now } });
+    return true;
+  });
 }
 
 /** Put a pack's cards back in stock. `status` says why: expired (passed / timer), dissolved (I changed a card). */
@@ -138,6 +205,8 @@ export async function releasePack(packId: string, status: "expired" | "dissolved
   return db.$transaction(async (tx) => {
     const n = await tx.gamePack.updateMany({ where: { id: packId, status: { in: from } }, data: { status, closedAt: new Date() } });
     if (!n.count) return false;
+    // Cards already pulled for this pack are in its bag, not their slots: they show under "Put back" until re-shelved.
+    await tx.card.updateMany({ where: { gamePackId: packId, status: "LilStack", pulledAt: { not: null } }, data: { gamePackId: null, status: "Priced", sortedAt: null, pulledAt: null } });
     await tx.card.updateMany({ where: { gamePackId: packId, status: "LilStack" }, data: { gamePackId: null, status: "Priced" } });
     return true;
   });
@@ -146,7 +215,7 @@ export async function releasePack(packId: string, status: "expired" | "dissolved
 /** A card I edited (price, category, pulled…) leaves its pack: an available pack dissolves; reserved/sold ones are left alone. */
 export async function releaseCardFromGame(card: { gamePackId: string | null }) {
   if (!card.gamePackId) return;
-  await releasePack(card.gamePackId, "dissolved", ["available"]);
+  await releasePack(card.gamePackId, "dissolved", ["available", "pulling"]);
 }
 
 /** Every $10+ scanned card in a category (the chase list), and which ones are ready to drop into a pack. */
@@ -213,7 +282,7 @@ export async function setChase(category: Category, on: boolean) {
   const s = await getSettings();
   if (on && !(await chaseList(category)).length) throw new Error("Scan at least one card priced $10 or more in this category first.");
   await saveSettings({ chaseOn: { ...s.chaseOn, [category]: on } });
-  if (!on) for (const p of await db.gamePack.findMany({ where: { category, status: "available", kind: "chase" }, select: { id: true } })) await releasePack(p.id, "dissolved", ["available"]);
+  if (!on) for (const p of await db.gamePack.findMany({ where: { category, status: { in: ["available", "pulling"] }, kind: "chase" }, select: { id: true } })) await releasePack(p.id, "dissolved", ["available", "pulling"]);
 }
 
 /** Whether a new game can start in a category (members see a new drop an hour early), and when it opens to everyone. */

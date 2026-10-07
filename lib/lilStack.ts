@@ -1,7 +1,6 @@
 import type { LilStack } from "@prisma/client";
 import { CATEGORY_KEYS, categorize } from "./categories";
 import { db } from "./db";
-import { buildAllGamePacks } from "./game/packs";
 import { retirePaymentLink } from "./payLink";
 import { deactivatePaymentLink, stripe, type PaymentLinkApi } from "./stripe";
 import { round2 } from "./util";
@@ -55,12 +54,11 @@ export async function retireOldLinks(api: PaymentLinkApi | null = linkApi()) {
   return { singles: singles.length, packs: old.length };
 }
 
-/** After a batch, a reprice, or by hand: sort, retire old links, then draw new game packs from stock. */
+/** After a batch or a reprice: sort into categories and retire old links. Packs are built only from the desk. */
 export async function refreshPacks() {
   const sorted = await categorizeAll();
   const retired = await retireOldLinks();
-  const built = await buildAllGamePacks({ drop: true }); // a new drop: members get the first hour
-  return { sorted, retired, built, categories: CATEGORY_KEYS };
+  return { sorted, retired, categories: CATEGORY_KEYS };
 }
 
 /* ------------------------------------------------------- old link sales */

@@ -12,7 +12,7 @@ const NAV = [
   ["/admin/flatbed", "Flatbed"],
   ["/admin/batches", "Batches"],
   ["/admin/cards", "Inventory"],
-  ["/admin/lil-stack", "Packs"],
+  ["/admin/lil-stack", "Pack desk"],
   ["/admin/orders", "Orders"],
   ["/admin/partners", "Payouts"],
   ["/admin/export", "Export"],

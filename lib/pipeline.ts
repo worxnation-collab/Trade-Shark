@@ -291,6 +291,7 @@ export async function identifyCard(card: Card, s: Settings) {
       fieldConfidence: JSON.stringify(m.fieldConfidence),
       identAlternates: JSON.stringify(m.alternates),
       identConflict: m.conflict,
+      cardType: cands.find((c) => c.cardType)?.cardType ?? card.cardType,
       catalogId: w?.catalogId ?? null,
       catalogImage: w?.catalogImage ?? null,
       tcgplayerId: w?.tcgplayerId ?? null,

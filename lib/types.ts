@@ -62,5 +62,7 @@ export interface IdentCandidate {
   catalogImage?: string;
   tcgplayerId?: string;
   tcgplayerUrl?: string;
+  /** Pokemon energy type (Grass, Fire…), when a source knows it. */
+  cardType?: string;
   note?: string;
 }

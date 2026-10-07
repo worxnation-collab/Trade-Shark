@@ -73,6 +73,35 @@ export const sumValue = (prices: number[]) => round2(prices.reduce((a, b) => a +
 export interface PoolCard {
   id: string;
   price: number;
+  /** Same printed card (catalog id, or name + set + number): two in one pack = duplicate. */
+  ident?: string | null;
+  /** Pokemon energy type (Grass, Fire…). */
+  type?: string | null;
+  /** Sports player. */
+  player?: string | null;
+}
+
+/** At most this many of one Pokemon type, or of one player, in a pack. */
+export const SAME_LIMIT = 2;
+
+/** Why a drawn pack isn't legal, in one line, or null if it's fine. */
+export function packProblem(cards: PoolCard[]): string | null {
+  const count = (key: (c: PoolCard) => string | null | undefined) => {
+    const m = new Map<string, number>();
+    for (const c of cards) {
+      const k = key(c)?.trim().toLowerCase();
+      if (k) m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+  const top = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+  const dupe = top(count((c) => c.ident));
+  if (dupe && dupe[1] > 1) return "duplicate card";
+  const type = top(count((c) => c.type));
+  if (type && type[1] > SAME_LIMIT) return `more than ${SAME_LIMIT} ${type[0][0].toUpperCase()}${type[0].slice(1)} Pokémon`;
+  const who = top(count((c) => c.player));
+  if (who && who[1] > SAME_LIMIT) return `more than ${SAME_LIMIT} cards of ${who[0].replace(/\b\w/g, (x) => x.toUpperCase())}`;
+  return null;
 }
 
 export type Rng = (n: number) => number; // integer in [0, n)
@@ -125,7 +154,14 @@ function binsOf(pool: PoolCard[]) {
  * $10+ for chase). If the total misses that kind's band, throw it out and draw again.
  * Returns null when a slot can't be filled or no draw lands in the band (never pads with the wrong value).
  */
-export function drawPack(pool: PoolCard[], rng: Rng = cryptoRng, attempts = 400, kind: "base" | "hit" | "chase" = "base"): { ids: string[]; value: number; best: string } | null {
+export function drawPack(
+  pool: PoolCard[],
+  rng: Rng = cryptoRng,
+  attempts = 400,
+  kind: "base" | "hit" | "chase" = "base",
+  /** Tally of why legal-looking draws were thrown out (duplicate, same type, same player). */
+  why?: Map<string, number>,
+): { ids: string[]; value: number; best: string } | null {
   const bins = binsOf(pool);
   const bestBin: Bin = kind === "base" ? "top" : kind;
   if (bins.bulk.length < SLOTS.bulk || bins.mid.length < SLOTS.mid || bins[bestBin].length < 1) return null;
@@ -134,7 +170,14 @@ export function drawPack(pool: PoolCard[], rng: Rng = cryptoRng, attempts = 400,
     const best = pick(bins[bestBin], 1, rng)[0];
     const cards = [...pick(bins.bulk, SLOTS.bulk, rng), ...pick(bins.mid, SLOTS.mid, rng), best];
     const value = sumValue(cards.map((c) => c.price));
-    if (value >= band.min && value <= band.max) return { ids: cards.map((c) => c.id), value, best: best.id };
+    if (value < band.min || value > band.max) continue;
+    const problem = packProblem(cards);
+    if (problem) {
+      const k = problem.replace(/ cards of .+$/, " cards of one player");
+      why?.set(k, (why.get(k) ?? 0) + 1);
+      continue;
+    }
+    return { ids: cards.map((c) => c.id), value, best: best.id };
   }
   return null;
 }

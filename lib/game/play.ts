@@ -4,7 +4,7 @@ import { db } from "../db";
 import { splitSale } from "../lilStack";
 import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
-import { buildGamePacks, categoryStatus, packView, releasePack, reservePack } from "./packs";
+import { categoryStatus, packView, releasePack, reservePack } from "./packs";
 import { addReserve, recordSale, reservePeek } from "../partners";
 import { KEEP_GRACE_MS, PRICES, TIMER_SECONDS, cryptoRng, nextLocalMidnight, type Rng } from "./rules";
 
@@ -152,8 +152,7 @@ async function endWithoutPurchase(cycleId: string, buyer: Pick<Buyer, "id" | "tz
   // The pack is gone for this player; its cards go back to stock (it can't be reopened).
   if (cycle.packId) await releasePack(cycle.packId, "expired", ["reserved"]);
   await db.gameLock.create({ data: { buyerId: buyer.id, fingerprint: buyer.cardFingerprint, category: cycle.category, until: nextLocalMidnight(now, buyer.tz) } });
-  // Its cards are back in the bins: draw them into fresh packs (a new random mix, never the same pack reopened).
-  if (isCategory(cycle.category)) await buildGamePacks(cycle.category).catch((e) => console.error("redraw failed", e));
+  // Its cards go back to their tray slots (the desk lists them under "Put back"); new packs are built from the desk.
 }
 
 /** Step 7: the blind pack. Charge $4.99 first, then reserve from the same queue, then reveal. No reject. */

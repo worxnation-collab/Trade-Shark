@@ -65,7 +65,11 @@ model Card {
   pile    String @default("none")
 
   // identity
-  game           String  @default("Other") // Pokemon | Sports | Magic | Other
+  game           String    @default("Other") // Pokemon | Sports | Magic | Other
+  cardType       String? // Pokemon energy type (CardSight); pack rule: no more than two of one type
+  location       String? // physical tray slot on the desk, e.g. "B-14" (tray letter = value bin), per category
+  sortedAt       DateTime? // a founder put it in that slot (only sorted cards can go into a pack)
+  pulledAt       DateTime? // pulled for a confirmed pack; if that pack comes back, it goes back to its slot
   partnerId      String? // founder owner: matthew | adrian | mike (Partner.id)
   senderId       String? // consignment owner (Sender.id). A card needs a founder or a sender to enter a bin
   category       String? // baseball | football | pokemon: which pack product it goes in (null = never packed)
@@ -79,9 +83,9 @@ model Card {
   rarity         String?
   player         String?
   team           String?
-  condition      String  @default("NM") // NM | LP | MP | HP | DMG
+  condition      String    @default("NM") // NM | LP | MP | HP | DMG
   graded         String? // e.g. "PSA 10" — empty means raw
-  quantity       Int     @default(1)
+  quantity       Int       @default(1)
   cost           Float?
   notes          String?
 

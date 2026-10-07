@@ -1,194 +1,226 @@
 import Link from "next/link";
-import { artUrls, geminiConfigured } from "@/lib/brandArt";
-import { CATEGORIES } from "@/lib/categories";
+import { CATEGORIES, isCategory, type Category } from "@/lib/categories";
 import { db } from "@/lib/db";
-import { bins, categoryStatus, chaseList, STOCK } from "@/lib/game/packs";
+import { deskData } from "@/lib/desk";
+import { chaseList } from "@/lib/game/packs";
 import { sweepExpired } from "@/lib/game/play";
-import { BIN, HIT_TARGET, MIX, oddsLines, PRICES, SLOTS, TARGET } from "@/lib/game/rules";
+import { getSettings } from "@/lib/settings";
 import { money } from "@/lib/util";
-import { CategoryPicker, ChaseToggle, LilStackTools } from "./LilStackTools";
+import { BuildButton, ConfirmPack, HoldFix, PlaceButton } from "./DeskActions";
+import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
-export const metadata = { title: "Packs" };
+export const metadata = { title: "Pack desk" };
 export const dynamic = "force-dynamic";
 
-const nameOf = (c: { game: string; name: string | null; player: string | null }) => (c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed";
-const SLOT_LABEL = { bulk: "bulk (under $0.25)", mid: "mid ($0.25–$0.99)", top: "top ($1–$3.99)" } as const;
+function Step({ n, title, children, done }: { n: number; title: string; children: React.ReactNode; done?: boolean }) {
+  return (
+    <section className="card overflow-hidden">
+      <h2 className={`flex items-center gap-3 px-4 py-3 text-xl font-black ${done ? "bg-teal/10" : "bg-navy text-white"}`}>
+        <span className={`flex h-9 w-9 items-center justify-center rounded-full text-lg ${done ? "bg-teal text-white" : "bg-gold text-navy"}`}>{n}</span>
+        {title}
+      </h2>
+      <div className="space-y-3 p-4">{children}</div>
+    </section>
+  );
+}
 
-/** The reveal game's packs, per category: bins, built packs by status, the chase list and its flag. */
-export default async function PacksAdmin() {
+/** The founder pack desk: scan → sort by slot code → build 10 → pull by slot code → confirm. One category at a time. */
+export default async function PackDesk({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   await sweepExpired();
-  const [art, unsorted, perCat, charges] = await Promise.all([
-    artUrls(),
-    db.card.findMany({ where: { category: null, status: { in: STOCK }, readable: true }, orderBy: { createdAt: "asc" }, take: 60 }),
-    Promise.all(
-      CATEGORIES.map(async (cat) => {
-        const [b, st, counts, chase, recent, window] = await Promise.all([
-          bins(cat.key),
-          categoryStatus(cat.key),
-          db.gamePack.groupBy({ by: ["status"], where: { category: cat.key }, _count: true }),
-          chaseList(cat.key),
-          db.gamePack.findMany({
-            where: { category: cat.key, status: { not: "dissolved" } },
-            orderBy: [{ closedAt: { sort: "desc", nulls: "first" } }, { builtAt: "desc" }],
-            take: 8,
-            include: { cards: { select: { id: true, name: true, player: true, game: true, listPrice: true } } },
-          }),
-          db.gamePack.findMany({ where: { category: cat.key, status: { not: "dissolved" }, kind: { not: "member" } }, orderBy: { builtAt: "desc" }, take: MIX.window, select: { kind: true, status: true, publicAt: true } }),
-        ]);
-        const mix = { base: 0, hit: 0, chase: 0 } as Record<string, number>;
-        for (const w of window) mix[w.kind] = (mix[w.kind] ?? 0) + 1;
-        const readyHit = await db.gamePack.count({ where: { category: cat.key, status: "available", kind: "hit" } });
-        const early = await db.gamePack.count({ where: { category: cat.key, status: "available", publicAt: { gt: new Date() } } });
-        const count = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
-        return { cat, b, st, count, chase, recent, mix, n: window.length, readyHit, early };
-      }),
-    ),
-    db.gameCharge.groupBy({ by: ["kind"], where: { status: "succeeded" }, _sum: { amount: true }, _count: true }),
+  const { c } = await searchParams;
+  const category: Category = isCategory(c) ? c : "pokemon";
+  const [d, s, chase, noCategory] = await Promise.all([
+    deskData(category),
+    getSettings(),
+    chaseList(category),
+    db.card.findMany({ where: { category: null, status: { in: ["Identified", "Priced", "BulkHold", "NeedsLook"] }, readable: true }, take: 40, orderBy: { createdAt: "asc" } }),
   ]);
+  const product = CATEGORIES.find((x) => x.key === category)!.product;
+  const onDesk = d.columns.reduce((n, col) => n + col.cards.length, 0);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">Packs</h1>
-        <p className="text-sm text-navy/70">
-          The reveal game: {money(PRICES.reveal)} to see a pack, {money(PRICES.keepMore)} more to keep it ({money(PRICES.keepTotal)}), or a {money(PRICES.blind)} blind pack after a pass.
-          Base packs are {SLOTS.bulk} bulk + {SLOTS.mid} mid + {SLOTS.top} top, valued {money(TARGET.min)}–{money(TARGET.max)}; hit packs swap the top for one{" "}
-          {money(BIN.hitFrom)}–$9.99 card, valued {money(HIT_TARGET.min)}–{money(HIT_TARGET.max)}. Over the last {MIX.window} built: about {MIX.window - MIX.hit - MIX.chase} base,{" "}
-          {MIX.hit} hit, {MIX.chase} chase (chase only with the flag on). $2.01–$3.99 cards only top a member stack. New drops are members-only for an hour.{" "}
-          <Link href="/" className="font-semibold text-teal-2 underline" target="_blank">
-            See the game
-          </Link>
-          .
-        </p>
-        {charges.length > 0 && (
-          <p className="mt-1 text-xs text-navy/60">
-            Taken so far: {charges.map((c) => `${c.kind} ${money(c._sum.amount ?? 0)} (${c._count})`).join(" · ")}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-black">Pack desk</h1>
+          <p className="mt-1 text-sm font-semibold">
+            <span className={`chip ${d.counts.demo ? "bg-coral/20 text-coral" : "bg-teal/15 text-teal-2"}`}>Demo cards: {d.counts.demo}</span>{" "}
+            <span className="chip bg-navy/5">Real scans: {d.counts.real}</span> <span className="chip bg-navy/5">{product} cards on the desk: {onDesk}</span>{" "}
+            <span className="chip bg-navy/5">{product}s on sale: {d.onSale}</span>
           </p>
-        )}
+        </div>
+        <nav className="flex gap-1">
+          {CATEGORIES.map((x) => (
+            <Link key={x.key} href={`/admin/lil-stack?c=${x.key}`} className={`rounded-lg px-4 py-2 text-base font-black ${x.key === category ? "bg-navy text-white" : "bg-white text-navy ring-1 ring-navy/20"}`}>
+              {x.name}
+            </Link>
+          ))}
+        </nav>
       </div>
 
-      <LilStackTools geminiReady={geminiConfigured()} art={art} />
+      <Step n={1} title="Scan a batch" done={d.counts.inbox === 0 && onDesk > 0}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/admin/upload" className="btn-coral px-5 py-2.5 text-base">
+            Upload scans
+          </Link>
+          <Link href="/admin/flatbed" className="btn-ghost px-5 py-2.5 text-base">
+            Flatbed sheet
+          </Link>
+          <span className="text-sm text-navy/70">
+            Every scan is turned upright on the way in. {d.counts.inbox ? `${d.counts.inbox} card(s) still in the Inbox (no name yet).` : ""}
+          </span>
+        </div>
+      </Step>
 
-      {perCat.map(({ cat, b, st, count, chase, recent, mix, n, readyHit, early }) => (
-        <section key={cat.key} className="card space-y-3 p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-xl font-extrabold">{cat.product}</h2>
-            <span className={`chip ${st.open ? "bg-teal/15 text-teal-2" : "bg-coral/15 text-coral"}`}>{st.open ? `Open · ${st.available} ready` : "Closed: no pack ready"}</span>
-          </div>
-          <div className="grid gap-3 text-sm md:grid-cols-3">
-            <div>
-              <h3 className="font-bold">Stock by bin</h3>
-              <p>
-                Bulk {b.bulk} · Mid {b.mid} · Top {b.top}
-              </p>
-              <p className="text-navy/60">
-                Hit ($4–$9.99) {b.hit} · Member bump ($2–$4) {b.bump} · Chase ($10+) {b.chase}
-              </p>
-              {b.short.length > 0 && (
-                <p className="mt-1 text-coral">
-                  Can&apos;t fill a pack: {b.short.map((x) => `${x.need - x.have} more ${SLOT_LABEL[x.slot]}`).join(", ")}.
-                </p>
-              )}
-            </div>
-            <div>
-              <h3 className="font-bold">Built packs</h3>
-              <p>
-                Ready {count("available")} · Reserved {count("reserved")} · Kept {count("kept")} · Sold blind {count("sold-blind")} · Expired {count("expired")}
-              </p>
-              <p className="text-navy/60">
-                Last {n} built: {mix.base ?? 0} base · {mix.hit ?? 0} hit · {mix.chase ?? 0} chase. Hits in the ready queue: {readyHit}/{count("available")}
-                {early > 0 && ` · ${early} members-only for now`}
-              </p>
-            </div>
-            <div>
-              <h3 className="font-bold">Live odds</h3>
-              <ul className="text-xs text-navy/70">
-                {oddsLines(st.chaseOn).map((o) => (
-                  <li key={o}>{o}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-sand-2/60 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-bold">Chase list ($10+) · {chase.length}</h3>
-              <ChaseToggle category={cat.key} on={st.chaseOn} canTurnOn={chase.length > 0} />
-            </div>
-            <p className="text-xs text-navy/60">
-              Off by default. When on, about 2 in 100 newly built packs take one of these in the top slot (marked CHASE on the pull sheet); one chase pack reserved at
-              a time. Turning it off takes ready chase packs apart. Only approved stock cards are eligible.
-            </p>
-            {chase.length > 0 && (
-              <ul className="mt-2 divide-y divide-navy/5 text-sm">
-                {chase.map((c) => (
-                  <li key={c.id} className="flex justify-between gap-2 py-1">
-                    <Link href={`/admin/review/${c.id}`} className="truncate hover:text-teal-2">
-                      {nameOf(c)} <span className="text-navy/50">· {c.setName}</span>
-                    </Link>
-                    <span className="shrink-0">
-                      {money(c.listPrice)} · <span className={c.eligible ? "text-teal-2" : "text-navy/50"}>{c.eligible ? "eligible" : c.status}</span>
+      <Step n={2} title="Sort into bins by the location code" done={d.toPlace.length === 0 && onDesk > 0}>
+        {d.toPlace.length > 0 ? (
+          <>
+            <p className="text-base font-semibold">Put each card in its slot, then tap Placed.</p>
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+              {d.toPlace.slice(0, 60).map((c) => (
+                <li key={c.id} className="flex items-center gap-2 rounded-lg border-2 border-navy/15 bg-white p-2">
+                  {c.thumb && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.thumb} alt="" className="h-14 w-10 rounded object-cover" loading="lazy" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block font-mono text-2xl font-black leading-none">{c.code}</span>
+                    <span className="block truncate text-xs">{c.name}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {d.toPlace.length > 60 && <p className="text-sm text-navy/60">…and {d.toPlace.length - 60} more.</p>}
+            <PlaceButton ids={d.toPlace.slice(0, 60).map((c) => c.id)} />
+          </>
+        ) : (
+          <p className="text-sm text-navy/70">Every card is in its slot.</p>
+        )}
+        <div className="grid gap-3 lg:grid-cols-5">
+          {d.columns.map((col) => (
+            <div key={col.tray} className={`rounded-xl border-2 ${col.tray === "H" ? "border-coral/50 bg-coral/5" : "border-navy/15 bg-white"}`}>
+              <div className="border-b-2 border-navy/10 px-3 py-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xl font-black">{col.label}</span>
+                  <span className="text-2xl font-black">{col.cards.length}</span>
+                </div>
+                <div className="text-xs text-navy/60">
+                  Tray {col.tray} · {col.note}
+                </div>
+              </div>
+              <ul className="max-h-[32rem] divide-y divide-navy/5 overflow-y-auto">
+                {col.cards.slice(0, 150).map((c) => (
+                  <li key={c.id} className={`flex items-center gap-2 px-2 py-1.5 ${c.sorted ? "" : "bg-gold/15"}`}>
+                    {c.thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.thumb} alt="" className="h-12 w-9 shrink-0 rounded object-cover" loading="lazy" />
+                    ) : (
+                      <span className="h-12 w-9 shrink-0 rounded bg-navy/10" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-lg font-black leading-tight">{c.code}</span>
+                      <span className="block truncate text-xs">{c.name}</span>
+                      <span className="block text-xs text-navy/60">
+                        {c.price == null ? "no price" : money(c.price)}
+                        {c.chase && " · CHASE"}
+                        {!c.sorted && " · not placed yet"}
+                      </span>
+                      {c.why && (
+                        <Link href={`/admin/review/${c.id}`} className="block text-xs font-semibold text-coral underline">
+                          {c.why}
+                        </Link>
+                      )}
+                      {c.rotation && <HoldFix id={c.id} />}
                     </span>
                   </li>
                 ))}
+                {col.cards.length === 0 && <li className="px-3 py-4 text-sm text-navy/50">Empty</li>}
+                {col.cards.length > 150 && <li className="px-3 py-2 text-xs text-navy/60">…and {col.cards.length - 150} more</li>}
               </ul>
-            )}
+            </div>
+          ))}
+        </div>
+        {noCategory.length > 0 && (
+          <div className="rounded-lg bg-coral/10 p-3 text-sm">
+            <b>{noCategory.length} card(s) have no pack category</b> and can&apos;t go on the desk. Pick one:
+            <ul className="mt-2 space-y-1">
+              {noCategory.map((x) => (
+                <li key={x.id} className="flex items-center gap-2">
+                  <Link href={`/admin/review/${x.id}`} className="underline">
+                    {(x.game === "Sports" ? x.player || x.name : x.name) || "Unnamed card"}
+                  </Link>
+                  <CategoryPicker cardId={x.id} value={x.category} />
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
+      </Step>
 
-          {recent.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-sm font-semibold">Recent packs</summary>
-              <ul className="mt-2 space-y-2 text-xs">
-                {recent.map((p) => {
-                  const byId = new Map(p.cards.map((c) => [c.id, c]));
-                  return (
-                    <li key={p.id} className="rounded border border-navy/10 p-2">
-                      <div className="font-semibold">
-                        <Link href={`/admin/packs/${p.id}`} className="text-teal-2 underline">
-                          {cat.product} {p.number ?? "?"}
-                        </Link>{" "}
-                        · {p.status} · value {money(p.value)}
-                        {p.kind === "chase" && <span className="ml-1 text-coral">CHASE</span>}
-                        {p.kind === "hit" && <span className="ml-1 text-teal-2">HIT</span>}
-                        {p.kind === "member" && <span className="ml-1 text-teal-2">MEMBER</span>}
-                        {p.charged != null && ` · paid ${money(p.charged)}`} · <span className="text-navy/50">{p.id.slice(-6)}</span>
-                      </div>
-                      <div className="text-navy/60">
-                        {p.cardIds
-                          .map((id) => byId.get(id))
-                          .filter(Boolean)
-                          .map((c) => `${nameOf(c!)} ${money(c!.listPrice)}`)
-                          .join(" · ") || "(cards back in stock)"}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
-          )}
-        </section>
-      ))}
+      <Step n={3} title="Build when the mix is ready" done={false}>
+        {d.canBuild >= 10 ? (
+          <BuildButton category={category} />
+        ) : (
+          <p className="text-lg font-bold">
+            {d.canBuild} of 10 packs can be built. <span className="text-coral">Missing: {d.short ?? "nothing"}.</span>
+          </p>
+        )}
+        <p className="text-sm text-navy/60">
+          A pack is 7 bulk + 4 mid + 1 top (worth $3.20–$3.80), or a hit pack with one $4–$9.99 card. Never two of the same card, never more than two of one Pokémon type, never
+          more than two cards of one player.
+        </p>
+      </Step>
 
-      {unsorted.length > 0 && (
-        <section className="card p-4">
-          <h2 className="font-bold">Unsorted</h2>
-          <p className="mb-3 text-sm text-navy/70">Priced cards I couldn&apos;t place (basketball, Magic, or no team or league on it). They never go in a pack unless you pick a category.</p>
-          <ul className="divide-y divide-navy/5 text-sm">
-            {unsorted.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
-                <Link href={`/admin/review/${c.id}`} className="min-w-0 flex-1 truncate hover:text-teal-2">
-                  <strong>{nameOf(c)}</strong>{" "}
-                  <span className="text-navy/60">
-                    · {c.game}
-                    {c.team ? ` · ${c.team}` : ""} · {money(c.listPrice)}
-                  </span>
-                </Link>
-                <CategoryPicker cardId={c.id} value={null} />
+      <Step n={4} title="Pull the sheet" done={d.pulling.length === 0}>
+        {d.pulling.length === 0 ? (
+          <p className="text-sm text-navy/70">No packs waiting to be pulled.</p>
+        ) : (
+          d.pulling.map((p) => (
+            <div key={p.id} className="rounded-xl border-2 border-navy p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-2xl font-black">
+                  {product} {p.number}
+                  {p.kind !== "base" && <span className="ml-2 rounded bg-coral px-2 py-0.5 text-sm text-white">{p.kind.toUpperCase()}</span>}
+                </h3>
+                <span className="text-sm text-navy/60">
+                  value {money(p.value)} ·{" "}
+                  <Link href={`/admin/packs/${p.id}`} className="underline">
+                    printable sheet
+                  </Link>
+                </span>
+              </div>
+              <ol className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                {p.cards.map((c) => (
+                  <li key={c.id} className={`rounded-lg border-2 p-2 text-center ${c.hit ? "border-coral bg-coral/5" : "border-navy/15 bg-white"}`}>
+                    <span className="block font-mono text-3xl font-black leading-none">{c.code}</span>
+                    <span className="mt-1 block truncate text-xs">{c.name}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))
+        )}
+      </Step>
+
+      <Step n={5} title="Confirm the pack" done={d.pulling.length === 0}>
+        {d.pulling.length === 0 ? (
+          <p className="text-sm text-navy/70">Nothing to confirm. Confirmed packs go on sale (members see a new drop first, for an hour).</p>
+        ) : (
+          <ul className="flex flex-wrap gap-3">
+            {d.pulling.map((p) => (
+              <li key={p.id}>
+                <ConfirmPack id={p.id} label={`${product} ${p.number}`} />
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+      </Step>
+
+      <section className="card space-y-2 p-4 text-sm">
+        <h2 className="font-bold">Chase cards ($10+)</h2>
+        <ChaseToggle category={category} on={!!s.chaseOn?.[category]} canTurnOn={chase.length > 0} />
+        <p className="text-navy/60">Off: $10+ cards wait in Hold. On: about 2 in 100 packs get one.</p>
+      </section>
     </div>
   );
 }

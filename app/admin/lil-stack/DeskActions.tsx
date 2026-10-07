@@ -1,0 +1,98 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+function useDesk() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function post(path: string, body: unknown) {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
+      return j;
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setBusy(false);
+      router.refresh();
+    }
+  }
+  return { busy, msg, setMsg, post };
+}
+
+export function PlaceButton({ ids }: { ids: string[] }) {
+  const { busy, msg, post } = useDesk();
+  return (
+    <div>
+      <button className="btn-primary px-6 py-3 text-lg" disabled={busy || !ids.length} onClick={() => post("/api/admin/desk", { action: "placed", ids })}>
+        {busy ? "Saving…" : `Placed ✓ (${ids.length})`}
+      </button>
+      {msg && <span className="ml-2 text-sm text-coral">{msg}</span>}
+    </div>
+  );
+}
+
+export function BuildButton({ category }: { category: string }) {
+  const { busy, msg, setMsg, post } = useDesk();
+  return (
+    <div>
+      <button
+        className="btn-coral px-8 py-4 text-2xl font-black"
+        disabled={busy}
+        onClick={async () => {
+          const j = await post("/api/admin/desk", { action: "build", category });
+          if (j) setMsg(`Built ${j.built}. Pull them below.${j.short ? ` Next: ${j.short}.` : ""}`);
+        }}
+      >
+        {busy ? "Building…" : "Build next 10"}
+      </button>
+      {msg && <p className="mt-2 text-sm font-semibold">{msg}</p>}
+    </div>
+  );
+}
+
+export function ConfirmPack({ id, label }: { id: string; label: string }) {
+  const { busy, msg, post } = useDesk();
+  return (
+    <div className="flex flex-col gap-1">
+      <button className="btn-primary px-5 py-3 text-base font-black" disabled={busy} onClick={() => post("/api/admin/desk", { action: "confirm", packId: id })}>
+        {busy ? "…" : `Confirm ${label}: all 12 pulled`}
+      </button>
+      <button
+        className="text-xs text-navy/60 underline"
+        disabled={busy}
+        onClick={() => confirm(`Take ${label} apart? Its cards stay in their slots.`) && post("/api/admin/desk", { action: "cancel", packId: id })}
+      >
+        Take it apart instead
+      </button>
+      {msg && <span className="text-xs text-coral">{msg}</span>}
+    </div>
+  );
+}
+
+/** One-tap rotate for a card the scanner wasn't sure about. Turns clockwise; ✓ = it's already upright. */
+export function HoldFix({ id }: { id: string }) {
+  const { busy, msg, post } = useDesk();
+  const turn = (deg: number) => post(`/api/admin/cards/${id}/rotate?deg=${deg}`, {});
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {[
+        [90, "↻"],
+        [180, "↕ 180"],
+        [270, "↺"],
+        [0, "✓ upright"],
+      ].map(([deg, label]) => (
+        <button key={deg} className="rounded border border-navy/30 bg-white px-2 py-0.5 text-xs font-bold" disabled={busy} onClick={() => turn(deg as number)}>
+          {label}
+        </button>
+      ))}
+      {msg && <span className="text-xs text-coral">{msg}</span>}
+    </span>
+  );
+}

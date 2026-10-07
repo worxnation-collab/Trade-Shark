@@ -11,6 +11,7 @@ export function keys() {
     ebaySecret: e.EBAY_CLIENT_SECRET || "",
     ebayMarketplace: e.EBAY_MARKETPLACE || "EBAY_US",
     sports: e.SPORTS_CATALOG_API_KEY || "",
+    cardsight: e.CARDSIGHT_API_KEY || "",
     visionConcurrency: Math.max(1, Number(e.VISION_CONCURRENCY || 2)),
   };
 }

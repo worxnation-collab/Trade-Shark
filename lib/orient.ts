@@ -26,6 +26,8 @@ export interface Orientation {
   /** The model was confident, or the layout cue was strong. */
   sure: boolean;
   margin?: number;
+  /** The layout cue says a portrait card may be upside down: don't guess, ask for a one-tap rotate. */
+  suspect?: boolean;
 }
 
 const isLandscape = (w: number, h: number) => w > h * 1.05;
@@ -67,8 +69,10 @@ export async function layoutGuess(buf: Uint8Array, landscape: boolean): Promise<
     const s = await topHeavy(await sharp(buf).rotate(90).toBuffer());
     return { deg: s >= 0 ? 90 : 270, how: "layout guess", sure: Math.abs(s) >= LAYOUT_SURE, margin: Math.abs(s) };
   }
-  // Portrait stays as scanned without vision: on real scans the cue flipped upright cards too often.
-  return { deg: 0, how: "layout guess", sure: true, margin: Math.abs(await topHeavy(buf)) };
+  // Portrait stays as scanned without vision (the cue flipped upright cards too often), but a strong
+  // "upside down" cue is flagged for a one-tap check instead of being trusted either way.
+  const s = await topHeavy(buf);
+  return { deg: 0, how: "layout guess", sure: true, margin: Math.abs(s), suspect: s <= -LAYOUT_SURE };
 }
 
 const ORIENT_PROMPT = `This is a photo or scan crop of ONE trading card (Pokemon, Magic, sports, etc.).
@@ -143,13 +147,16 @@ export async function visionOrientation(buf: Uint8Array): Promise<Orientation | 
   }
 }
 
-/** What to do with one crop: the turn, whether it's a guess, and whether it's still sideways after. */
+/**
+ * What to do with one crop: the turn, whether it's a guess, and whether it needs a person (`sideways`: held for a
+ * one-tap rotate). Held: still landscape after the turn, a coin-flip turn of a sideways crop, an unsure vision
+ * answer, or a portrait card the layout cue thinks is upside down. Never published on a guess that could be wrong.
+ */
 export function plan(o: Orientation, landscape: boolean) {
   const guess = o.how !== "vision" || !o.sure;
   const quarter = o.deg === 90 || o.deg === 270;
   const stillLandscape = quarter ? !landscape : landscape;
-  // A sideways crop turned on a coin-flip is not something to publish.
-  const sideways = stillLandscape || (landscape && guess && !o.sure);
+  const sideways = stillLandscape || (landscape && guess && !o.sure) || (o.how === "vision" && !o.sure) || !!o.suspect;
   return { guess, sideways };
 }
 
@@ -193,19 +200,45 @@ export async function orientCard(card: Card): Promise<Card> {
       rotationNote: sideways ? "unsure" : o.deg === 0 ? "upright" : o.how,
       frontOriginal,
       backOriginal,
+      frontDisplay: o.deg !== 0 ? null : card.frontDisplay, // the framed copy is rebuilt from the turned scan
       holdReason: sideways ? "rotation" : card.holdReason === "rotation" ? null : card.holdReason,
     },
   });
 }
 
-/** A hand turn from the admin fallback (same rule: front and back together, saved in place). */
+/**
+ * Re-check a card scanned before auto-rotate existed (or one I want checked again): same rules as on ingest.
+ * Unsure → held in Needs a look for a one-tap rotate. A card in a pack or sold is never touched.
+ */
+export async function reorientCard(card: Card) {
+  if (!["Inbox", "Identified", "Priced", "BulkHold", "NeedsLook"].includes(card.status)) return card;
+  const done = await orientCard({ ...card, orientedAt: null });
+  if (done.holdReason === "rotation" && done.status !== "NeedsLook") return db.card.update({ where: { id: card.id }, data: { status: "NeedsLook", location: null, sortedAt: null } });
+  return done;
+}
+
+/**
+ * The one-tap fix: turn a card by hand (front and back together, saved in place), or `deg` 0 = "it's upright".
+ * Clears the rotation hold; a card that was only waiting on its rotation goes back to stock under the usual $5 rule.
+ */
 export async function turnCard(card: Card, deg: Deg) {
-  if (!card.frontImage || deg === 0) return card;
-  await rotateStored(card.frontImage, deg, false);
-  if (card.backImage) await rotateStored(card.backImage, deg, false);
-  return db.card.update({
+  if (!card.frontImage) return card;
+  if (deg !== 0) {
+    await rotateStored(card.frontImage, deg, false);
+    if (card.backImage) await rotateStored(card.backImage, deg, false);
+  }
+  const wasRotationHold = card.holdReason === "rotation";
+  const updated = await db.card.update({
     where: { id: card.id },
     // The display image is rebuilt from the turned scan the next time it's needed.
-    data: { rotation: norm(card.rotation + deg), rotationNote: "by hand", holdReason: card.holdReason === "rotation" ? null : card.holdReason, frontDisplay: null },
+    data: {
+      rotation: norm(card.rotation + deg),
+      rotationNote: deg === 0 ? "checked upright" : "by hand",
+      holdReason: wasRotationHold ? null : card.holdReason,
+      ...(deg !== 0 ? { frontDisplay: null, location: null, sortedAt: null } : {}),
+    },
   });
+  if (wasRotationHold && updated.status === "NeedsLook" && updated.listPrice != null && updated.listPrice <= 5 && (updated.name || updated.player))
+    return db.card.update({ where: { id: card.id }, data: { status: "Priced", confirmedAt: updated.confirmedAt ?? new Date() } });
+  return updated;
 }

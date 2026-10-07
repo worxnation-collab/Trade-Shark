@@ -13,11 +13,22 @@ export default async function PullSheet({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const p = await db.gamePack.findUnique({
     where: { id },
-    include: { cards: { select: { id: true, game: true, name: true, player: true, setName: true, number: true, year: true, listPrice: true } }, order: { select: { id: true } } },
+    include: {
+      cards: { select: { id: true, game: true, name: true, player: true, setName: true, number: true, year: true, listPrice: true, location: true, frontImage: true, rotation: true } },
+      order: { select: { id: true } },
+    },
   });
   if (!p) notFound();
   const byId = new Map(p.cards.map((c) => [c.id, c]));
-  const cards = p.cardIds.map((cid) => byId.get(cid)).filter((c): c is NonNullable<typeof c> => !!c);
+  // Pull order: by slot code (tray, then number), so one walk down the trays pulls the pack.
+  const code = (l: string | null) => {
+    const [t, n] = (l ?? "Z-0").split("-");
+    return `${t}${String(Number(n) || 0).padStart(5, "0")}`;
+  };
+  const cards = p.cardIds
+    .map((cid) => byId.get(cid))
+    .filter((c): c is NonNullable<typeof c> => !!c)
+    .sort((a, b) => code(a.location).localeCompare(code(b.location)));
   const mark = p.kind === "chase" ? "CHASE" : p.kind === "hit" ? "HIT" : p.kind === "member" ? "MEMBER STACK" : null;
   return (
     <div className="mx-auto max-w-2xl space-y-4 print:max-w-none">
@@ -48,31 +59,24 @@ export default async function PullSheet({ params }: { params: Promise<{ id: stri
         <button className="btn-ghost">Save</button>
       </form>
       {p.locationNote && <p className="hidden text-sm print:block">Location: {p.locationNote}</p>}
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-navy/20 text-left">
-            <th className="py-1">#</th>
-            <th>Card</th>
-            <th>Set</th>
-            <th className="text-right">Price</th>
-            <th className="w-8 print:table-cell">✓</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cards.map((c, i) => (
-            <tr key={c.id} className={`border-b border-navy/10 ${c.id === p.hitCardId ? "font-bold" : ""}`}>
-              <td className="py-1.5">{i + 1}</td>
-              <td>
-                {(c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed"}
-                {c.id === p.hitCardId && <span className="ml-1 text-xs">({mark})</span>}
-              </td>
-              <td className="text-navy/70">{[c.year, c.setName, c.number].filter(Boolean).join(" ")}</td>
-              <td className="text-right">{money(c.listPrice)}</td>
-              <td>☐</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4 print:grid-cols-4">
+        {cards.map((c) => (
+          <li key={c.id} className={`rounded-lg border-2 p-2 text-center ${c.id === p.hitCardId ? "border-coral" : "border-navy/20"}`}>
+            <span className="block font-mono text-3xl font-black leading-none">{c.location ?? "—"}</span>
+            {c.frontImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/admin/images/${c.frontImage}?r=${c.rotation}`} alt="" className="mx-auto mt-1 h-20 rounded object-contain print:hidden" />
+            )}
+            <span className="mt-1 block text-xs font-semibold leading-tight">
+              {(c.game === "Sports" ? c.player || c.name : c.name) || "Unnamed"}
+              {c.id === p.hitCardId && mark ? ` (${mark})` : ""}
+            </span>
+            <span className="block text-[11px] text-navy/60">
+              {money(c.listPrice)} · ☐
+            </span>
+          </li>
+        ))}
+      </ol>
       <p className="text-xs text-navy/60">Confirm the physical stack matches this sheet before it ships.</p>
     </div>
   );

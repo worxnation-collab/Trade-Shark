@@ -48,6 +48,11 @@ describe("auto-orientation", () => {
     expect(plan({ deg: 90, how: "layout guess", sure: true }, true)).toEqual({ guess: true, sideways: false });
     expect(plan({ deg: 270, how: "layout guess", sure: false }, true)).toEqual({ guess: true, sideways: true });
     expect(plan({ deg: 90, how: "vision", sure: false }, true)).toEqual({ guess: true, sideways: true });
+    // Uncertain is flagged, never guessed: an unsure vision answer on a portrait crop, or a portrait the cue thinks is upside down.
+    expect(plan({ deg: 180, how: "vision", sure: false }, false).sideways).toBe(true);
+    expect(plan({ deg: 0, how: "vision", sure: false }, false).sideways).toBe(true);
+    expect(plan({ deg: 0, how: "layout guess", sure: true, suspect: true }, false).sideways).toBe(true);
+    expect(plan({ deg: 0, how: "layout guess", sure: true, suspect: false }, false).sideways).toBe(false);
   });
 
   it("maps the card's top edge to a clockwise turn", async () => {
