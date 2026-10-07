@@ -45,7 +45,7 @@ export default async function Home() {
         ))}
       </ul>
       {door && (
-        <a href={`/${door}`} aria-label="Trade Shark" tabIndex={-1} className="absolute bottom-0 right-0 opacity-25">
+        <a href={`/${door}`} aria-label="Trade Shark" tabIndex={-1} className="absolute -bottom-3 -right-3 p-3 opacity-25">
           <SharkFin size={14} mono className="text-navy" />
         </a>
       )}
