@@ -96,3 +96,54 @@ export function HoldFix({ id }: { id: string }) {
     </span>
   );
 }
+
+/** Facebook sale: pick a category, the next ready stack comes off the site; then pull it. */
+export function FacebookSale() {
+  const { busy, msg, post } = useDesk();
+  const [cat, setCat] = useState("");
+  const [sold, setSold] = useState<{ packId: string; label: string } | null>(null);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="input w-auto py-2 text-base" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
+          <option value="">Category…</option>
+          <option value="baseball">Baseball</option>
+          <option value="football">Football</option>
+          <option value="pokemon">Pokemon</option>
+        </select>
+        <button
+          className="btn-dark px-5 py-2 text-base"
+          disabled={busy || !cat}
+          onClick={async () => {
+            setSold(null);
+            const j = await post("/api/admin/desk", { action: "facebook", category: cat });
+            if (j) setSold({ packId: j.packId, label: j.label });
+          }}
+        >
+          {busy ? "…" : "Sold on Facebook"}
+        </button>
+        {msg && <span className="text-sm font-semibold text-coral">{msg}</span>}
+      </div>
+      {sold && (
+        <p className="text-xl font-black">
+          Pull {sold.label} ·{" "}
+          <a href={`/admin/packs/${sold.packId}`} className="underline">
+            pull sheet
+          </a>
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function VoidFacebook({ id, label }: { id: string; label: string }) {
+  const { busy, msg, post } = useDesk();
+  return (
+    <span className="flex items-center gap-2">
+      <button className="text-xs text-navy/60 underline" disabled={busy} onClick={() => confirm(`Void the Facebook sale of ${label}? It goes back on the site.`) && post("/api/admin/desk", { action: "facebook-void", packId: id })}>
+        Void
+      </button>
+      {msg && <span className="text-xs text-coral">{msg}</span>}
+    </span>
+  );
+}

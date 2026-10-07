@@ -151,72 +151,29 @@ const VIDEOS = {
 
 /* ------------------------------------------------------------------ scenes: stages, headers, titles, pattern */
 
-// Card-shop hype, not a bank. Navy, cream, gold, one sport accent per category. Rough print texture, no AI glow.
-const LOOK = `Style: loud, fun, slightly rough hand-made card-shop art. Screen-printed and painted look with visible ink texture,
-halftone dots, slight misregistration, chunky shapes. Palette: deep navy #0B1F3A, warm cream #F4EFE6, metallic gold #D9A441, plus the one accent named below.
-Absolutely no smooth stock gradients, no generic glowing AI light blooms, no lens flares, no floating UI shapes, no bokeh.
-No people, no mascots, no creatures, no characters, no logos of any league, team, Pokemon, Nintendo or Disney. No trading cards, no card packs.`;
+// A quiet card counter: cream paper, navy ink, one gold edge. Stages are tight, dark, calm photographs-in-paint
+// with lots of empty centre for the pack. No halftone, no lightning, no comic bursts, no glow.
+const LOOK = `Style: quiet, tactile, premium still-life. Soft natural light, low contrast, muted and darkened, lots of empty space.
+Absolutely no halftone dots, no comic style, no lightning bolts, no bursts, no glow or neon bloom, no lens flare, no sparkles,
+no text, letters or numbers, no logos, no people, no creatures or characters, no trading cards, no card packs.`;
 
 const STAGE = {
-  baseball: "Accent: oxblood red #9E2B25. Subject: a worn leather baseball glove pocket and well-used ball leather filling the frame like a backdrop, thick red lace stitching curving around the edges, scuffs and dust, warm stadium-light spill from the top.",
-  football: "Accent: turf green #2F7D3A. Subject: a close, low view of a football field turf filling the frame, chalky cream yard lines and hash marks running across, a gold goal-post shape far in the background, rough painted grass texture.",
-  pokemon: "Accent: electric yellow #FFD23F with a little cyan #3FD0E0. Subject: an old arcade cabinet interior lit up: chunky pixel grid, zig-zag lightning bolts, scanlines and halftone bursts filling the frame, loud and electric. Abstract shapes only, no creatures.",
+  baseball: "Subject: an extreme close-up of worn brown baseball leather with one curved red seam stitch running along the bottom edge only. Darkened, moody, most of the frame is smooth dark leather.",
+  football: "Subject: dark green turf seen from low and close, with a single soft white yard line crossing near the bottom of the frame. Darkened, calm, most of the frame is plain dark turf.",
+  pokemon: "Subject: a flat, smooth deep violet surface with one soft warm arcade light falling gently from the top edge, fading into darkness. Abstract and minimal, nothing else in the frame.",
 };
 
-const SCENE = {
-  ...Object.fromEntries(
-    Object.entries(STAGE).map(([c, sub]) => [
-      `stage-${c}`,
-      {
-        ratio: "4:5",
-        out: "webp",
-        width: 900,
-        prompt: `${LOOK}\n${sub}\nThis is a stage backdrop: full-bleed, edge to edge, the busy texture lives around the edges and corners. Keep a calm, darker navy area in the middle third (an object will be placed there later), so the center stays quiet and readable. Strictly no text, letters or numbers anywhere.`,
-      },
-    ]),
-  ),
-  "header-packs": {
-    ratio: "21:9",
-    out: "webp",
-    width: 1600,
-    crop: 0.42,
-    prompt: `${LOOK}\nAccent: all three at once in bands: oxblood red #9E2B25 stitched leather on the left, turf green #2F7D3A yard lines in the middle, electric yellow #FFD23F lightning on the right, blended into one long, low banner of a card-shop counter wall. Wide and short. Keep the middle band darker navy so a title can sit on it. Strictly no text, letters or numbers.`,
-  },
-  "header-collection": {
-    ratio: "21:9",
-    out: "webp",
-    width: 1600,
-    crop: 0.42,
-    prompt: `${LOOK}\nAccent: gold #D9A441. Subject: a long, low shelf of a collector's den seen straight on: stacked card boxes as plain unlabeled cream and navy blocks, binders spines with no lettering, a gold trophy shape, tape and stickers. Wide and short, the middle stays calmer navy for a title. Strictly no text, letters or numbers.`,
-  },
-  "header-consign": {
-    ratio: "21:9",
-    out: "webp",
-    width: 1600,
-    crop: 0.42,
-    prompt: `${LOOK}\nAccent: gold #D9A441. Subject: a long, low banner of plain cardboard shipping boxes and padded mailers piled up, packing tape, a postal stamp shape with no lettering, string. Wide and short, the middle stays calmer navy for a title. Strictly no text, letters or numbers.`,
-  },
-  "title-pick": {
-    ratio: "21:9",
-    out: "webp",
-    key: true,
-    width: 900,
-    prompt: `${LOOK}\nA bold title treatment of exactly these words: "Pick a pack." (spelled exactly that, with the period). Make it look like a thick die-cut vinyl sticker: chunky hand-painted cream letters with a navy outline, a fat gold offset shadow and a white sticker border around the whole word group, slightly tilted, a little scuffed. The only text in the image is "Pick a pack." Place it on a perfectly flat, pure solid green #00FF00 background with nothing else on it.`,
-  },
-  "title-tradeshark": {
-    ratio: "21:9",
-    out: "webp",
-    key: true,
-    width: 900,
-    prompt: `${LOOK}\nA bold title treatment of exactly this word: "TradeShark" (one word, capital T and capital S). Hand-painted sign-shop lettering in cream with a navy outline and a gold drop shadow, like a die-cut sticker with a white border, plus a simple flat navy shark fin triangle tucked at the right end. The only text in the image is "TradeShark". Place it on a perfectly flat, pure solid green #00FF00 background with nothing else on it.`,
-  },
-  pattern: {
-    ratio: "1:1",
-    out: "webp",
-    width: 240,
-    prompt: `${LOOK}\nA seamless repeating tile pattern on a flat warm cream #F4EFE6 background: small scattered navy and gold doodles of shark fins, baseball stitch marks, little yard-line dashes and tiny lightning bolts, low contrast, evenly spaced so it tiles on all edges. Flat, no shading. Strictly no text, letters or numbers.`,
-  },
-};
+const SCENE = Object.fromEntries(
+  Object.entries(STAGE).map(([c, sub]) => [
+    `stage-${c}`,
+    {
+      ratio: "4:5",
+      out: "webp",
+      width: 900,
+      prompt: `${LOOK}\n${sub}\nThis is a backdrop for a product photo: full-bleed, edge to edge, the centre must be calm and empty so an object can sit there. Strictly no text.`,
+    },
+  ]),
+);
 
 async function scene(name, { recut = false } = {}) {
   const s = SCENE[name];

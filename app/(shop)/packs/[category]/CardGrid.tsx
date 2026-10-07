@@ -1,20 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { reducedMotion as reducedMotionNow } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { TiltCard } from "./TiltCard";
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 /** The 12 real scans. Drag to tilt; tap to open one larger (it tilts there too). */
-export function CardGrid({ pack, fx = null, fxEl = null, light = false }: { pack: PackView; fx?: string | null; fxEl?: React.ReactNode; light?: boolean }) {
+export function CardGrid({ pack, light = false }: { pack: PackView; light?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const big = pack.cards.find((c) => c.id === open);
-  // The hit card is dealt last: bring it into view for its sparkle (above the pinned Keep bar).
-  useEffect(() => {
-    if (fx) document.getElementById(`card-${fx}`)?.scrollIntoView({ block: "center", behavior: reducedMotionNow() ? "auto" : "smooth" });
-  }, [fx]);
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
@@ -26,14 +21,13 @@ export function CardGrid({ pack, fx = null, fxEl = null, light = false }: { pack
       <ul className="mt-6 grid w-full grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 lg:grid-cols-6" aria-label="The 12 cards in this pack">
         {pack.cards.map((c, i) => (
           <li key={c.id} id={`card-${c.id}`} className="card-in relative" style={{ "--i": i } as React.CSSProperties}>
-            {fx === c.id && fxEl}
             <TiltCard src={`/api/play/image/${c.id}`} alt={c.name} onTap={() => setOpen(c.id)} />
             <p className={`-mt-1 truncate text-xs font-semibold ${light ? "text-navy" : "text-white"}`}>{c.name}</p>
             <p className={`truncate text-[11px] ${light ? "text-navy/60" : "text-sand/60"}`}>
               {usd(c.price)}
               {c.chase && <span className="ml-1 font-bold text-coral">CHASE</span>}
-              {c.hit && <span className="ml-1 font-bold text-teal">HIT</span>}
-              {c.bumped && <span className="ml-1 font-bold text-teal">MEMBER</span>}
+              {c.hit && <span className="ml-1 font-bold text-navy">HIT</span>}
+              {c.bumped && <span className="ml-1 font-bold text-navy">MEMBER</span>}
             </p>
           </li>
         ))}

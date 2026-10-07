@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrandClip } from "@/components/BrandClip";
-import { HIT_CLIP, openStill, packStill, passClip, tearClip } from "@/lib/brandAssets";
+import { packStill } from "@/lib/brandAssets";
 import { confetti, pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { NUDGES, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
@@ -52,13 +51,13 @@ export function Game(p: GameProps) {
   const [left, setLeft] = useState(TIMER_SECONDS);
   const [nudge, setNudge] = useState(0);
   const [stackLeft, setStackLeft] = useState(p.stackLeft);
-  // Brand clips: the tear on a reveal (and a blind buy), the puff on a pass, the sparkle over a hit pack.
-  const [clip, setClip] = useState<"tear" | "pass" | null>(null);
-  const [hitFx, setHitFx] = useState<"pending" | "play" | null>(null);
-  const special = (pk: PackView) => pk.kind === "hit" || pk.kind === "chase" || pk.cards.some((c) => c.hit || c.chase);
+  // After a payment the pack seal splits open (about half a second), then the cards fan out.
+  const [seal, setSeal] = useState(false);
   useEffect(() => {
-    if (clip === null && hitFx === "pending") setHitFx("play");
-  }, [clip, hitFx]);
+    if (!seal) return;
+    const t = window.setTimeout(() => setSeal(false), 520);
+    return () => window.clearTimeout(t);
+  }, [seal]);
   const packRef = useRef<HTMLDivElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const cycleRef = useRef<string | null>(null);
@@ -77,8 +76,7 @@ export function Game(p: GameProps) {
     if (memberStack) setStackLeft(false);
     skew.current = new Date(r.serverNow as string).getTime() - Date.now();
     pop();
-    setClip("tear");
-    setHitFx(special(r.pack as PackView) ? "pending" : null);
+    setSeal(true);
     setPhase({ k: "revealing", cycleId: r.cycleId as string, deadline: new Date(r.deadline as string).getTime(), pack: r.pack as PackView });
   }
 
@@ -86,8 +84,6 @@ export function Game(p: GameProps) {
     const id = cycleRef.current;
     if (!id) return;
     cycleRef.current = null;
-    setHitFx(null);
-    setClip("pass");
     setPhase({ k: "passed", why });
     await post("/api/play/pass", { cycleId: id });
   }, []);
@@ -114,8 +110,7 @@ export function Game(p: GameProps) {
     setBusy("");
     if (!r.ok) return setError(r.error ?? "That didn't work.");
     confetti(packRef.current);
-    setClip("tear");
-    setHitFx(special(r.pack as PackView) ? "pending" : null);
+    setSeal(true);
     setPhase({ k: "won", pack: r.pack as PackView, how: "blind" });
   }
 
@@ -146,7 +141,6 @@ export function Game(p: GameProps) {
       const id = cycleRef.current;
       if (!id) return;
       cycleRef.current = null;
-      setClip("pass");
       navigator.sendBeacon?.("/api/play/pass", JSON.stringify({ cycleId: id }));
       setPhase({ k: "passed", why: "left" });
     };
@@ -159,39 +153,36 @@ export function Game(p: GameProps) {
     };
   }, [phase.k]);
 
-  // This category's pack, drawn with Gemini (public/brand).
-  const packArt = (torn = false) => (
+  // This category's sealed shark pack (public/brand). The only object with a shadow.
+  const packArt = (cls = "") => (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={torn ? openStill(p.category) : packStill(p.category)} alt="" className="clip-soft w-full" draggable={false} />
+    <img src={packStill(p.category)} alt="" className={`clip-soft pack-shadow w-full ${cls}`} draggable={false} />
   );
-  // The hit sparkle bursts from the hit (or chase) card itself.
-  const cardsWithFx = (pack: PackView) => (
-    <CardGrid
-      pack={pack}
-      fx={hitFx === "play" ? (pack.cards.find((c) => c.chase || c.hit)?.id ?? null) : null}
-      fxEl={
-        <div className="pointer-events-none absolute left-1/2 top-[38%] z-10 w-[230%] -translate-x-1/2 -translate-y-1/2">
-          <BrandClip src={HIT_CLIP} blend onDone={() => setHitFx(null)} className="hit-fx block w-full" />
-        </div>
-      }
-    />
+  // The seal split: the crimped top lifts away while the body drops and fades.
+  const sealSplit = (
+    <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg border-b-2 border-gold">
+      <div className="relative w-40 sm:w-48">
+        {packArt("seal-body")}
+        <div className="absolute inset-0">{packArt("seal-top")}</div>
+      </div>
+    </Stage>
   );
 
   const opensAt = p.opensAt ? new Date(p.opensAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   return (
     <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
-      {error && <p className="mb-4 rounded bg-coral/20 px-3 py-2 text-sm text-white">{error}</p>}
+      {error && <p className="mb-4 rounded border border-coral/40 bg-white px-3 py-2 text-sm text-navy">{error}</p>}
 
       {phase.k === "intro" && (
         <>
-          {/* The stage art sits behind the pack only; the rules and the $1 button stay on plain navy below. */}
-          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl ring-2 ring-white/10">
-            <div className="w-44 drop-shadow-[0_16px_20px_rgba(0,0,0,0.6)] sm:w-52">{packArt()}</div>
+          {/* The stage sits behind the pack only; the rules and the $1 button stay on cream below. */}
+          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg border-b-2 border-gold p-12">
+            <div className="w-40 sm:w-48">{packArt()}</div>
           </Stage>
           <Rules odds={p.odds} />
           {!p.open ? (
-            <p className="mt-6 text-sm text-sand/75">
+            <p className="mt-6 text-sm text-navy/75">
               {opensAt ? (
                 <>
                   A new drop opens to everyone at {opensAt}. <Link href="/play/member" className="underline">Members</Link> are in now.
@@ -201,12 +192,12 @@ export function Game(p: GameProps) {
               )}
             </p>
           ) : !p.hasCard ? (
-            <Link href={`/play/card?next=${p.category}`} className="btn-coral mt-6 px-7 py-3 text-base">
+            <Link href={`/play/card?next=${p.category}`} className="btn-reveal mt-6 px-7 py-3 text-base">
               Save a card to play
             </Link>
           ) : (
             <>
-              <button className="btn-coral mt-6 px-8 py-3 text-lg" disabled={!!busy} onClick={() => reveal()} data-pop>
+              <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled={!!busy} onClick={() => reveal()} data-pop>
                 {busy === "reveal" ? "Revealing…" : `Reveal for ${usd(PRICES.reveal)}`}
               </button>
               {p.member && stackLeft && (
@@ -214,7 +205,7 @@ export function Game(p: GameProps) {
                   {busy === "stack" ? "Revealing…" : `Reveal my member stack · ${usd(PRICES.reveal)}`}
                 </button>
               )}
-              <p className="mt-2 text-xs text-sand/50">
+              <p className="mt-2 text-xs text-navy/55">
                 Charged to {p.cardLabel ?? "your saved card"}.{" "}
                 <Link href={`/play/card?next=${p.category}`} className="underline">
                   Change
@@ -231,32 +222,33 @@ export function Game(p: GameProps) {
 
       {phase.k === "revealing" && (
         <>
-          <div className="flex items-center gap-4">
-            <Stage category={p.category} className="flex items-center justify-center rounded-2xl p-3 ring-2 ring-white/10">
-              {clip === "tear" ? (
-                <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
-              ) : (
+          {seal ? (
+            sealSplit
+          ) : (
+            <div className="flex items-center gap-4">
+              <Stage category={p.category} className="flex items-center justify-center rounded-lg border-b-2 border-gold p-3">
                 <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
-                  {packArt(true)}
+                  {packArt()}
                 </div>
-              )}
-            </Stage>
-            <Timer left={left} />
+              </Stage>
+              <Timer left={left} />
+            </div>
+          )}
+          {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-navy">Member stack: your best card is bumped.</p>}
+          <div className="after-seal w-full">
+            <CardGrid pack={phase.pack} light />
           </div>
-          {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-teal">Member stack: your best card is bumped.</p>}
-          {cardsWithFx(phase.pack)}
           {/* Stays on screen while you scroll the cards: the clock and both choices. */}
-          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-2xl bg-navy-2/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
-            <p className="text-xs text-sand/75">Pack value {usd(phase.pack.value)} · stored in your Collection until you ship</p>
-            <p className="text-sm font-semibold text-white">
-              Keep all 12 for {usd(PRICES.keepMore)} more ({usd(PRICES.keepTotal)} in all) ·{" "}
-              <span className={left <= 10 ? "text-coral" : "text-teal"}>{left}s</span>
+          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-lg border border-navy/15 border-b-2 border-b-gold bg-sand p-3">
+            <p className="text-xs text-navy/65">Pack value {usd(phase.pack.value)} · stored in your Collection until you ship</p>
+            <p className="text-sm font-semibold text-navy">
+              Keep all 12 for {usd(PRICES.keepMore)} more ({usd(PRICES.keepTotal)} in all) · <span className={left <= 10 ? "text-coral" : ""}>{left}s</span>
             </p>
-            <div className="flex gap-3">
-              <button className="btn-ghost px-5 py-3" disabled={!!busy} onClick={() => passNow("pass")} data-nopop>
+            <div className="flex items-center gap-5">
+              <button className="px-2 py-3 text-base font-semibold text-navy/70 underline-offset-4 hover:underline" disabled={!!busy} onClick={() => passNow("pass")} data-nopop>
                 Pass
               </button>
-              <button ref={keepRef} key={`k${nudge}`} className={`btn-coral px-8 py-3 text-lg ${nudge ? "keep-pulse" : ""}`} disabled={!!busy} onClick={keepIt} data-pop>
+              <button ref={keepRef} className="btn-keep px-8 py-3 text-lg" disabled={!!busy} onClick={keepIt} data-pop>
                 {busy === "keep" ? "Keeping…" : `Keep · ${usd(PRICES.keepMore)}`}
               </button>
             </div>
@@ -266,18 +258,18 @@ export function Game(p: GameProps) {
 
       {phase.k === "passed" && (
         <>
-          <Stage category={p.category} className="flex items-center justify-center rounded-2xl p-5 ring-2 ring-white/10">
-            <div ref={packRef} className="w-40">
-              {clip === "pass" ? <BrandClip src={passClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-full" /> : <div className="gone">{packArt()}</div>}
+          <Stage category={p.category} className="flex items-center justify-center rounded-lg border-b-2 border-gold p-6">
+            <div ref={packRef} className="gone w-32">
+              {packArt()}
             </div>
           </Stage>
-          <p className="mt-5 text-lg font-bold text-white">
+          <p className="mt-5 text-lg font-bold text-navy">
             {phase.why === "timer" ? "Time's up. That pack is gone." : phase.why === "locked" ? `You passed on a ${p.product} today.` : "That pack is gone."}
           </p>
-          <p className="mt-1 max-w-sm text-sm text-sand/75">
+          <p className="mt-1 max-w-sm text-sm text-navy/75">
             {p.member ? "Members can reveal again right away, or take" : "The only one left for you today is"} a {usd(PRICES.blind)} pack you see after you pay. Same packs, same odds.
           </p>
-          <button className="btn-coral mt-4 px-7 py-3 text-base" disabled={!!busy || !p.open} onClick={buyBlind} data-pop>
+          <button className="btn-reveal mt-4 px-7 py-3 text-base" disabled={!!busy || !p.open} onClick={buyBlind} data-pop>
             {busy === "blind" ? "Opening…" : `Buy a blind pack · ${usd(PRICES.blind)}`}
           </button>
           {p.member && (
@@ -285,7 +277,7 @@ export function Game(p: GameProps) {
               Reveal another · {usd(PRICES.reveal)}
             </button>
           )}
-          <ul className="mt-6 space-y-0.5 text-xs text-sand/60">
+          <ul className="mt-6 space-y-0.5 text-xs text-navy/60">
             {p.odds.map((o) => (
               <li key={o}>{o}</li>
             ))}
@@ -295,23 +287,21 @@ export function Game(p: GameProps) {
 
       {phase.k === "won" && (
         <>
-          {clip === "tear" && (
-            <Stage category={p.category} className="mb-3 flex items-center justify-center rounded-2xl p-4 ring-2 ring-white/10">
-              <BrandClip src={tearClip(p.category)} poster={packStill(p.category)} onDone={() => setClip(null)} className="clip-soft w-40 sm:w-48" />
-            </Stage>
-          )}
-          <p className="text-2xl font-extrabold text-white">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
-          <p className="mt-1 text-sm text-sand/75">
+          {seal && <div className="mb-4 w-full max-w-sm">{sealSplit}</div>}
+          <p className="text-2xl font-extrabold text-navy">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
+          <p className="mt-1 text-sm text-navy/75">
             {phase.pack.number ? `Pack ${phase.pack.number} is` : "It's"} in your{" "}
             <Link href="/collection" className="underline">
               Collection
             </Link>
             . Ship it whenever you like, on its own or with other packs.
           </p>
-          {cardsWithFx(phase.pack)}
-          <div className="mt-6 flex gap-3">
+          <div className="after-seal w-full">
+            <CardGrid pack={phase.pack} light />
+          </div>
+          <div className="mt-6 flex items-center gap-4">
             <button
-              className="btn-coral px-7 py-3"
+              className="btn-reveal px-7 py-3"
               onClick={() => {
                 setError("");
                 setPhase({ k: "intro" });
@@ -319,7 +309,7 @@ export function Game(p: GameProps) {
             >
               Play again
             </button>
-            <Link href="/collection" className="btn-ghost px-5 py-3">
+            <Link href="/collection" className="px-2 py-3 font-semibold text-navy underline-offset-4 hover:underline">
               My collection
             </Link>
           </div>
@@ -332,16 +322,16 @@ export function Game(p: GameProps) {
 function Rules({ odds }: { odds: string[] }) {
   return (
     <div className="mt-6 max-w-md">
-      <p className="text-base font-semibold text-white">{RULES_LINE}</p>
-      <ul className="mt-3 space-y-1 text-left text-sm text-sand/80">
+      <p className="text-lg font-semibold leading-snug text-navy">{RULES_LINE}</p>
+      <ul className="mt-3 space-y-1 text-left text-sm text-navy/80">
         {odds.map((o) => (
           <li key={o} className="flex gap-2">
-            <span className="text-teal">•</span>
+            <span className="text-gold">•</span>
             {o}
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-left text-xs text-sand/60">Packs you buy wait in your Collection. Ship one or several together whenever you like; shipping is charged then.</p>
+      <p className="mt-2 text-left text-xs text-navy/60">Packs you buy wait in your Collection. Ship one or several together whenever you like; shipping is charged then.</p>
     </div>
   );
 }
@@ -351,10 +341,10 @@ function Timer({ left }: { left: number }) {
   return (
     <div className="relative h-16 w-16" role="timer" aria-live="off" aria-label={`${left} seconds left`}>
       <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
-        <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(244,239,230,0.15)" strokeWidth="3" />
-        <circle cx="18" cy="18" r="15.5" fill="none" stroke={left <= 10 ? "#E85D4C" : "#1AA6A6"} strokeWidth="3" strokeDasharray={`${frac * 97.4} 97.4`} strokeLinecap="round" />
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(11,31,58,0.12)" strokeWidth="3" />
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke={left <= 10 ? "#E85D4C" : "#0B1F3A"} strokeWidth="3" strokeDasharray={`${frac * 97.4} 97.4`} strokeLinecap="round" />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-xl font-extrabold text-white">{left}</span>
+      <span className="absolute inset-0 flex items-center justify-center text-xl font-extrabold text-navy">{left}</span>
     </div>
   );
 }

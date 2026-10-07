@@ -9,6 +9,7 @@
   --color-sand-2: #e9e1d2;
   --color-coral: #e85d4c;
   --color-gold: #d9a441;
+  --color-keep: #2f6b3a;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -38,7 +39,7 @@ body {
   @apply btn bg-coral text-white hover:brightness-95;
 }
 @utility card {
-  @apply rounded-lg border border-navy/10 bg-white shadow-sm;
+  @apply rounded-lg border border-navy/10 bg-white;
 }
 @utility input {
   @apply w-full rounded-md border border-navy/20 bg-white px-2 py-1.5 text-sm outline-none focus:border-teal focus:ring-2 focus:ring-teal/30;
@@ -69,11 +70,32 @@ kbd {
 
 /* Cards lift a touch on hover. */
 @utility lift {
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  transition: transform 160ms ease;
   &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 24px -12px rgb(11 31 58 / 0.35);
+    transform: translateY(-2px);
   }
+}
+/* The reveal button: navy with a gold edge; dips a little when pressed. */
+@utility btn-reveal {
+  @apply inline-flex items-center justify-center rounded-lg border-2 border-gold bg-navy font-bold text-sand transition-transform disabled:opacity-50;
+  transition-duration: 90ms;
+  &:active:not(:disabled) {
+    transform: translateY(2px) scale(0.985);
+  }
+}
+/* Keep: green and still. */
+@utility btn-keep {
+  @apply inline-flex items-center justify-center rounded-lg bg-keep font-bold text-white disabled:opacity-50;
+}
+/* The only object with a shadow. */
+.pack-shadow {
+  filter: drop-shadow(0 18px 22px rgb(0 0 0 / 0.45));
+}
+/* A thin gold line under page titles. */
+.gold-rule {
+  height: 2px;
+  width: 4.5rem;
+  background: var(--color-gold);
 }
 
 /* ---------- Lil' Stack pack ---------- */
@@ -106,13 +128,30 @@ kbd {
   top: 0;
   clip-path: polygon(0 6%, 6% 2%, 12% 7%, 19% 1%, 26% 6%, 33% 2%, 41% 8%, 49% 1%, 57% 6%, 64% 2%, 72% 7%, 80% 1%, 87% 6%, 94% 2%, 100% 5%, 100% 100%, 0 100%);
 }
+/* The 10 s / 20 s nudge: a small tilt of the pack, never the page. */
 .ls-nudge {
-  animation: ls-nudge 420ms ease;
+  animation: ls-nudge 520ms ease-in-out;
+  transform-origin: 50% 90%;
 }
 @keyframes ls-nudge {
-  20% { transform: translateX(-6px); }
-  45% { transform: translateX(5px); }
-  70% { transform: translateX(-3px); }
+  30% { transform: rotate(-4deg); }
+  65% { transform: rotate(3deg); }
+}
+/* After payment the seal splits open (about half a second): the top strip lifts away, the pack drops and fades. */
+.seal-top {
+  clip-path: inset(0 0 82% 0);
+  animation: seal-top 500ms cubic-bezier(0.3, 0.7, 0.3, 1) forwards;
+}
+.seal-body {
+  clip-path: inset(18% 0 0 0);
+  animation: seal-body 500ms ease-in forwards;
+}
+@keyframes seal-top {
+  to { transform: translate(14%, -26%) rotate(9deg); opacity: 0; }
+}
+@keyframes seal-body {
+  60% { opacity: 1; }
+  to { transform: translateY(10%); opacity: 0; }
 }
 .ls-arrow {
   animation: ls-arrow 1.4s ease-in-out infinite;
@@ -141,16 +180,6 @@ kbd {
   from { transform: rotateY(180deg); }
   to { transform: rotateY(0deg); }
 }
-/* The hit sparkle (a Veo clip on black, screen-blended over the cards) fades in and out. */
-.hit-fx {
-  animation: hit-fx 1.8s ease-out both;
-}
-@keyframes hit-fx {
-  0% { opacity: 0; }
-  15% { opacity: 0.95; }
-  70% { opacity: 0.8; }
-  100% { opacity: 0; }
-}
 /* Veo's navy is a shade off the page's: feather the clip's edges so it sits in the page, not in a box. */
 .clip-soft {
   -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
@@ -162,22 +191,18 @@ kbd {
   filter: grayscale(0.6);
   transition: opacity 400ms, filter 400ms;
 }
-/* Reveal game: cards rise into place (no flip, no spin). */
+/* Then the cards fan out from the pack, one after another. */
 .card-in {
   animation: card-in 420ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
-  animation-delay: calc(var(--i) * 55ms);
+  animation-delay: calc(var(--i) * 50ms);
+  transform-origin: 50% 120%;
+}
+.after-seal .card-in {
+  animation-delay: calc(480ms + var(--i) * 50ms);
 }
 @keyframes card-in {
-  from { opacity: 0; transform: translateY(18px); }
+  from { opacity: 0; transform: translateY(-28px) rotate(calc((var(--i) - 5.5) * 2deg)) scale(0.9); }
   to { opacity: 1; transform: none; }
-}
-/* Reveal game: the Keep button pulses at 10 s and 20 s (the pack nudges with .ls-nudge). Never the whole screen. */
-.keep-pulse {
-  animation: keep-pulse 900ms ease-in-out 2;
-}
-@keyframes keep-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 93, 76, 0.55); transform: scale(1); }
-  50% { box-shadow: 0 0 0 12px rgba(232, 93, 76, 0); transform: scale(1.05); }
 }
 .ls-buy {
   animation: ls-rise 420ms ease-out both;
@@ -213,7 +238,9 @@ kbd {
   }
   .ls-card,
   .card-in,
-  .keep-pulse,
+  .ls-nudge,
+  .seal-top,
+  .seal-body,
   .ls-buy,
   .ls-flip,
   .ls-sheen,
@@ -236,8 +263,4 @@ kbd {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-.pattern-band {
-  background-repeat: repeat;
-  background-size: 160px;
 }

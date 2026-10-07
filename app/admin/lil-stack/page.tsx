@@ -8,7 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { money } from "@/lib/util";
 import { IngestTicker } from "@/components/IngestTicker";
 import { ingestProgress } from "@/lib/ingestQueue";
-import { BuildButton, ConfirmPack, HoldFix, PlaceButton } from "./DeskActions";
+import { BuildButton, ConfirmPack, FacebookSale, HoldFix, PlaceButton, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
 export const metadata = { title: "Pack desk" };
@@ -32,6 +32,7 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
   const { c, received, skipped } = await searchParams;
   const ingesting = await ingestProgress();
   const category: Category = isCategory(c) ? c : "pokemon";
+  const fbSales = await db.gamePack.findMany({ where: { status: "sold-facebook" }, orderBy: { closedAt: "desc" }, take: 10, select: { id: true, number: true, category: true, closedAt: true } });
   const [d, s, chase, noCategory] = await Promise.all([
     deskData(category),
     getSettings(),
@@ -221,6 +222,28 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
           </ul>
         )}
       </Step>
+
+      <section className="card space-y-2 p-4">
+        <h2 className="text-lg font-black">Facebook sale</h2>
+        <p className="text-sm text-navy/70">Sold a pack on Marketplace? Pick its category: the next ready stack comes off the site (no one can peek or buy it) and you pull it.</p>
+        <FacebookSale />
+        {fbSales.length > 0 && (
+          <ul className="space-y-1 border-t border-navy/10 pt-2 text-sm">
+            {fbSales.map((p) => {
+              const label = `${CATEGORIES.find((x) => x.key === p.category)?.product ?? "Pack"} ${p.number ?? ""}`;
+              return (
+                <li key={p.id} className="flex items-center gap-3">
+                  <Link href={`/admin/packs/${p.id}`} className="font-semibold underline">
+                    {label}
+                  </Link>
+                  <span className="text-navy/60">sold on Facebook {p.closedAt?.toLocaleDateString()}</span>
+                  <VoidFacebook id={p.id} label={label} />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section className="card space-y-2 p-4 text-sm">
         <h2 className="font-bold">Chase cards ($10+)</h2>

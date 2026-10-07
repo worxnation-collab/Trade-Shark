@@ -6,7 +6,6 @@ import { useState } from "react";
 import { confetti, pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import type { ShipLine, ShipToFields } from "@/lib/game/ship";
-import { ACCENT } from "@/lib/brandAssets";
 import { CardGrid } from "../packs/[category]/CardGrid";
 
 export interface StoredPack {
@@ -30,7 +29,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: "shor
 
 type Ship = { k: "off" } | { k: "pick" } | { k: "address" } | { k: "quote"; line: ShipLine } | { k: "done"; shipping: number; packs: number; tracking: string | null };
 
-export function Collection({ packs, order, address, pattern }: { packs: StoredPack[]; order: string[]; address: ShipToFields; pattern: string | null }) {
+export function Collection({ packs, order, address }: { packs: StoredPack[]; order: string[]; address: ShipToFields }) {
   const router = useRouter();
   const [open, setOpen] = useState<PackView | null>(null);
   const [loading, setLoading] = useState("");
@@ -93,7 +92,7 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
         </p>
         <p className="text-xs text-navy/60">12 cards · pack value {usd(open.value)} · drag a card to tilt it, tap to see it bigger</p>
         <CardGrid pack={open} light />
-        <button className="btn-coral mt-6 px-7 py-3" onClick={() => setOpen(null)}>
+        <button className="btn-reveal mt-6 px-7 py-3" onClick={() => setOpen(null)}>
           Exit
         </button>
       </div>
@@ -101,18 +100,16 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
 
   if (!packs.length)
     return (
-      <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={pattern ? { backgroundImage: `url(${pattern})` } : undefined}>
-        <span className="inline-block rounded-lg border-2 border-navy bg-sand px-4 py-2">
-          No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
-        </span>
+      <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
+        No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
       </p>
     );
 
   const groups = order.map((c) => ({ c, list: packs.filter((p) => p.category === c) })).filter((g) => g.list.length);
   const field = (k: keyof ShipToFields, label: string, cls = "") => (
-    <label className={`flex flex-col text-left text-xs text-sand/70 ${cls}`}>
+    <label className={`flex flex-col text-left text-xs text-navy/70 ${cls}`}>
       {label}
-      <input className="mt-1 rounded-lg bg-white px-3 py-2 text-sm text-navy" value={addr[k] ?? ""} onChange={(e) => setAddr({ ...addr, [k]: e.target.value })} />
+      <input className="mt-1 rounded-lg border border-navy/20 bg-white px-3 py-2 text-sm text-navy" value={addr[k] ?? ""} onChange={(e) => setAddr({ ...addr, [k]: e.target.value })} />
     </label>
   );
 
@@ -121,7 +118,7 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
       {error && <p className="mb-4 rounded bg-coral/15 px-3 py-2 text-center text-sm font-semibold text-navy">{error}</p>}
       {groups.map((g) => (
         <div key={g.c} className="mt-6">
-          <h2 className="text-sm font-black uppercase tracking-widest" style={{ color: ACCENT[g.c] === "#FFD23F" ? "#0B1F3A" : ACCENT[g.c] }}>{g.list[0].product}s</h2>
+          <h2 className="text-sm font-black uppercase tracking-widest text-navy">{g.list[0].product}s</h2>
           <ul className="mt-2 divide-y divide-navy/10 overflow-hidden rounded-2xl border-2 border-navy bg-white">
             {g.list.map((p) => {
               const can = picking && p.state === "stored";
@@ -145,11 +142,11 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
                       {p.state === "stored" ? (
                         <span className="font-semibold text-navy/70">{loading === p.id ? "Opening…" : "In collection"}</span>
                       ) : p.tracking ? (
-                        <a href={p.tracking} target="_blank" rel="noreferrer" className="font-semibold text-teal-2 underline" onClick={(e) => e.stopPropagation()}>
+                        <a href={p.tracking} target="_blank" rel="noreferrer" className="font-semibold text-navy underline" onClick={(e) => e.stopPropagation()}>
                           {p.state === "shipped" ? "Shipped · track" : "Shipping · track"}
                         </a>
                       ) : (
-                        <span className="font-semibold text-teal-2">Shipping soon</span>
+                        <span className="font-semibold text-navy">Shipping soon</span>
                       )}
                     </span>
                   </button>
@@ -160,23 +157,23 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
         </div>
       ))}
 
-      <div className="sticky bottom-3 z-10 mt-8 rounded-2xl bg-navy-2/95 p-4 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur">
+      <div className="sticky bottom-3 z-10 mt-8 rounded-lg border border-navy/15 border-b-2 border-b-gold bg-sand p-4 text-center">
         {ship.k === "off" && (
           <>
-            <button className="btn-coral px-8 py-3 text-lg" disabled={!stored.length} onClick={() => (pop(), setShip({ k: "pick" }), setPicked(new Set(stored.map((p) => p.id))))}>
+            <button className="btn-reveal px-8 py-3 text-lg" disabled={!stored.length} onClick={() => (pop(), setShip({ k: "pick" }), setPicked(new Set(stored.map((p) => p.id))))}>
               Ship
             </button>
-            <p className="mt-1 text-xs text-sand/60">{stored.length ? `${stored.length} pack${stored.length === 1 ? "" : "s"} waiting. Ship one or several in one parcel.` : "Nothing waiting to ship."}</p>
+            <p className="mt-1 text-xs text-navy/60">{stored.length ? `${stored.length} pack${stored.length === 1 ? "" : "s"} waiting. Ship one or several in one parcel.` : "Nothing waiting to ship."}</p>
           </>
         )}
         {ship.k === "pick" && (
           <>
-            <p className="text-sm text-white">Tick the packs to send together ({picked.size} picked).</p>
+            <p className="text-sm text-navy">Tick the packs to send together ({picked.size} picked).</p>
             <div className="mt-2 flex justify-center gap-3">
               <button className="btn-ghost px-5 py-2" onClick={() => setShip({ k: "off" })}>
                 Cancel
               </button>
-              <button className="btn-coral px-6 py-2" disabled={!picked.size} onClick={() => setShip({ k: "address" })}>
+              <button className="btn-reveal px-6 py-2" disabled={!picked.size} onClick={() => setShip({ k: "address" })}>
                 Next
               </button>
             </div>
@@ -184,7 +181,7 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
         )}
         {ship.k === "address" && (
           <>
-            <p className="text-sm font-semibold text-white">Ship {picked.size} pack{picked.size === 1 ? "" : "s"} to:</p>
+            <p className="text-sm font-semibold text-navy">Ship {picked.size} pack{picked.size === 1 ? "" : "s"} to:</p>
             <div className="mt-2 grid grid-cols-6 gap-2">
               {field("name", "Name", "col-span-6")}
               {field("line1", "Street", "col-span-6")}
@@ -197,7 +194,7 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
               <button className="btn-ghost px-5 py-2" onClick={() => setShip({ k: "pick" })}>
                 Back
               </button>
-              <button className="btn-coral px-6 py-2" disabled={loading === "quote"} onClick={quote}>
+              <button className="btn-reveal px-6 py-2" disabled={loading === "quote"} onClick={quote}>
                 {loading === "quote" ? "Checking…" : "Confirm address"}
               </button>
             </div>
@@ -205,15 +202,15 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
         )}
         {ship.k === "quote" && (
           <>
-            <p className="text-sm text-white">
+            <p className="text-sm text-navy">
               {ship.line.packs} pack{ship.line.packs === 1 ? "" : "s"}, one parcel, to {addr.line1}, {addr.city} {addr.state}
             </p>
-            <p className="mt-1 text-base font-semibold text-white">Shipping · {ship.line.label}</p>
+            <p className="mt-1 text-base font-semibold text-navy">Shipping · {ship.line.label}</p>
             <div className="mt-3 flex justify-center gap-3">
               <button className="btn-ghost px-5 py-2" onClick={() => setShip({ k: "address" })}>
                 Back
               </button>
-              <button className="btn-coral px-6 py-2" disabled={loading === "pay"} onClick={(e) => pay(ship.line, e.currentTarget)} data-pop>
+              <button className="btn-reveal px-6 py-2" disabled={loading === "pay"} onClick={(e) => pay(ship.line, e.currentTarget)} data-pop>
                 {loading === "pay" ? "Paying…" : ship.line.amount ? `Pay ${usd(ship.line.amount)} and ship` : "Ship"}
               </button>
             </div>
@@ -221,10 +218,10 @@ export function Collection({ packs, order, address, pattern }: { packs: StoredPa
         )}
         {ship.k === "done" && (
           <>
-            <p className="text-base font-bold text-white">
+            <p className="text-base font-bold text-navy">
               {ship.packs} pack{ship.packs === 1 ? "" : "s"} on the way{ship.shipping ? ` · ${usd(ship.shipping)} shipping charged` : ""}!
             </p>
-            <p className="mt-1 text-xs text-sand/70">
+            <p className="mt-1 text-xs text-navy/70">
               {ship.tracking ? (
                 <a href={ship.tracking} target="_blank" rel="noreferrer" className="underline">
                   Track it

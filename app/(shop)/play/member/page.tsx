@@ -18,7 +18,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
     <div className="mx-auto max-w-md space-y-5 py-4">
       <div>
         <h1 className="text-3xl font-extrabold">Membership</h1>
-        <p className="mt-1 text-lg font-semibold text-teal-2">${MEMBER_PRICE.toFixed(2)} a month, optional.</p>
+        <p className="mt-1 text-lg font-semibold text-navy">${MEMBER_PRICE.toFixed(2)} a month, optional.</p>
       </div>
       {error && <p className="rounded bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       <div className="card space-y-2 p-4">
@@ -26,7 +26,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
         <ul className="space-y-1 text-sm">
           {MEMBER_PERKS.map((p) => (
             <li key={p} className="flex gap-2">
-              <span className="text-teal">✓</span>
+              <span className="text-gold">✓</span>
               {p}
             </li>
           ))}
@@ -55,7 +55,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
         </div>
       ) : (
         <form action="/api/play/member/join" method="post">
-          <button className="btn-coral w-full py-3 text-base">Join for ${MEMBER_PRICE.toFixed(2)}/month</button>
+          <button className="btn-reveal w-full py-3 text-base">Join for ${MEMBER_PRICE.toFixed(2)}/month</button>
           <p className="mt-2 text-center text-xs text-navy/50">Billed monthly by Stripe to your saved card&apos;s account. Cancel any time; perks last to the end of the month.</p>
         </form>
       )}

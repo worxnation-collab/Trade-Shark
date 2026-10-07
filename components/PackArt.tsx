@@ -14,8 +14,7 @@ export function CssPack({ progress = 0, torn = false }: { progress?: number; tor
         <div className="absolute inset-x-0 top-[58%] bg-sand py-[5%] text-center">
           <span className={`font-extrabold uppercase tracking-[0.25em] text-navy ${torn ? "text-[9px]" : "text-sm"}`}>12 Cards</span>
         </div>
-        {!torn && <div className="absolute inset-x-0 bottom-[9%] text-center text-[10px] font-semibold uppercase tracking-[0.3em] text-teal">Trade Shark</div>}
-        <div className="ls-sheen absolute inset-0" />
+        {!torn && <div className="absolute inset-x-0 bottom-[9%] text-center text-[10px] font-semibold uppercase tracking-[0.3em] text-gold">Trade Shark</div>}
       </div>
       <div className="ls-crimp absolute inset-x-0 bottom-0 h-[6%]" />
     </div>

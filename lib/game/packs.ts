@@ -325,3 +325,28 @@ export async function packView(packId: string) {
   return { id: pack.id, number: pack.number, kind: pack.kind, category: pack.category, value: pack.value, chase: pack.chase, cards };
 }
 export type PackView = Awaited<ReturnType<typeof packView>>;
+
+/**
+ * A Facebook sale, marked by a founder (Marketplace is never read automatically). Reserves the next ready stack in the
+ * category exactly like a blind buy (same queue, at random), takes it off the site, and marks it sold-facebook.
+ * It never returns to ready unless that Facebook order is voided.
+ */
+export async function sellOnFacebook(category: Category, now = new Date()) {
+  const got = await reservePack(category, "facebook", { member: true, now });
+  if (!got) return null;
+  await db.$transaction([
+    db.gamePack.update({ where: { id: got.pack.id }, data: { status: "sold-facebook", closedAt: now } }),
+    db.card.updateMany({ where: { gamePackId: got.pack.id }, data: { status: "Sold", soldChannel: "facebook", soldAt: now } }),
+  ]);
+  return got.pack;
+}
+
+/** Void a Facebook order: the stack goes back on the site as it was (same cards, same number). */
+export async function voidFacebookSale(packId: string) {
+  return db.$transaction(async (tx) => {
+    const n = await tx.gamePack.updateMany({ where: { id: packId, status: "sold-facebook" }, data: { status: "available", closedAt: null, reservedBy: null, reservedAt: null } });
+    if (!n.count) return false;
+    await tx.card.updateMany({ where: { gamePackId: packId }, data: { status: "LilStack", soldChannel: null, soldAt: null } });
+    return true;
+  });
+}

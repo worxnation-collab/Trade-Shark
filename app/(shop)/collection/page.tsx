@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Disclaimer } from "@/components/Disclaimer";
-import { HeaderBand } from "@/components/Stage";
-import { headerArt, patternArt } from "@/lib/brandAssets";
+import { PageTitle } from "@/components/Stage";
 import { CATEGORIES, productName } from "@/lib/categories";
 import { currentBuyer } from "@/lib/game/buyer";
 import { collection, shipFields } from "@/lib/game/ship";
@@ -27,23 +26,17 @@ export default async function CollectionPage() {
     : [];
   return (
     <section>
-      <HeaderBand art={headerArt("collection")}>
-        <h1 className="-rotate-1 rounded-xl border-4 border-sand bg-navy px-5 py-2 text-4xl font-black uppercase tracking-tight text-sand shadow-[5px_5px_0_#d9a441] sm:text-5xl">
-          Collection
-        </h1>
-      </HeaderBand>
+      <PageTitle title="Collection" />
       {!buyer ? (
-        <p className="pattern-band mt-8 rounded-2xl p-10 text-center text-sm font-semibold text-navy/80" style={patternArt() ? { backgroundImage: `url(${patternArt()})` } : undefined}>
-          <span className="inline-block rounded-lg border-2 border-navy bg-sand px-4 py-2">
-            Your packs show up here once you play.{" "}
-            <Link href="/play/card" className="underline">
-              Save a card to start
-            </Link>
-            .
-          </span>
+        <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
+          Your packs show up here once you play.{" "}
+          <Link href="/play/card" className="underline">
+            Save a card to start
+          </Link>
+          .
         </p>
       ) : (
-        <Collection packs={packs} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} pattern={patternArt()} />
+        <Collection packs={packs} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} />
       )}
       <Disclaimer className="mx-auto mt-10 max-w-md text-center" />
     </section>

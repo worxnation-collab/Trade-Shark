@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/api";
-import { isCategory } from "@/lib/categories";
+import { isCategory, productName } from "@/lib/categories";
 import { db } from "@/lib/db";
-import { BUILD_BATCH, buildGamePacks, confirmPack, previewBuild, releasePack } from "@/lib/game/packs";
+import { BUILD_BATCH, buildGamePacks, confirmPack, previewBuild, releasePack, sellOnFacebook, voidFacebookSale } from "@/lib/game/packs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,6 +35,16 @@ export const POST = guarded(async (req: Request) => {
   if (b.action === "cancel") {
     const ok = await releasePack(String(b.packId ?? ""), "dissolved", ["pulling"]);
     return ok ? NextResponse.json({ ok: true }) : bad("That pack isn't waiting to be pulled.");
+  }
+  if (b.action === "facebook") {
+    if (!isCategory(b.category)) return bad("Pick baseball, football or Pokemon.");
+    const pack = await sellOnFacebook(b.category);
+    if (!pack) return bad(`No ready ${productName(b.category)}s. That category is empty.`);
+    return NextResponse.json({ ok: true, packId: pack.id, label: `${productName(b.category)} ${pack.number ?? ""}`.trim() });
+  }
+  if (b.action === "facebook-void") {
+    const ok = await voidFacebookSale(String(b.packId ?? ""));
+    return ok ? NextResponse.json({ ok: true }) : bad("That isn't a Facebook sale.");
   }
   return bad("Unknown action.");
 });

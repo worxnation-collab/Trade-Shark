@@ -20,7 +20,7 @@ export function ConsignForm() {
       <input className="input" placeholder="Your name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       <input className="input" placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
       <textarea className="input" rows={3} placeholder="What's in the box? (sport or game, about how many cards)" value={f.about} onChange={(e) => setF({ ...f, about: e.target.value })} />
-      <button className="btn-coral" disabled={busy} onClick={send}>
+      <button className="btn-reveal" disabled={busy} onClick={send}>
         {busy ? "Sending…" : "Send request"}
       </button>
       {msg && <p className="text-sm">{msg}</p>}

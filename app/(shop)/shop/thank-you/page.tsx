@@ -44,7 +44,7 @@ export default async function ThankYou({ searchParams }: { searchParams: Promise
         <SharkFin size={72} />
       </div>
       <h1 className="text-3xl font-extrabold">Thank you!</h1>
-      {label && <p className="mt-2 text-lg font-semibold text-teal-2">{label}</p>}
+      {label && <p className="mt-2 text-lg font-semibold text-navy">{label}</p>}
       <p className="mt-3 text-navy/70">
         Your payment went through and a receipt is on its way from Stripe. I&apos;ll pack {stack ? "every card in sleeves" : "the card in a sleeve and top loader"} and ship{" "}
         {ship ? (
