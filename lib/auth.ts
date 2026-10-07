@@ -35,3 +35,20 @@ export async function checkPassword(input: string) {
   // Compare HMACs so timing doesn't leak length/prefix.
   return (await hmac(pw, input)) === (await hmac(pw, pw));
 }
+
+/**
+ * The founder door: a secret path (FOUNDER_DOOR, server env, 16+ chars of a-z 0-9 -) opened by the small fin on the
+ * home page. Unset or malformed = no door. Nothing else on the public site links to it.
+ */
+export function doorSlug(): string | null {
+  const s = process.env.FOUNDER_DOOR?.trim() ?? "";
+  return /^[a-z0-9-]{16,64}$/.test(s) ? s : null;
+}
+
+export function isDoor(input: string | undefined | null) {
+  const s = doorSlug();
+  if (!s || !input || input.length !== s.length) return false;
+  let diff = 0;
+  for (let i = 0; i < s.length; i++) diff |= s.charCodeAt(i) ^ input.charCodeAt(i);
+  return diff === 0;
+}

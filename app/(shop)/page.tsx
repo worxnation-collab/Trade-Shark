@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { SharkFin } from "@/components/SharkFin";
 import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { PageTitle, Stage } from "@/components/Stage";
+import { doorSlug } from "@/lib/auth";
 import { packStill } from "@/lib/brandAssets";
 import { CATEGORIES } from "@/lib/categories";
 import { categoryStatus } from "@/lib/game/packs";
@@ -17,8 +19,9 @@ export default async function Home() {
     console.error("catalog query failed", e);
     return <ShopUnavailable />;
   }
+  const door = doorSlug();
   return (
-    <div className="space-y-10">
+    <div className="relative space-y-10 pb-6">
       <PageTitle title="Pick a pack.">
         <p>{RULES_LINE}</p>
         <p className="mt-2 text-sm font-normal text-navy/65">Every pack is 12 real cards from my shop. You see all 12 before you decide to keep it.</p>
@@ -41,6 +44,11 @@ export default async function Home() {
           </li>
         ))}
       </ul>
+      {door && (
+        <a href={`/${door}`} aria-label="Trade Shark" tabIndex={-1} className="absolute bottom-0 right-0 opacity-25">
+          <SharkFin size={14} mono className="text-navy" />
+        </a>
+      )}
     </div>
   );
 }

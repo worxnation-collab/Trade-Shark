@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { checkPassword, COOKIE, sessionToken } from "@/lib/auth";
+import { checkPassword, COOKIE, doorSlug, isDoor, sessionToken } from "@/lib/auth";
 
+/** The founder door's form. Only accepted from the door; a wrong password goes back to the door with no message. */
 export async function POST(req: Request) {
   const form = await req.formData();
+  if (!isDoor(String(form.get("door") ?? ""))) return new NextResponse(null, { status: 404 });
   const pw = String(form.get("password") ?? "");
-  let next = String(form.get("next") ?? "/admin");
-  if (!next.startsWith("/") || next.startsWith("//")) next = "/admin";
   if (!(await checkPassword(pw))) {
-    return NextResponse.redirect(new URL(`/login?e=1&next=${encodeURIComponent(next)}`, req.url), 303);
+    await new Promise((r) => setTimeout(r, 1200)); // slow down guessing
+    return NextResponse.redirect(new URL(`/${doorSlug()}`, req.url), 303);
   }
-  const res = NextResponse.redirect(new URL(next, req.url), 303);
+  const res = NextResponse.redirect(new URL("/admin/lil-stack", req.url), 303);
   res.cookies.set(COOKIE, (await sessionToken())!, {
     httpOnly: true,
     sameSite: "lax",
