@@ -15,6 +15,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
           </Link>
           <nav className="flex items-center gap-3 whitespace-nowrap text-xs font-semibold text-navy sm:gap-5 sm:text-sm">
             <Link href="/" className="hover:underline">Packs</Link>
+            <Link href="/case" className="hover:underline">The case</Link>
             <Link href="/collection" className="hover:underline">Collection</Link>
             <Link href="/about" className="hover:underline">About</Link>
             <Link href="/contact" className="hover:underline">Contact</Link>

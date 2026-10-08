@@ -259,3 +259,21 @@ kbd {
   height: 100%;
   object-fit: cover;
 }
+
+/* The case: columns of cards drifting slowly down, looping (the list is doubled; one copy's height per loop). */
+.case-col {
+  animation: case-drift 120s linear infinite;
+  will-change: transform;
+}
+.case-reel[data-paused] .case-col {
+  animation-play-state: paused;
+}
+@keyframes case-drift {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .case-col { animation: none !important; }
+  .case-reel { height: auto !important; overflow: visible !important; }
+  .case-dup { display: none !important; }
+}
