@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { numKey, pickJustTcg } from "@/lib/sources/justtcg";
-import { pcQuery } from "@/lib/sources/pricecharting";
+import { pcQuery, pickPc } from "@/lib/sources/pricecharting";
 import { suggest } from "@/lib/pricing/engine";
 import { NO_PRICE, holdWhy, trayFor } from "@/lib/desk";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
@@ -24,9 +24,25 @@ describe("JustTCG match", () => {
   });
 });
 
-describe("PriceCharting query", () => {
-  it("is year, set, player and number", () => {
-    expect(pcQuery({ player: "Josh Allen", year: "2021", setName: "Panini Prizm", number: "1/300" })).toBe("2021 Panini Prizm Josh Allen #1");
+describe("PriceCharting match", () => {
+  const P = (name: string, console: string, cents?: number) => ({ "product-name": name, "console-name": console, "loose-price": cents });
+  const real = [
+    P("Trey McBride #BCA-TMB", "Football Cards 2026 Bowman Chrome Autograph NFL"),
+    P("Trey McBride [Gold] #1", "Football Cards 2026 Bowman", 900),
+    P("Trey McBride #1", "Football Cards 2026 Bowman", 193),
+    P("Trey McBride #1", "Funko POP NFL", 1500),
+  ];
+  it("takes the base card with the same number from a football set", () => {
+    expect(pickPc(real, { player: "Trey McBride", year: "2026", number: "1" })?.["loose-price"]).toBe(193);
+    expect(pcQuery({ player: "Trey McBride", year: "2026", setName: "Topps Bowman", number: "1" })).toBe("Trey McBride 2026 Bowman #1");
+  });
+  it("never prices from a Funko, another number, or without a number", () => {
+    expect(pickPc([P("Patrick Mahomes II #119", "Funko POP Soccer", 539)], { player: "Patrick Mahomes II", number: "119" })).toBeNull();
+    expect(pickPc(real, { player: "Trey McBride", year: "2026", number: "56" })).toBeNull();
+    expect(pickPc(real, { player: "Trey McBride", year: "2026" })).toBeNull();
+  });
+  it("won't choose between two different sets", () => {
+    expect(pickPc([P("Joe Burrow #9", "Football Cards 2026 Bowman", 100), P("Joe Burrow #9", "Football Cards 2026 Topps", 300)], { player: "Joe Burrow", number: "9" })).toBeNull();
   });
 });
 
