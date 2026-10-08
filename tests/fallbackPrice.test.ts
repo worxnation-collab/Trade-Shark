@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { numKey, pickJustTcg } from "@/lib/sources/justtcg";
-import { pcQuery, pickPc } from "@/lib/sources/pricecharting";
+import { pcQuery, pickPc, pickPokemonPc } from "@/lib/sources/pricecharting";
 import { suggest } from "@/lib/pricing/engine";
 import { NO_PRICE, holdWhy, trayFor } from "@/lib/desk";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
@@ -43,6 +43,25 @@ describe("PriceCharting match", () => {
   });
   it("won't choose between two different sets", () => {
     expect(pickPc([P("Joe Burrow #9", "Football Cards 2026 Bowman", 100), P("Joe Burrow #9", "Football Cards 2026 Topps", 300)], { player: "Joe Burrow", number: "9" })).toBeNull();
+  });
+});
+
+describe("PriceCharting Pokemon match", () => {
+  const P = (name: string, console: string, cents?: number) => ({ "product-name": name, "console-name": console, "loose-price": cents });
+  const res = [P("Jirachi EX #98", "Pokemon Plasma Blast", 8153), P("Jirachi #98", "Pokemon Stellar Crown", 40), P("Jirachi [Reverse Holo] #98", "Pokemon Stellar Crown", 105)];
+  it("exact name and number, base print", () => {
+    expect(pickPokemonPc(res, { name: "Jirachi", number: "98/142" })?.["loose-price"]).toBe(40);
+    expect(pickPokemonPc(res, { name: "Jirachi", number: "98/142", variant: "Reverse Holo" })?.["loose-price"]).toBe(105);
+  });
+  it("never another Pokemon, number, or language", () => {
+    expect(pickPokemonPc(res, { name: "Jirachi", number: "99/142" })).toBeNull();
+    expect(pickPokemonPc([P("Snom #42", "Pokemon Japanese Mega", 30)], { name: "Snom", number: "42" })).toBeNull();
+    expect(pickPokemonPc([P("Snom #42", "Pokemon Mega Evolution", 49)], { name: "Cinccino (奇诺栗鼠)", number: "42" })).toBeNull();
+  });
+  it("uses the set name to choose between two sets, else no price", () => {
+    const two = [P("Pikachu #25", "Pokemon Celebrations", 300), P("Pikachu #25", "Pokemon Base Set", 900)];
+    expect(pickPokemonPc(two, { name: "Pikachu", number: "25", setName: "Celebrations" })?.["loose-price"]).toBe(300);
+    expect(pickPokemonPc(two, { name: "Pikachu", number: "25" })).toBeNull();
   });
 });
 

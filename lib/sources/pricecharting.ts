@@ -1,13 +1,49 @@
 import { fail, none, skip, type PriceAdapter } from "./types";
 
 /**
- * Sports card price fallback when no other source priced a named card: the PriceCharting API on SportsCardsPro
- * (PriceCharting's sports-card site; the same token works on both, but only SportsCardsPro lists sports cards).
+ * Price fallback for all three categories when no other source priced a named card. Sports cards: the PriceCharting
+ * API on SportsCardsPro (PriceCharting's sports-card site; the same token works on both). Pokemon: pricecharting.com
+ * itself (exact card name + number, base before reverse holo, set name breaks ties; Chinese prints only from Chinese sets).
  * Takes the ungraded ("loose") price only for a confident match: a Football/Baseball Cards set, the player's last name,
  * the exact card number, the base card (or the parallel named on our card), and one set. Anything else = no price.
  * Key in PRICECHARTING_API_KEY (server only). One call per card (their limit is one per second).
  */
-const BASE = (process.env.PRICECHARTING_API_BASE || "https://www.sportscardspro.com").replace(/\/$/, "");
+const SPORTS_BASE = (process.env.SPORTSCARDSPRO_API_BASE || "https://www.sportscardspro.com").replace(/\/$/, "");
+const POKEMON_BASE = (process.env.PRICECHARTING_API_BASE || "https://www.pricecharting.com").replace(/\/$/, "");
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+const words = (s?: string | null) => new Set((s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && w !== "pokemon"));
+const baseName = (n: string) => n.replace(/\s*\[.*?\]/g, "").replace(/\s*#.*$/, "").trim().toLowerCase();
+
+/** The one Pokemon card product that is this card, or null when it isn't clear. */
+export function pickPokemonPc(products: PcProduct[], f: { name?: string; number?: string; setName?: string; variant?: string }) {
+  if (!f.name || !f.number) return null;
+  const chinese = CJK.test(f.name);
+  const want = f.name.replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
+  const num = numOf(f.number);
+  const cards = products.filter((p) => {
+    const con = p["console-name"] ?? "";
+    if (!/^pokemon\b/i.test(con)) return false;
+    if (chinese ? !/chinese/i.test(con) : /japanese|chinese|korean/i.test(con)) return false;
+    const pn = p["product-name"] ?? "";
+    return baseName(pn) === want && numOf(pn.match(/#\s*([A-Za-z0-9-]+)/)?.[1]) === num;
+  });
+  const variant = (f.variant ?? "").toLowerCase();
+  const fits = cards.filter((p) => {
+    const bracket = (p["product-name"] ?? "").match(/\[([^\]]+)\]/)?.[1]?.toLowerCase();
+    return !bracket || (!!variant && variant.includes(bracket));
+  });
+  let pool = fits;
+  if (new Set(pool.map((p) => p["console-name"])).size > 1) {
+    const sw = words(f.setName);
+    const score = (p: PcProduct) => [...words(p["console-name"])].filter((w) => sw.has(w)).length;
+    const best = Math.max(...pool.map(score));
+    pool = best > 0 ? pool.filter((p) => score(p) === best) : [];
+    if (new Set(pool.map((p) => p["console-name"])).size !== 1) return null;
+  }
+  const priced = pool.filter((p) => (p["loose-price"] ?? 0) > 0);
+  // Our card names a parallel that's listed: take that print; otherwise the base card.
+  return priced.find((p) => /\[/.test(p["product-name"] ?? "")) && variant ? priced.find((p) => /\[/.test(p["product-name"] ?? ""))! : (priced.find((p) => !/\[/.test(p["product-name"] ?? "")) ?? null);
+}
 
 export interface PcProduct {
   id?: string;
@@ -50,23 +86,25 @@ export function pickPc(products: PcProduct[], f: { player?: string; name?: strin
 
 export const priceChartingPrice: PriceAdapter = {
   id: "pricecharting",
-  label: "PriceCharting (SportsCardsPro)",
-  games: ["Sports"],
+  label: "PriceCharting",
+  games: ["Sports", "Pokemon"],
   configured: () => (process.env.PRICECHARTING_API_KEY ? { ok: true } : { ok: false, reason: "PRICECHARTING_API_KEY not set" }),
   async price(ctx) {
     const key = process.env.PRICECHARTING_API_KEY;
     if (!key) return skip("PRICECHARTING_API_KEY not set");
-    const who = ctx.fields.player || ctx.fields.name;
-    if (!who) return skip("no player name");
+    const pokemon = ctx.game === "Pokemon";
+    const who = pokemon ? ctx.fields.name : ctx.fields.player || ctx.fields.name;
+    if (!who) return skip("no card name");
     if (!ctx.fields.number) return none("no card number to match on");
-    const q = pcQuery(ctx.fields);
+    const pick = (list: PcProduct[]) => (pokemon ? pickPokemonPc(list, ctx.fields) : pickPc(list, ctx.fields));
+    const q = pokemon ? `${who.replace(/\s*\(.*\)\s*$/, "")} #${numOf(ctx.fields.number)}` : pcQuery(ctx.fields);
     try {
-      const r = await fetch(`${BASE}/api/products?${new URLSearchParams({ t: key, q })}`, { signal: AbortSignal.timeout(Number(process.env.PRICECHARTING_TIMEOUT_MS || 12000)) });
+      const r = await fetch(`${pokemon ? POKEMON_BASE : SPORTS_BASE}/api/products?${new URLSearchParams({ t: key, q })}`, { signal: AbortSignal.timeout(Number(process.env.PRICECHARTING_TIMEOUT_MS || 12000)) });
       const j = (await r.json().catch(() => ({}))) as { status?: string; "error-message"?: string; products?: PcProduct[] };
       if (!r.ok || j.status === "error") return fail(`PriceCharting ${r.status}${j["error-message"] ? `: ${j["error-message"]}` : ""}`);
-      const hit = pickPc(j.products ?? [], ctx.fields);
+      const hit = pick(j.products ?? []);
       if (!hit) {
-        const seen = (j.products ?? []).find((p) => pickPc([{ ...p, "loose-price": 1 }], ctx.fields));
+        const seen = (j.products ?? []).find((p) => pick([{ ...p, "loose-price": 1 }]));
         return none(seen ? `PriceCharting: ${seen["product-name"]} · ${seen["console-name"]} has no ungraded sales yet` : `PriceCharting: no single match for "${q}"`);
       }
       return {

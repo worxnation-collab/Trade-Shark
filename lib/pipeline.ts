@@ -422,8 +422,13 @@ export async function priceCard(card: Card, s: Settings, opts: { onlyStale?: boo
   // Still nothing = unpriced; it never gets a made-up price.
   if (card.name && card.manualPrice == null) {
     const quotes = (await db.priceQuote.findMany({ where: { cardId: card.id } })) as QuoteRow[];
-    if (suggest(quotes, card, s).price == null)
-      for (const a of FALLBACK_PRICE_SOURCES) if (!opts.sources || opts.sources.includes(a.id)) await run(a);
+    let unpriced = suggest(quotes, card, s).price == null;
+    for (const a of FALLBACK_PRICE_SOURCES) {
+      if (!unpriced) break; // stop at the first source that prices it
+      if (opts.sources && !opts.sources.includes(a.id)) continue;
+      await run(a);
+      unpriced = suggest((await db.priceQuote.findMany({ where: { cardId: card.id } })) as QuoteRow[], card, s).price == null;
+    }
   }
   return applySuggestion(card.id, s, { allowLivePriceChange: opts.allowLivePriceChange });
 }
