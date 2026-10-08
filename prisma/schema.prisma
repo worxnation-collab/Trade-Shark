@@ -179,6 +179,12 @@ model Card {
   soldPrice     Float?
   soldChannel   String?
   soldAt        DateTime?
+  // eBay lane (lib/ebay/seller.ts): one fixed-price listing per card, sku TS-<id>. Listed = status Listed + listedChannel ebay.
+  ebayOfferId   String?
+  ebayListingId String?
+  ebayOrderId   String?
+  ebayError     String? // last failed listing attempt; the card stayed in stock
+  ebayTriedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

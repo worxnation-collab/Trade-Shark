@@ -169,3 +169,51 @@ export function VoidFacebook({ id, label }: { id: string; label: string }) {
     </span>
   );
 }
+
+/** eBay lane: list loose $3+ cards a few per call until none are left (or only this run's failures remain). */
+export function EbayList({ ready }: { ready: number }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function run() {
+    setBusy(true);
+    const since = Date.now();
+    let listed = 0;
+    let failed = 0;
+    try {
+      for (let i = 0; i < 100; i++) {
+        const r = await fetch("/api/admin/desk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ebay-list", since }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
+        listed += j.listed;
+        failed += j.failed.length;
+        setMsg(`Listed ${listed}${failed ? `, ${failed} failed (still in stock)` : ""}${j.left ? ` · ${j.left} to go…` : ""}`);
+        if (!j.left || (!j.listed && !j.failed.length)) break;
+        if (j.failed.length && /connected|policy|login/.test(j.failed[0].error)) break;
+      }
+      setMsg((m) => m.replace(/ · \d+ to go…$/, "") + ". Done.");
+    } catch (e) {
+      setMsg(`eBay didn't answer: ${e instanceof Error ? e.message : String(e)}. Cards stay in stock.`);
+    } finally {
+      setBusy(false);
+      router.refresh();
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button className="btn-primary px-5 py-2 text-base" disabled={busy || !ready} onClick={run}>
+        {busy ? "Listing…" : `List ${ready} card${ready === 1 ? "" : "s"} on eBay`}
+      </button>
+      {msg && <span className="text-sm font-semibold">{msg}</span>}
+    </div>
+  );
+}
+
+export function EbayDisconnect() {
+  const { busy, post } = useDesk();
+  return (
+    <button className="text-sm text-navy/60 underline" disabled={busy} onClick={() => confirm("Disconnect the eBay seller login? Listed cards stay listed.") && post("/api/admin/desk", { action: "ebay-disconnect" })}>
+      Disconnect eBay
+    </button>
+  );
+}

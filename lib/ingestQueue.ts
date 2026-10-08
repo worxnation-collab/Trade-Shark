@@ -79,6 +79,8 @@ export async function tick(budgetMs = 18_000, onlyBatch?: string) {
   }
   // New priced cards (or a "List next 10" budget) may make legal packs: list them, within each category's budget.
   if (Date.now() - start < budgetMs) await import("./desk").then((m) => m.autoListAll()).catch((e) => console.error("autoList", e));
+  // eBay sold check (throttled to every 5 minutes inside); a failure leaves cards as they are.
+  if (Date.now() - start < budgetMs) await import("./ebay/seller").then((m) => m.syncEbaySales()).catch((e) => console.error("ebay sync", e instanceof Error ? e.message : e));
   return { units, progress: await ingestProgress() };
 }
 

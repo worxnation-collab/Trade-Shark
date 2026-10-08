@@ -6,12 +6,13 @@ import { chaseList } from "@/lib/game/packs";
 import { sweepExpired } from "@/lib/game/play";
 import { getSettings } from "@/lib/settings";
 import { money } from "@/lib/util";
+import { EBAY_MIN, ebayLane } from "@/lib/ebay/seller";
 import cvPkg from "@techstark/opencv-js/package.json";
 import pdfPkg from "pdfjs-dist/package.json";
 import { IngestTicker } from "@/components/IngestTicker";
 import { PdfInbox } from "@/components/PdfInbox";
 import { ingestProgress } from "@/lib/ingestQueue";
-import { ListMore, PackedButton, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
+import { EbayList, EbayDisconnect, ListMore, PackedButton, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
 export const metadata = { title: "Pack desk" };
@@ -30,17 +31,20 @@ function Step({ n, title, children, done }: { n: number; title: string; children
 }
 
 /** The founder pack desk: scan → sort by slot code → build 10 → pull by slot code → confirm. One category at a time. */
-export default async function PackDesk({ searchParams }: { searchParams: Promise<{ c?: string; received?: string; skipped?: string }> }) {
+const EBAY_NOTES: Record<string, string> = {"connected": "eBay seller login connected.", "failed": "eBay login didn't finish. Try Connect eBay again.", "declined": "eBay login was cancelled.", "noapp": "eBay app keys (EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_RUNAME) aren't set on the server yet."};
+
+export default async function PackDesk({ searchParams }: { searchParams: Promise<{ c?: string; received?: string; skipped?: string; ebay?: string }> }) {
   await sweepExpired();
-  const { c, received, skipped } = await searchParams;
+  const { c, received, skipped, ebay: ebayNote } = await searchParams;
   const ingesting = await ingestProgress();
   const category: Category = isCategory(c) ? c : "pokemon";
   const fbSales = await db.gamePack.findMany({ where: { status: "sold-facebook" }, orderBy: { closedAt: "desc" }, take: 10, select: { id: true, number: true, category: true, closedAt: true } });
-  const [d, s, chase, noCategory] = await Promise.all([
+  const [d, s, chase, noCategory, eb] = await Promise.all([
     deskData(category),
     getSettings(),
     chaseList(category),
     db.card.findMany({ where: { category: null, status: { in: ["Identified", "Priced", "BulkHold", "NeedsLook"] }, readable: true }, take: 40, orderBy: { createdAt: "asc" } }),
+    ebayLane(),
   ]);
   const product = CATEGORIES.find((x) => x.key === category)!.product;
   const onDesk = d.columns.reduce((n, col) => n + col.cards.length, 0);
@@ -237,6 +241,77 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
               );
             })}
           </ul>
+        )}
+      </section>
+
+      <section id="ebay" className="card space-y-3 p-4">
+        <h2 className="text-lg font-black">eBay lane</h2>
+        <p className="text-sm text-navy/70">
+          One listing per loose card priced ${EBAY_MIN} or more (never a card in a pack, never unpriced, never energy), with its scan and name. Sold ones are checked every 5 minutes
+          and leave stock as sold-ebay.
+        </p>
+        {ebayNote && <p className="text-sm font-semibold">{EBAY_NOTES[ebayNote] ?? ""}</p>}
+        {!eb.app ? (
+          <p className="text-sm font-semibold text-coral">Not set up: the eBay app keys aren&apos;t on the server yet. Nothing lists until they are and the seller login is connected.</p>
+        ) : !eb.connected ? (
+          <div className="space-y-1">
+            <a href="/api/admin/ebay/connect" className="btn-dark inline-block px-5 py-2 text-base">
+              Connect eBay
+            </a>
+            <p className="text-sm text-navy/60">Nothing lists until the seller login is connected. {eb.ready} cards would qualify.</p>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <EbayList ready={eb.ready} />
+            <EbayDisconnect />
+          </div>
+        )}
+        {eb.failed.length > 0 && (
+          <div className="rounded-lg bg-coral/10 p-3 text-sm">
+            <p className="font-bold text-coral">eBay didn&apos;t take {eb.failed.length} card{eb.failed.length === 1 ? "" : "s"}. They&apos;re still in stock.</p>
+            <ul className="mt-1 space-y-1">
+              {eb.failed.slice(0, 10).map((c) => (
+                <li key={c.id}>
+                  <span className="font-semibold">{c.title}</span> · <span className="text-navy/70">{c.error}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {eb.sold.length > 0 && (
+          <div className="text-sm">
+            <p className="font-bold">Sold on eBay: pull and ship</p>
+            <ul className="mt-1 space-y-1">
+              {eb.sold.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center gap-3">
+                  <span className="font-mono text-lg font-black">{c.code}</span>
+                  <span className="font-semibold">{c.title}</span>
+                  <span>{money(c.soldPrice ?? c.price)}</span>
+                  <span className="chip bg-teal/15 text-teal-2">sold-ebay</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {eb.onEbay.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer font-bold">On eBay now ({eb.onEbay.length})</summary>
+            <ul className="mt-1 space-y-1">
+              {eb.onEbay.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center gap-3">
+                  <span className="font-mono font-black">{c.code}</span>
+                  {c.url ? (
+                    <a href={c.url} target="_blank" rel="noreferrer" className="underline">
+                      {c.title}
+                    </a>
+                  ) : (
+                    <span>{c.title}</span>
+                  )}
+                  <span>{money(c.price)}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </section>
 
