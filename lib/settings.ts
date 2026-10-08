@@ -35,6 +35,8 @@ export interface Settings {
   chaseOn: { baseball: boolean; football: boolean; pokemon: boolean };
   /** Consignment (outside senders): public page, submissions, sender tags and sender payouts. Locked until I open it. */
   consignOpen: boolean;
+  /** Packs the engine may still list on its own, per category. Starts at 10; the desk's "List next 10" adds 10. */
+  listBudget: { baseball: number; football: number; pokemon: number };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -71,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   buyerShipping: { pwe: 1.5, bubble: 6, freeAt: 35 },
   chaseOn: { baseball: false, football: false, pokemon: false },
   consignOpen: false,
+  listBudget: { baseball: 10, football: 10, pokemon: 10 },
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

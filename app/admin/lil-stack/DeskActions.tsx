@@ -38,22 +38,28 @@ export function PlaceButton({ ids }: { ids: string[] }) {
   );
 }
 
-export function ConfirmPack({ id, label }: { id: string; label: string }) {
+export function PackedButton({ id, label }: { id: string; label: string }) {
   const { busy, msg, post } = useDesk();
   return (
     <div className="flex flex-col gap-1">
-      <button className="btn-primary px-5 py-3 text-base font-black" disabled={busy} onClick={() => post("/api/admin/desk", { action: "confirm", packId: id })}>
+      <button className="btn-primary px-5 py-3 text-base font-black" disabled={busy} onClick={() => post("/api/admin/desk", { action: "packed", packId: id })}>
         {busy ? "…" : `Packed: ${label}`}
-      </button>
-      <button
-        className="text-xs text-navy/60 underline"
-        disabled={busy}
-        onClick={() => confirm(`Take ${label} apart? Its cards stay in their slots.`) && post("/api/admin/desk", { action: "cancel", packId: id })}
-      >
-        Take it apart instead
       </button>
       {msg && <span className="text-xs text-coral">{msg}</span>}
     </div>
+  );
+}
+
+/** "List next 10": the founder caught up; the engine may list up to 10 more packs in this category. */
+export function ListMore({ category }: { category: string }) {
+  const { busy, msg, post } = useDesk();
+  return (
+    <span className="flex items-center gap-2">
+      <button className="btn-dark px-5 py-2.5 text-base" disabled={busy} onClick={() => post("/api/admin/desk", { action: "list-more", category })}>
+        {busy ? "…" : "List next 10"}
+      </button>
+      {msg && <span className="text-xs text-coral">{msg}</span>}
+    </span>
   );
 }
 

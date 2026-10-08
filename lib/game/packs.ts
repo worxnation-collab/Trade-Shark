@@ -25,7 +25,6 @@ const poolWhere = (category: string): Prisma.CardWhereInput => ({
   frontImage: { not: null },
   listPrice: { not: null },
   location: { not: null },
-  sortedAt: { not: null }, // only cards a founder put in their tray slot can be pulled
   OR: [{ partnerId: { not: null } }, { senderId: { not: null } }],
   gamePackId: null,
   lilStackId: null,
@@ -146,8 +145,8 @@ export async function previewBuild(category: Category, count = BUILD_BATCH) {
 }
 
 /**
- * Build packs from the trays: they start as "pulling" (pull sheet out, not for sale) until someone confirms the pack
- * was pulled. Only the desk calls this (Build next 10). Each category keeps at most AVAILABLE_TARGET queued.
+ * Build packs from the trays and list them for sale right away (members' first hour): the 12 cards are reserved to
+ * the pack, so no two buyers can get the same card. The founder pulls the stack later (Packed). Called by `autoList`.
  */
 export async function buildGamePacks(category: Category, opts: { rng?: Rng; count?: number; now?: Date } = {}) {
   const now = opts.now ?? new Date();
@@ -168,7 +167,7 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; coun
             category,
             number,
             kind: draw.kind,
-            status: "pulling",
+            status: "available",
             cardIds: draw.ids,
             partnerIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.partnerId).filter((x): x is string => !!x))].sort(),
             senderIds: [...new Set(draw.ids.map((id) => ownerOf.get(id)!.senderId).filter((x): x is string => !!x))].sort(),
@@ -176,7 +175,7 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; coun
             hitCardId: draw.kind === "base" ? null : draw.best,
             chase: draw.kind === "chase",
             chaseCardId: draw.kind === "chase" ? draw.best : null,
-            publicAt: now, // set again when the pack is confirmed
+            publicAt: new Date(now.getTime() + EARLY_ACCESS_MS), // a new drop: members first
           },
         });
         const n = await tx.card.updateMany({ where: { id: { in: draw.ids }, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: pack.id, status: "LilStack" } });
@@ -194,30 +193,19 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; coun
   return { category, built, kinds, short: shortLine(plan, Math.min(opts.count ?? BUILD_BATCH, room)), full: room === 0 };
 }
 
-/**
- * The desk names one exact stack at a time: the pack being pulled now, or (if none) the next legal pack, built here
- * from placed, priced, owned cards. Pack 2 only exists after Pack 1 is marked Packed. Null = not enough for a pack.
- */
-export async function nextPack(category: Category) {
-  const open = await db.gamePack.findFirst({ where: { category, status: "pulling" }, orderBy: { number: "asc" }, select: { id: true } });
-  if (open) return open.id;
-  const plan = await previewBuild(category, 1);
-  if (!plan.packs.length) return null;
-  await buildGamePacks(category, { count: 1 });
-  return (await db.gamePack.findFirst({ where: { category, status: "pulling" }, orderBy: { number: "asc" }, select: { id: true } }))?.id ?? null;
-}
+/** States in which a listed pack still exists physically as a stack to pull (for sale, held, or bought). */
+export const LIVE_PACK = ["available", "reserved", "kept", "sold-blind", "sold-facebook"];
 
-/** Step 5: the pack was pulled. It goes on sale (a new drop: members get the first hour) and its cards are out of the trays. */
-export async function confirmPack(packId: string, now = new Date()) {
+/** The founder pulled this stack (Packed). It doesn't change whether the pack is for sale. */
+export async function markPacked(packId: string, now = new Date()) {
   return db.$transaction(async (tx) => {
-    const n = await tx.gamePack.updateMany({ where: { id: packId, status: "pulling" }, data: { status: "available", publicAt: new Date(now.getTime() + EARLY_ACCESS_MS) } });
+    const n = await tx.gamePack.updateMany({ where: { id: packId, packedAt: null, status: { in: LIVE_PACK } }, data: { packedAt: now } });
     if (!n.count) return false;
     await tx.card.updateMany({ where: { gamePackId: packId }, data: { pulledAt: now } });
     return true;
   });
 }
 
-/** Put a pack's cards back in stock. `status` says why: expired (passed / timer), dissolved (I changed a card). */
 export async function releasePack(packId: string, status: "expired" | "dissolved", from: string[] = ["available", "reserved"]) {
   return db.$transaction(async (tx) => {
     const n = await tx.gamePack.updateMany({ where: { id: packId, status: { in: from } }, data: { status, closedAt: new Date() } });

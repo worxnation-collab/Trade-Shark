@@ -328,13 +328,14 @@ model GamePack {
   partnerIds     String[] // founders whose cards are in this stack (copied from the cards when built)
   senderIds      String[] // consignment senders whose cards are in this stack
   value          Float // summed engine prices of the 12 cards
-  status         String     @default("available") // available | reserved | kept | expired | sold-blind | dissolved
+  status         String     @default("available") // available | reserved | kept | expired | sold-blind | sold-facebook | dissolved
   chase          Boolean    @default(false) // top slot swapped for a $10+ chase card (flag on only)
   chaseCardId    String?
   builtAt        DateTime   @default(now())
   reservedBy     String? // Buyer id; nobody else ever sees a reserved pack
   reservedAt     DateTime?
   closedAt       DateTime?
+  packedAt       DateTime? // the founder pulled this stack into a pack (Packed); never decides whether it is for sale
   // Fulfillment once kept or sold blind.
   charged        Float? // what the player paid in total for this pack ($3.99 keep, $4.99 blind)
   shipTo         String?

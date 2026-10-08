@@ -11,7 +11,7 @@ import pdfPkg from "pdfjs-dist/package.json";
 import { IngestTicker } from "@/components/IngestTicker";
 import { PdfInbox } from "@/components/PdfInbox";
 import { ingestProgress } from "@/lib/ingestQueue";
-import { ConfirmPack, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
+import { ListMore, PackedButton, FacebookSale, HoldFix, PlaceButton, PriceBox, VoidFacebook } from "./DeskActions";
 import { CategoryPicker, ChaseToggle } from "./LilStackTools";
 
 export const metadata = { title: "Pack desk" };
@@ -170,23 +170,32 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
         )}
       </Step>
 
-      <Step n={3} title="Pull the next pack" done={false}>
-        {d.next ? (
-          <div className="rounded-xl border-2 border-navy p-3">
+      <Step n={3} title="Packs on sale: pull these" done={d.toPull.length === 0}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-base font-bold">
+            {d.toPull.length} listed pack{d.toPull.length === 1 ? "" : "s"} to pull ·{" "}
+            {d.budget > 0 ? `the engine can list ${d.budget} more on its own` : "listing paused until you press List next 10"}
+          </p>
+          <ListMore category={category} />
+        </div>
+        {d.budget > 0 && d.short && <p className="text-sm text-navy/70">Not listed right now: {d.short}.</p>}
+        {d.toPull.map((p) => (
+          <div key={p.id} className={`rounded-xl border-2 p-3 ${p.sold ? "border-coral" : "border-navy"}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-2xl font-black">
-                Pack {d.next.number} <span className="text-base font-bold text-navy/60">{product}</span>
-                {d.next.kind !== "base" && <span className="ml-2 rounded bg-coral px-2 py-0.5 text-sm text-white">{d.next.kind.toUpperCase()}</span>}
+                Pack {p.number} <span className="text-base font-bold text-navy/60">{product}</span>
+                {p.sold && <span className="ml-2 rounded bg-coral px-2 py-0.5 text-sm text-white">SOLD · pull first</span>}
+                {p.kind !== "base" && <span className="ml-2 rounded bg-navy px-2 py-0.5 text-sm text-white">{p.kind.toUpperCase()}</span>}
               </h3>
               <span className="text-sm text-navy/60">
-                value {money(d.next.value)} ·{" "}
-                <Link href={`/admin/packs/${d.next.id}`} className="underline">
+                value {money(p.value)} ·{" "}
+                <Link href={`/admin/packs/${p.id}`} className="underline">
                   print
                 </Link>
               </span>
             </div>
             <ol className="mt-2 divide-y divide-navy/10">
-              {d.next.cards.map((c, i) => (
+              {p.cards.map((c, i) => (
                 <li key={c.id} className={`grid grid-cols-[2rem_1fr_auto_auto] items-baseline gap-3 py-1.5 ${c.hit ? "bg-coral/5" : ""}`}>
                   <span className="text-sm text-navy/50">{i + 1}.</span>
                   <span className="truncate font-semibold">
@@ -199,17 +208,13 @@ export default async function PackDesk({ searchParams }: { searchParams: Promise
               ))}
             </ol>
             <div className="mt-3">
-              <ConfirmPack id={d.next.id} label={`Pack ${d.next.number}`} />
+              <PackedButton id={p.id} label={`Pack ${p.number}`} />
             </div>
           </div>
-        ) : (
-          <p className="text-lg font-bold">
-            No pack ready yet. <span className="text-coral">Missing: {d.short ?? "placed, priced cards"}.</span>
-          </p>
-        )}
+        ))}
         <p className="text-sm text-navy/60">
-          One pack at a time: pull the 12 cards by their codes, then press Packed. The next pack prints after that. Never two of the same card, never an energy card, never more than two
-          of one Pokémon type, never more than two cards of one player, never an unpriced card.
+          Packs go on sale as soon as the engine builds them; their 12 cards are held for that pack, so no two buyers get the same card. Packed only means you pulled the
+          stack. Never two of the same card, never an energy card, never more than two of one Pokémon type, never more than two cards of one player, never an unpriced card.
         </p>
       </Step>
 

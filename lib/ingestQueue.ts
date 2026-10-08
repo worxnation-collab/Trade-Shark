@@ -67,7 +67,7 @@ export async function tick(budgetMs = 18_000, onlyBatch?: string) {
         const more = await step(id);
         if (!more) {
           await db.batch.update({ where: { id }, data: { ingestState: "done" } });
-          await refreshPacks().catch(() => null); // sort categories, retire old links (packs are built on the desk)
+          await refreshPacks().catch(() => null); // sort categories, retire old links
           break;
         }
         units++;
@@ -77,6 +77,8 @@ export async function tick(budgetMs = 18_000, onlyBatch?: string) {
       await db.batch.update({ where: { id }, data: { ingestLockUntil: null } });
     }
   }
+  // New priced cards (or a "List next 10" budget) may make legal packs: list them, within each category's budget.
+  if (Date.now() - start < budgetMs) await import("./desk").then((m) => m.autoListAll()).catch((e) => console.error("autoList", e));
   return { units, progress: await ingestProgress() };
 }
 
