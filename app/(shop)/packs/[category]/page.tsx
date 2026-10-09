@@ -36,9 +36,16 @@ export default async function PackPage({ params, searchParams }: { params: Promi
         stackLeft={state.stackLeft}
         cardLabel={state.signedIn ? state.cardLabel : null}
         looksLeft={state.looksLeft}
+        nextLook={state.nextLook}
         revealing={
           state.revealing && state.revealing.category === category
-            ? { cycleId: state.revealing.cycleId, deadline: new Date(state.revealing.deadline).toISOString(), pack: state.revealing.pack }
+            ? {
+                cycleId: state.revealing.cycleId,
+                deadline: new Date(state.revealing.deadline).toISOString(),
+                pack: state.revealing.pack,
+                lookNumber: state.revealing.lookNumber,
+                keepPrice: state.revealing.keepPrice,
+              }
             : null
         }
         serverNow={new Date().toISOString()}

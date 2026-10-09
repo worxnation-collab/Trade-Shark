@@ -144,17 +144,17 @@ Every card and pack page carries the small print: *For fun, not a grade. Photos 
 
 ## The pack game (the only checkout)
 
-> **See all 12 first. Keep them for $3.99, or put them back. Looking is free.**
+> **Looking is free. Three looks a day. The first is $3.99 to keep, the next is $4.99, the last is $5.99.**
 
 That sentence and the odds are on screen before anyone looks.
 
 1. The home page shows one pack: **Pokemon** (`PUBLIC_CATEGORIES` in `lib/categories.ts`). Baseball and football come back by adding them to that list once they're stocked; until then `/packs/baseball` and `/packs/football` redirect home, and the desk still scans, prices and builds them. A category with no ready pack says "Restocking".
-2. **Show me the cards.** Free, no account and no card needed. A ready pack is reserved for you and all 12 cards show with name, image and engine price. A signed-out visitor gets a guest player (signed `ts_player` cookie, no password).
+2. **Show me the cards · $3.99 to keep** (the button carries the keep price of the look you're about to take). Free, no account and no card needed. A ready pack is reserved for you and all 12 cards show with name, image and engine price. A signed-out visitor gets a guest player (signed `ts_player` cookie, no password).
 3. A **120 second** timer runs (server deadline), in small navy type. No nudge. Nothing is ever charged by the timer.
-4. **Keep · $3.99**: one charge. With a saved card it's charged right away; the first time, Stripe Checkout takes the $3.99 and saves the card with that payment (the pack is held while Checkout is open). The 12 cards go into your Collection and you can look again right away.
-5. **Put them back**, or the timer: the cards go back to stock and nothing is charged. Nothing locks. Leaving the page is not a pass: the pack waits out its 120 s and you can come back to it.
+4. **Keep**: one charge of that look's price on the keep ladder (`KEEP_LADDER` in `lib/game/rules.ts`): look 1 $3.99, look 2 $4.99, look 3 $5.99, per category per local day; a new day starts over. The price is stored on the cycle when the pack is shown (`GameCycle.keepPrice`) and is the only amount Stripe charges; the client never picks it. With a saved card it's charged right away; the first time, Stripe Checkout takes that price and saves the card with that payment (the pack is held while Checkout is open). The 12 cards go into your Collection and you can look again right away.
+5. **Put them back**, or the timer: the cards go back to stock and nothing is charged. A short beat shows the price just passed, the next one a dollar up and the three steps (1 · $3.99, 2 · $4.99, 3 · $5.99) with the current look lit, "That one went back. This one is a dollar more.", then "Show me the next one · $4.99 to keep" (or $5.99). Nothing locks. Leaving the page is not a pass: the pack waits out its 120 s and you can come back to it.
 6. **3 looks per category per local day** (account and card; a looser cap per network address), so nobody can fish the pool.
-7. **Dealer's choice · $4.99** (optional quiet link, saved card only): charged first, then a pack from the same queue is reserved and shown. No reject.
+7. **Dealer's choice · $6.99** (optional quiet link, saved card only, never the only button after a pass): charged first, then a pack from the same queue is reserved and shown. No reject.
 
 One active look per account. Every charge (and any refund, e.g. if a Checkout payment lands after the pack went back) is logged in `GameCharge`. Buying never charges shipping: packs wait in the Collection until the player ships them (see Game shipping).
 
@@ -165,7 +165,7 @@ One active look per account. Every charge (and any refund, e.g. if a Checkout pa
 Per category, never mixed. Uses the existing engine price on each card; nothing new prices a card.
 
 - **Bins:** bulk < $0.25 · mid $0.25–$0.75 · top $0.75–$2.00 · bump $2.01–$3.99 (member stacks only) · hit $4–$9.99 · chase ≥ $10.
-- **Base pack (about 80 in 100):** 7 bulk + 4 mid + 1 top (usually a $1–$2 card), summed **$3.20–$3.80**, close to the $3.99 keep; no card over $3.99.
+- **Base pack (about 80 in 100):** 7 bulk + 4 mid + 1 top (usually a $1–$2 card), summed **$3.20–$3.80**, close to the $3.99 first-look keep; no card over $3.99.
 - **Hit pack (about 18 in 100):** 7 bulk + 4 mid + exactly one $4–$9.99 card, summed **$5–$12**.
 - **Chase pack (2 in 100, flag on only):** 7 bulk + 4 mid + one $10+ card, marked CHASE on the pull sheet.
 - The mix is counted over the last 100 packs built in that category. Every built pack counts, so a kept hit counts as a sold hit. No new hits while hits are over 20% of the last 100 or over a fifth of the ready queue. A draw outside its band is thrown out and drawn again; if a bin can't fill a slot the category stays closed (never padded).

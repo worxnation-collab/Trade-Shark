@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { siteUrl } from "../env";
-import { PRICES } from "../game/rules";
+import { PRICES, storedKeepPrice } from "../game/rules";
 import { getSettings } from "../settings";
 import { stripe, stripeErrorMessage } from "../stripe";
 import { PARTNERS, STAMP_CREDIT, estimateFee, reserveState, splitNet } from "./split";
@@ -82,7 +82,7 @@ async function feeFor(paymentIntentId: string): Promise<number | null> {
 }
 
 /**
- * Settle one sold pack (keep or blind only). Founders: net (pack price − Stripe fee − stamp credit) split by engine
+ * Settle one sold pack (keep or blind only). Founders: net (amount charged − Stripe fee − stamp credit) split by engine
  * value. Senders: each consignment card's engine price, moved from reserved to payable. Whatever the founders don't
  * get (consignment and untagged cards' share) is company money and goes into the reserve. Idempotent per pack.
  */
@@ -95,7 +95,10 @@ export async function recordSale(packId: string) {
   if (!cycle) return { ok: false as const, error: "no completed purchase for this pack" };
   const kinds = pack.status === "kept" ? ["keep"] : ["blind"];
   const charges = cycle.charges.filter((c) => kinds.includes(c.kind));
-  const packPrice = pack.status === "kept" ? PRICES.keep : PRICES.blind;
+  // The amount actually charged: the succeeded charges, else what the pack recorded, else the cycle's stored price.
+  const packPrice = charges.length
+    ? r2(charges.reduce((a, c) => a + c.amount, 0))
+    : (pack.charged ?? (pack.status === "kept" ? storedKeepPrice(cycle.keepPrice) : PRICES.blind));
   let fee = 0;
   let estimated = false;
   for (const c of charges) {

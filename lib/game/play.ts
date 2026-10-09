@@ -9,17 +9,19 @@ import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
 import { categoryStatus, packView, releasePack, reservePack } from "./packs";
 import { recordSale } from "../partners";
-import { CHECKOUT_HOLD_MS, KEEP_GRACE_MS, LOOKS_PER_DAY, LOOKS_PER_DAY_PER_IP, PRICES, TIMER_SECONDS, cryptoRng, isValidZone, nextLocalMidnight, type Rng } from "./rules";
+import { CHECKOUT_HOLD_MS, KEEP_GRACE_MS, LOOKS_PER_DAY, LOOKS_PER_DAY_PER_IP, PRICES, TIMER_SECONDS, cryptoRng, isValidZone, keepCharge, keepPriceFor, storedKeepPrice, nextLocalMidnight, nextLookNumber, type Rng } from "./rules";
 
 /**
  * One look per account at a time, and looking is free:
- *   Show me the cards → a reserved pack, all 12 on screen, 120 s → Keep ($3.99, one charge) | Pass / timer.
+ *   Show me the cards → a reserved pack, all 12 on screen, 120 s → Keep (one charge) | Pass / timer.
+ *   The keep price is the look's step on the ladder (KEEP_LADDER: look 1 $3.99, 2 $4.99, 3 $5.99 per category per
+ *   local day), stored on the cycle when the pack is shown; Keep charges that stored price and nothing else.
  *   Pass or the timer puts the cards back and charges nothing. Leaving the page does not pass: the pack waits out
  *   its 120 s and the player can come back to it. Nothing locks; the only limit is LOOKS_PER_DAY per category per
  *   local day (account, card fingerprint, and a looser cap per network address), so nobody can fish the pool.
- *   Keep charges a saved card off-session; without one it goes to Stripe Checkout ($3.99, card saved with that
+ *   Keep charges a saved card off-session; without one it goes to Stripe Checkout (the stored price, card saved with that
  *   payment), and the pack is held while Checkout is open.
- *   "Dealer's choice" ($4.99 blind pack, saved card only) is an optional quiet link: same pool, seen after paying.
+ *   "Dealer's choice" ($6.99 blind pack, saved card only) is an optional quiet link: same pool, seen after paying.
  *   A bought pack goes into the player's Collection; shipping is its own step later (lib/game/ship.ts).
  *   Members get one bumped member stack and one mailer credit a month, and see new drops first.
  * Nothing is ever charged by the timer.
@@ -45,6 +47,13 @@ export async function sweepExpired(now = new Date(), api: CheckoutApi | null = c
  * address. The account and its card share LOOKS_PER_DAY; an address gets LOOKS_PER_DAY_PER_IP.
  */
 export async function looksLeft(buyer: Pick<Buyer, "id" | "cardFingerprint"> | null, category: string, ip: string | null, now = new Date()) {
+  const { used, net } = await looksUsed(buyer, category, ip, now);
+  if (net >= LOOKS_PER_DAY_PER_IP) return 0;
+  return Math.max(0, LOOKS_PER_DAY - used);
+}
+
+/** Looks this account (or its card) took today in a category, and the network address's count. `used` sets the keep price. */
+async function looksUsed(buyer: Pick<Buyer, "id" | "cardFingerprint"> | null, category: string, ip: string | null, now: Date) {
   const live = { category, until: { gt: now } };
   const notIp = { OR: [{ fingerprint: null }, { NOT: { fingerprint: { startsWith: "ip:" } } }] };
   const [mine, card, net] = await Promise.all([
@@ -52,8 +61,7 @@ export async function looksLeft(buyer: Pick<Buyer, "id" | "cardFingerprint"> | n
     buyer?.cardFingerprint ? db.gameLock.count({ where: { ...live, fingerprint: buyer.cardFingerprint } }) : 0,
     ip ? db.gameLock.count({ where: { ...live, fingerprint: ip } }) : 0,
   ]);
-  if (net >= LOOKS_PER_DAY_PER_IP) return 0;
-  return Math.max(0, LOOKS_PER_DAY - Math.max(mine, card));
+  return { used: Math.max(mine, card), net };
 }
 
 /** What the play screen needs for one category. A signed-out visitor can look too. */
@@ -62,14 +70,19 @@ export async function playState(buyerIn: Buyer | null, category: Category, ip: s
   const buyer = buyerIn ? await refreshMember(buyerIn) : null;
   const member = isMember(buyer);
   const status = await categoryStatus(category, member);
-  const left = await looksLeft(buyer, category, ip);
-  if (!buyer) return { ...status, signedIn: false as const, hasCard: false, cardLabel: null, member: false, stackLeft: false, looksLeft: left, revealing: null };
+  const { used, net } = await looksUsed(buyer, category, ip, new Date());
+  const left = net >= LOOKS_PER_DAY_PER_IP ? 0 : Math.max(0, LOOKS_PER_DAY - used);
+  // The look they'd take next and its keep price, for the button. Display only: the server stores the real one on look.
+  const nextLook = nextLookNumber(used);
+  const ladder = { nextLook, nextKeep: keepPriceFor(nextLook) };
+  if (!buyer) return { ...status, ...ladder, signedIn: false as const, hasCard: false, cardLabel: null, member: false, stackLeft: false, looksLeft: left, revealing: null };
   // Back on the shop with a Keep checkout still open (browser Back, not Checkout's cancel link): same as cancelling it.
   const pending = await db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: "checkout" } });
   if (pending) await closeCheckout(pending.id, "back").catch((e) => console.error("checkout close failed", e));
   const [revealing, stackLeft] = await Promise.all([db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: "revealing" } }), perkLeft(buyer, "stack")]);
   return {
     ...status,
+    ...ladder,
     signedIn: true as const,
     hasCard: !!buyer.paymentMethodId,
     cardLabel: buyer.cardLabel,
@@ -82,6 +95,8 @@ export async function playState(buyerIn: Buyer | null, category: Category, ip: s
           cycleId: revealing.id,
           category: revealing.category,
           deadline: revealing.deadline!,
+          lookNumber: revealing.lookNumber ?? 1,
+          keepPrice: storedKeepPrice(revealing.keepPrice),
           pack: revealing.category === category && revealing.packId ? await packView(revealing.packId) : null,
         }
       : null,
@@ -97,7 +112,8 @@ export async function look(buyerIn: Buyer, category: string, opts: { rng?: Rng; 
   const member = isMember(buyer, now);
   const open = await db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: { in: ["revealing", "charging", "keeping", "checkout"] } } });
   if (open) return err("Finish the pack you have open first.", "busy");
-  if ((await looksLeft(buyer, category, opts.ip ?? null, now)) <= 0) return err(`That's ${LOOKS_PER_DAY} looks at ${productName(category)}s today. More tomorrow.`, "no-looks");
+  const today = await looksUsed(buyer, category, opts.ip ?? null, now);
+  if (today.net >= LOOKS_PER_DAY_PER_IP || today.used >= LOOKS_PER_DAY) return err(`That's ${LOOKS_PER_DAY} looks at ${productName(category)}s today. More tomorrow.`, "no-looks");
   if (!(await categoryStatus(category, member, now)).open) return err(`No ${productName(category)}s are ready right now.`, "closed");
   const memberStack = !!opts.memberStack && member && (await perkLeft(buyer, "stack"));
   if (opts.memberStack && !memberStack) return err("Your member stack for this month is used (or your membership isn't active).", "no-stack");
@@ -107,8 +123,11 @@ export async function look(buyerIn: Buyer, category: string, opts: { rng?: Rng; 
   // The member stack is used once it's shown with its bumped card (no $2–$4 card in stock = not used).
   if (memberStack && got.bumped) await usePerk(buyer, "stack");
   const deadline = new Date(now.getTime() + TIMER_SECONDS * 1000);
+  // The keep price is fixed now, on the cycle, from which look of the day this is. Keep charges this and no other.
+  const lookNumber = nextLookNumber(today.used);
+  const keepPrice = keepPriceFor(lookNumber);
   const cycle = await db.gameCycle.create({
-    data: { buyerId: buyer.id, category, kind: "peek", status: "revealing", packId: got.pack.id, revealedAt: now, deadline, member: memberStack && got.bumped },
+    data: { buyerId: buyer.id, category, kind: "peek", status: "revealing", packId: got.pack.id, revealedAt: now, deadline, member: memberStack && got.bumped, lookNumber, keepPrice },
   });
   // The look ledger (see looksLeft): ends at the player's local midnight.
   const until = nextLocalMidnight(now, isValidZone(opts.tz) ? opts.tz : buyer.tz);
@@ -118,7 +137,7 @@ export async function look(buyerIn: Buyer, category: string, opts: { rng?: Rng; 
       ...(opts.ip ? [{ buyerId: buyer.id, fingerprint: opts.ip, category, until }] : []),
     ],
   });
-  return { ok: true as const, cycleId: cycle.id, deadline, serverNow: new Date(), pack: await packView(got.pack.id) };
+  return { ok: true as const, cycleId: cycle.id, deadline, serverNow: new Date(), lookNumber, keepPrice, pack: await packView(got.pack.id) };
 }
 
 /** The bits of Stripe Checkout a Keep without a saved card uses, so tests can pass a fake. */
@@ -135,18 +154,21 @@ export interface CheckoutApi {
 const checkoutApi = () => stripe() as unknown as CheckoutApi | null;
 
 /**
- * Keep: one $3.99 charge; the pack goes into their Collection. A saved card is charged off-session. Without one the
+ * Keep: one charge of the price stored on the cycle when it was shown; the pack goes into their Collection. A saved card is charged off-session. Without one the
  * player goes to Stripe Checkout, which saves the card with that payment; the pack is held until Checkout closes.
  */
 export async function keep(
   buyer: Buyer,
   cycleId: string,
-  opts: { api?: ChargeApi | null; checkout?: CheckoutApi | null; now?: Date; base?: string } = {},
+  opts: { api?: ChargeApi | null; checkout?: CheckoutApi | null; now?: Date; base?: string; amount?: unknown } = {},
 ): Promise<PlayError | { ok: true; pack: Awaited<ReturnType<typeof packView>>; checkoutUrl?: undefined } | { ok: true; checkoutUrl: string; pack?: undefined }> {
   const now = opts.now ?? new Date();
   const cycle = await db.gameCycle.findFirst({ where: { id: cycleId, buyerId: buyer.id } });
   if (!cycle || !cycle.packId) return err("That pack isn't yours.");
   if (cycle.status !== "revealing") return err("This pack is closed.", "closed");
+  const price = keepCharge(cycle.keepPrice, opts.amount);
+  if (!price.ok) return err(price.error, "price");
+  const amount = price.amount;
   if (now.getTime() > cycle.deadline!.getTime() + KEEP_GRACE_MS) {
     await endWithoutPurchase(cycle.id, "expired", now);
     return err("Time ran out on that pack.", "expired");
@@ -176,14 +198,14 @@ export async function keep(
         customer,
         customer_update: { name: "auto", shipping: "auto" },
         shipping_address_collection: { allowed_countries: ["US"] },
-        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(PRICES.keep * 100), product_data: { name: `${productName(cycle.category)} · all 12 cards` } } }],
+        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(amount * 100), product_data: { name: `${productName(cycle.category)} · all 12 cards` } } }],
         payment_intent_data: { setup_future_usage: "off_session", description: label, metadata: meta },
         metadata: meta,
         expires_at: expires,
         success_url: `${opts.base}/api/play/kept?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${opts.base}/api/play/kept?cycle=${cycle.id}`,
       });
-      await db.gameCharge.create({ data: { buyerId: buyer.id, cycleId: cycle.id, ref: session.id, kind: "keep", amount: PRICES.keep, status: "pending" } });
+      await db.gameCharge.create({ data: { buyerId: buyer.id, cycleId: cycle.id, ref: session.id, kind: "keep", amount, status: "pending" } });
       // Held while Checkout is open (it closes itself at expires_at); the sweep settles it after that.
       await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "checkout", deadline: new Date(expires * 1000 + 60_000) } });
       return { ok: true as const, checkoutUrl: session.url! };
@@ -193,12 +215,12 @@ export async function keep(
     }
   }
 
-  const paid = await chargeSaved(buyer, PRICES.keep, "keep", cycle.id, label, opts.api !== undefined ? opts.api : chargeApi());
+  const paid = await chargeSaved(buyer, amount, "keep", cycle.id, label, opts.api !== undefined ? opts.api : chargeApi());
   if (!paid.ok) {
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "revealing" } }); // the clock keeps running
     return err(paid.error, "declined");
   }
-  await sellPack(cycle.packId, buyer, PRICES.keep, "kept", now);
+  await sellPack(cycle.packId, buyer, amount, "kept", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "kept", endedAt: now } });
   await splitForPartners(cycle.packId);
   return { ok: true as const, pack: await packView(cycle.packId) };
@@ -222,12 +244,14 @@ export async function completeCheckout(sessionId: string, opts: { api?: ChargeAp
   if (cycle.status === "kept") return { ok: true as const, already: true, packId: cycle.packId, buyerId: cycle.buyerId };
   if (session.payment_status !== "paid") return err("That payment didn't go through.", "unpaid");
   const pi = session.payment_intent as Stripe.PaymentIntent | null;
+  // What Checkout actually took (it was opened for the cycle's stored price).
+  const amount = session.amount_total != null ? session.amount_total / 100 : storedKeepPrice(cycle.keepPrice);
   const claimed = await db.gameCycle.updateMany({ where: { id: cycle.id, status: { in: ["checkout", "revealing"] } }, data: { status: "keeping" } });
   if (!claimed.count) {
     // The pack was let go before this payment landed: give the money back.
     if (pi?.id && !(await db.gameCharge.findFirst({ where: { cycleId: cycle.id, kind: "refund" } })))
-      await refund(cycle.buyerId, cycle.id, pi.id, PRICES.keep, opts.api !== undefined ? opts.api : chargeApi());
-    return err("That pack had already gone back. Your $3.99 was refunded.", "closed");
+      await refund(cycle.buyerId, cycle.id, pi.id, amount, opts.api !== undefined ? opts.api : chargeApi());
+    return err(`That pack had already gone back. Your $${amount.toFixed(2)} was refunded.`, "closed");
   }
   const pm = pi?.payment_method && typeof pi.payment_method !== "string" ? pi.payment_method : null;
   const x = session as unknown as { collected_information?: { shipping_details?: ShipTo | null } | null; shipping_details?: ShipTo | null };
@@ -250,7 +274,7 @@ export async function completeCheckout(sessionId: string, opts: { api?: ChargeAp
   if (pm && typeof session.customer === "string")
     await s.customers.update(session.customer, { invoice_settings: { default_payment_method: pm.id } }).catch((e) => console.error("default card not set", e));
   await db.gameCharge.updateMany({ where: { ref: session.id, kind: "keep", status: "pending" }, data: { status: "succeeded", paymentIntentId: pi?.id ?? null } });
-  await sellPack(cycle.packId, buyer, PRICES.keep, "kept", now);
+  await sellPack(cycle.packId, buyer, amount, "kept", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "kept", endedAt: now } });
   await splitForPartners(cycle.packId);
   return { ok: true as const, already: false, packId: cycle.packId, buyerId: cycle.buyerId };
@@ -305,7 +329,7 @@ async function endWithoutPurchase(cycleId: string, status: "passed" | "expired",
   if (cycle.packId) await releasePack(cycle.packId, "expired", ["reserved"]);
 }
 
-/** Dealer's choice: the $4.99 blind pack. Saved card only. Charge first, then reserve from the same queue, then show. No reject. */
+/** Dealer's choice: the $6.99 blind pack. Saved card only. Charge first, then reserve from the same queue, then show. No reject. */
 export async function blind(buyerIn: Buyer, category: string, opts: { api?: ChargeApi | null; rng?: Rng; now?: Date } = {}) {
   if (!isPublicCategory(category)) return err("That pack isn't open.", "closed");
   if (!buyerIn.paymentMethodId) return err("Keep a pack first; your card is saved with that payment.", "no-card");
@@ -330,7 +354,7 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(`The last ${productName(category)} just went. Your $${total.toFixed(2)} was refunded.`, "closed");
   }
-  await sellPack(got.pack.id, buyer, PRICES.blind, "sold-blind", now);
+  await sellPack(got.pack.id, buyer, total, "sold-blind", now);
   await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "blind-bought", packId: got.pack.id, revealedAt: now, endedAt: now } });
   await splitForPartners(got.pack.id);
   return { ok: true as const, pack: await packView(got.pack.id) };

@@ -8,7 +8,11 @@ import {
   LOOKS_PER_DAY,
   nextLocalMidnight,
   oddsLines,
+  KEEP_LADDER,
   PRICES,
+  keepCharge,
+  keepPriceFor,
+  nextLookNumber,
   RULES_LINE,
   nextKind,
   showable,
@@ -153,11 +157,37 @@ describe("pack mix", () => {
 });
 
 describe("game copy and prices", () => {
-  it("looking is free: the rules sentence, one $3.99 keep, a 120 s clock, 3 looks a day", () => {
-    expect(RULES_LINE).toBe("See all 12 first. Keep them for $3.99, or put them back. Looking is free.");
-    expect(PRICES).toEqual({ keep: 3.99, blind: 4.99 });
+  it("looking is free: the rules sentence, a 120 s clock, 3 looks a day", () => {
+    expect(RULES_LINE).toBe("Looking is free. Three looks a day. The first is $3.99 to keep, the next is $4.99, the last is $5.99.");
     expect(TIMER_SECONDS).toBe(120);
     expect(LOOKS_PER_DAY).toBe(3);
+  });
+
+  it("the keep ladder: look 1 $3.99, look 2 $4.99, look 3 $5.99; a new day starts over", () => {
+    expect(KEEP_LADDER).toEqual([3.99, 4.99, 5.99]);
+    expect(KEEP_LADDER.length).toBe(LOOKS_PER_DAY);
+    expect([0, 1, 2].map((used) => keepPriceFor(nextLookNumber(used)))).toEqual([3.99, 4.99, 5.99]);
+    expect(keepPriceFor(1)).toBe(3.99);
+    expect(keepPriceFor(2)).toBe(4.99);
+    expect(keepPriceFor(3)).toBe(5.99);
+    expect(keepPriceFor(9)).toBe(5.99);
+    // Today's looks expire at local midnight, so the next day's count is 0 again: look 1.
+    expect(keepPriceFor(nextLookNumber(0))).toBe(3.99);
+  });
+
+  it("dealer's choice is $6.99, above the last look", () => {
+    expect(PRICES).toEqual({ blind: 6.99 });
+    expect(PRICES.blind).toBeGreaterThan(Math.max(...KEEP_LADDER));
+  });
+
+  it("a keep charges the price stored on its cycle and refuses any other amount", () => {
+    expect(keepCharge(4.99)).toEqual({ ok: true, amount: 4.99 });
+    expect(keepCharge(4.99, 4.99)).toEqual({ ok: true, amount: 4.99 });
+    expect(keepCharge(5.99, "5.99")).toEqual({ ok: true, amount: 5.99 });
+    for (const asked of [3.99, 5.99, 0, 1, 499, -4.99, "abc", 6.99]) expect(keepCharge(4.99, asked).ok).toBe(false);
+    expect(keepCharge(3.99, 4.99)).toEqual({ ok: false, error: "This pack is $3.99 to keep." });
+    // A cycle shown before the ladder existed was a look-1 $3.99 pack.
+    expect(keepCharge(null)).toEqual({ ok: true, amount: 3.99 });
   });
 
   it("odds: never says what a pack is worth; chase only when it's on", () => {

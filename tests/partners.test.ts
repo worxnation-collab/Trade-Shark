@@ -62,7 +62,7 @@ describe("owners", () => {
   });
 
   it("a consignment card takes no founder share; its part of the net stays with the company", () => {
-    // $4.99 blind, $0.44 fee → $4.55 net. Founder cards $3, a $50 consignment card: founders split by $3/$53.
+    // A $4.99 charge, $0.44 fee → $4.55 net. Founder cards $3, a $50 consignment card: founders split by $3/$53.
     const shares = splitNet(4.55, [
       { partnerId: "matthew", value: 2 },
       { partnerId: "adrian", value: 1 },

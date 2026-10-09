@@ -15,7 +15,7 @@ export type Slot = keyof typeof SLOTS;
 export const BIN = { midFrom: 0.25, topFrom: 1, hitFrom: 4, chaseFrom: 10 } as const;
 /** The member stack's top-slot swap. */
 export const BUMP = { from: 2.01, to: 3.99 } as const;
-/** A base pack's summed value must land here (close to the $3.99 keep); otherwise the draw is thrown out and drawn again. */
+/** A base pack's summed value must land here (close to the $3.99 first-look keep); otherwise the draw is thrown out and drawn again. */
 export const TARGET = { min: 3.2, max: 3.8 } as const;
 /** A hit pack: one $4–$9.99 card plus 7 bulk and 4 mid. */
 export const HIT_TARGET = { min: 5, max: 12 } as const;
@@ -29,8 +29,14 @@ export const HIT_CAP = { recent: 0.2, ready: 0.2 } as const;
 
 export type PackKind = "base" | "hit" | "chase" | "member";
 
-/** Looking is free. Keep is one $3.99 charge. The blind pack ("Dealer's choice") is an optional quiet link. */
-export const PRICES = { keep: 3.99, blind: 4.99 } as const;
+/**
+ * Looking is free. The keep price climbs with each look of the day in a category: look 1 $3.99, look 2 $4.99,
+ * look 3 $5.99; a new local day starts over. The price is stored on the cycle when the pack is shown and that is
+ * the only amount a Keep charges. The blind pack ("Dealer's choice") is an optional quiet link, above the last look.
+ */
+export const KEEP_LADDER = [3.99, 4.99, 5.99] as const;
+export const BLIND_PRICE = 6.99;
+export const PRICES = { blind: BLIND_PRICE } as const;
 /** How long a looked-at pack is held for the player. */
 export const TIMER_SECONDS = 120;
 /** Network slack on top of the 120 s before the server refuses a Keep. */
@@ -45,7 +51,29 @@ export const CHECKOUT_HOLD_MS = 30 * 60_000;
 /** At most this many chase packs reserved at once per category, so one player can't drain the list. */
 export const CHASE_RESERVE_CAP = 1;
 
-export const RULES_LINE = "See all 12 first. Keep them for $3.99, or put them back. Looking is free.";
+export const RULES_LINE = "Looking is free. Three looks a day. The first is $3.99 to keep, the next is $4.99, the last is $5.99.";
+
+/** The keep price for the nth look of the day (1-based) in a category. Past the ladder stays on its last step. */
+export function keepPriceFor(look: number): number {
+  const i = Math.min(KEEP_LADDER.length, Math.max(1, Math.floor(look) || 1)) - 1;
+  return KEEP_LADDER[i];
+}
+
+/** Which look of the day the next one is, from how many this account and card already took today. */
+export const nextLookNumber = (usedToday: number) => Math.min(KEEP_LADDER.length, Math.max(0, usedToday) + 1);
+
+/**
+ * What a Keep charges: the price stored on the cycle when the pack was shown, and nothing else. A client that sends
+ * an amount must send that same amount (it is only checked, never used). A cycle from before the ladder = look 1.
+ */
+export const storedKeepPrice = (stored: number | null | undefined) => stored ?? KEEP_LADDER[0];
+
+export function keepCharge(stored: number | null | undefined, asked?: unknown): { ok: true; amount: number } | { ok: false; error: string } {
+  const amount = storedKeepPrice(stored);
+  if (asked !== undefined && asked !== null && Math.round(Number(asked) * 100) !== Math.round(amount * 100))
+    return { ok: false, error: `This pack is $${amount.toFixed(2)} to keep.` };
+  return { ok: true, amount };
+}
 
 /** The odds shown before anyone looks. Looked-at and blind packs share them. Chase is mentioned only when it's on. */
 export function oddsLines(chaseOn: boolean): string[] {

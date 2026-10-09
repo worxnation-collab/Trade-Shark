@@ -343,7 +343,7 @@ model GamePack {
   closedAt       DateTime?
   packedAt       DateTime? // the founder pulled this stack into a pack (Packed); never decides whether it is for sale
   // Fulfillment once kept or sold blind.
-  charged        Float? // what the player paid in total for this pack ($3.99 keep, $4.99 blind)
+  charged        Float? // what the player paid in total for this pack (the cycle's stored keep price, or the $6.99 blind)
   shipTo         String?
   trackingNumber String?
   shippedAt      DateTime?
@@ -364,6 +364,8 @@ model GameCycle {
   member      Boolean      @default(false) // this reveal used the monthly member stack
   shipQuoteId String?
   creditUsed  Boolean      @default(false) // paid with the category's $4 stamp-card credit
+  lookNumber  Int? // which look of the local day in this category (1–3)
+  keepPrice   Float? // the keep price for this look, stored when the pack is shown; Keep charges this and nothing else
   status      String // revealing | kept | passed | expired | blind-bought | failed
   packId      String?
   revealedAt  DateTime?

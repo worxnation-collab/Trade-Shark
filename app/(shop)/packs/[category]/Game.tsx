@@ -4,15 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
-import { LOOKS_PER_DAY, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
+import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, RULES_LINE, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
 import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
 import { CardGrid } from "./CardGrid";
 
 type Phase =
   | { k: "intro" }
-  | { k: "revealing"; cycleId: string; deadline: number; pack: PackView }
-  | { k: "passed"; why: "pass" | "timer" }
+  | { k: "revealing"; cycleId: string; deadline: number; pack: PackView; lookNumber: number; keepPrice: number; afterPass: boolean }
+  | { k: "passed"; why: "pass" | "timer"; lookNumber: number; keepPrice: number }
   | { k: "won"; pack: PackView; how: "kept" | "blind" };
 
 export interface GameProps {
@@ -26,7 +26,9 @@ export interface GameProps {
   member: boolean;
   stackLeft: boolean;
   looksLeft: number;
-  revealing: { cycleId: string; deadline: string; pack: PackView | null } | null;
+  /** The next look of the day (the server's count); its keep price comes from the ladder in lib/game/rules.ts. */
+  nextLook: number;
+  revealing: { cycleId: string; deadline: string; pack: PackView | null; lookNumber: number; keepPrice: number } | null;
   serverNow: string;
   error?: string;
 }
@@ -44,7 +46,15 @@ export function Game(p: GameProps) {
   const skew = useRef(new Date(p.serverNow).getTime() - Date.now());
   const [phase, setPhase] = useState<Phase>(() =>
     p.revealing?.pack && p.revealing.cycleId
-      ? { k: "revealing", cycleId: p.revealing.cycleId, deadline: new Date(p.revealing.deadline).getTime(), pack: p.revealing.pack }
+      ? {
+          k: "revealing",
+          cycleId: p.revealing.cycleId,
+          deadline: new Date(p.revealing.deadline).getTime(),
+          pack: p.revealing.pack,
+          lookNumber: p.revealing.lookNumber,
+          keepPrice: p.revealing.keepPrice,
+          afterPass: p.revealing.lookNumber > 1,
+        }
       : { k: "intro" },
   );
   const [busy, setBusy] = useState("");
@@ -52,6 +62,14 @@ export function Game(p: GameProps) {
   const [left, setLeft] = useState(TIMER_SECONDS);
   const [looks, setLooks] = useState(p.looksLeft);
   const [stackLeft, setStackLeft] = useState(p.stackLeft);
+  const [nextLook, setNextLook] = useState(p.nextLook);
+  // After a pass: a short beat (the price just passed, then the next one) before the next button shows.
+  const [beat, setBeat] = useState(false);
+  useEffect(() => {
+    if (!beat) return;
+    const t = window.setTimeout(() => setBeat(false), 1100);
+    return () => window.clearTimeout(t);
+  }, [beat]);
   // The cards fan out when a pack opens (after a blind buy, the seal splits first).
   const [seal, setSeal] = useState(false);
   useEffect(() => {
@@ -74,16 +92,27 @@ export function Game(p: GameProps) {
     }
     if (memberStack) setStackLeft(false);
     setLooks((n) => Math.max(0, n - 1));
+    const lookNumber = Number(r.lookNumber) || 1;
+    setNextLook(lookNumber + 1);
     skew.current = new Date(r.serverNow as string).getTime() - Date.now();
     pop();
-    setPhase({ k: "revealing", cycleId: r.cycleId as string, deadline: new Date(r.deadline as string).getTime(), pack: r.pack as PackView });
+    setPhase({
+      k: "revealing",
+      cycleId: r.cycleId as string,
+      deadline: new Date(r.deadline as string).getTime(),
+      pack: r.pack as PackView,
+      lookNumber,
+      keepPrice: Number(r.keepPrice),
+      afterPass: phase.k === "passed",
+    });
   }
 
-  const passNow = useCallback(async (why: "pass" | "timer") => {
+  const passNow = useCallback(async (why: "pass" | "timer", lookNumber: number, keepPrice: number) => {
     const id = cycleRef.current;
     if (!id) return;
     cycleRef.current = null;
-    setPhase({ k: "passed", why });
+    setPhase({ k: "passed", why, lookNumber, keepPrice });
+    setBeat(true);
     await post("/api/play/pass", { cycleId: id });
   }, []);
 
@@ -91,15 +120,16 @@ export function Game(p: GameProps) {
     if (phase.k !== "revealing") return;
     setBusy("keep");
     setError("");
-    const r = await post("/api/play/keep", { cycleId: phase.cycleId });
+    // The amount is only checked against the price stored on this cycle; the server charges its own stored price.
+    const r = await post("/api/play/keep", { cycleId: phase.cycleId, amount: phase.keepPrice });
     if (r.ok && r.checkoutUrl) {
-      // No saved card yet: Stripe Checkout takes the $3.99 and saves the card. The pack is held meanwhile.
+      // No saved card yet: Stripe Checkout takes the stored price and saves the card. The pack is held meanwhile.
       window.location.href = r.checkoutUrl as string;
       return;
     }
     setBusy("");
     if (!r.ok) {
-      if (r.code === "expired" || r.code === "closed") setPhase({ k: "passed", why: "timer" });
+      if (r.code === "expired" || r.code === "closed") setPhase({ k: "passed", why: "timer", lookNumber: phase.lookNumber, keepPrice: phase.keepPrice });
       return setError(r.error ?? "That didn't work.");
     }
     cycleRef.current = null;
@@ -122,7 +152,7 @@ export function Game(p: GameProps) {
     const tick = () => {
       const ms = phase.deadline - (Date.now() + skew.current);
       setLeft(Math.max(0, Math.ceil(ms / 1000)));
-      if (ms <= 0) void passNow("timer");
+      if (ms <= 0) void passNow("timer", phase.lookNumber, phase.keepPrice);
     };
     tick();
     const t = window.setInterval(tick, 250);
@@ -158,7 +188,7 @@ export function Game(p: GameProps) {
     <>
       {looks > 0 ? (
         <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled={!!busy} onClick={() => look()} data-pop>
-          {busy === "look" ? "Opening…" : "Show me the cards."}
+          {busy === "look" ? "Opening…" : `${phase.k === "passed" ? "Show me the next one" : "Show me the cards"} · ${usd(keepPriceFor(nextLook))} to keep`}
         </button>
       ) : (
         <p className="mt-6 text-sm text-navy/75">That&apos;s {LOOKS_PER_DAY} looks today. More tomorrow.</p>
@@ -173,7 +203,8 @@ export function Game(p: GameProps) {
         <Link href="/play/member" className="underline">
           {p.member ? "Membership" : "Membership $7.99/mo"}
         </Link>
-        {p.hasCard && (
+        {/* Quiet and optional: never the only thing left after a pass. */}
+        {p.hasCard && !(phase.k === "passed" && looks <= 0) && (
           <>
             {" · "}
             <button className="underline" disabled={!!busy} onClick={buyBlind} data-nopop>
@@ -215,13 +246,19 @@ export function Game(p: GameProps) {
               <span className="font-semibold text-navy">{clock(left)}</span> left · pack value {usd(phase.pack.value)}
             </p>
             <div className="flex items-center gap-5">
-              <button className="px-2 py-3 text-base font-semibold text-navy/70 underline-offset-4 hover:underline" disabled={!!busy} onClick={() => passNow("pass")} data-nopop>
+              <button
+                className="px-2 py-3 text-base font-semibold text-navy/70 underline-offset-4 hover:underline"
+                disabled={!!busy}
+                onClick={() => passNow("pass", phase.lookNumber, phase.keepPrice)}
+                data-nopop
+              >
                 Put them back
               </button>
-              <button className="btn-reveal px-8 py-3 text-lg" disabled={!!busy} onClick={keepIt} data-pop>
-                {busy === "keep" ? "Keeping…" : `Keep · ${usd(PRICES.keep)}`}
+              <button className="btn-reveal px-8 py-3 text-2xl" disabled={!!busy} onClick={keepIt} data-pop>
+                {busy === "keep" ? "Keeping…" : `Keep · ${usd(phase.keepPrice)}`}
               </button>
             </div>
+            {phase.lookNumber > 1 && phase.afterPass && <p className="text-xs text-navy/60">You put one back, so this one is a dollar more.</p>}
             <p className="text-xs text-navy/55">
               {p.hasCard ? `Charged to ${p.cardLabel ?? "your saved card"}.` : "Paid with Stripe; your card is saved for next time."} Stored in your Collection until you ship.
             </p>
@@ -234,9 +271,16 @@ export function Game(p: GameProps) {
           <Stage category={p.category} className="flex items-center justify-center rounded-lg p-6">
             <div className="gone w-32">{packArt()}</div>
           </Stage>
-          <p className="mt-5 text-lg font-bold text-navy">{phase.why === "timer" ? "Time's up. The cards went back." : "Back they go."}</p>
-          <p className="mt-1 max-w-sm text-sm text-navy/75">Nothing was charged.</p>
-          {lookButtons}
+          {looks > 0 && p.open ? (
+            <PriceStep passed={phase.keepPrice} look={nextLook} />
+          ) : (
+            <>
+              <p className="mt-5 text-lg font-bold text-navy">{phase.why === "timer" ? "Time's up. The cards went back." : "Back they go."}</p>
+              <p className="mt-1 max-w-sm text-sm text-navy/75">Nothing was charged.</p>
+            </>
+          )}
+          {/* Not in the same tap: the next button waits out the beat. */}
+          {!beat && lookButtons}
         </>
       )}
 
@@ -270,6 +314,31 @@ export function Game(p: GameProps) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** The beat after a pass: the price just passed, the next one a dollar up, and the day's three steps with this look lit. Navy and gold, no red. */
+function PriceStep({ passed, look }: { passed: number; look: number }) {
+  return (
+    <div className="mt-5 flex flex-col items-center" aria-live="polite">
+      <p className="flex items-baseline gap-3 font-display text-navy">
+        <span className="text-xl text-navy/40 line-through">{usd(passed)}</span>
+        <span aria-hidden>→</span>
+        <span className="border-b-2 border-gold text-3xl">{usd(keepPriceFor(look))}</span>
+      </p>
+      <ol className="mt-3 flex gap-2 text-xs">
+        {KEEP_LADDER.map((price, i) => (
+          <li
+            key={price}
+            className={i + 1 === look ? "rounded border border-gold bg-navy px-2 py-1 font-semibold text-sand" : "rounded border border-navy/15 px-2 py-1 text-navy/55"}
+            aria-current={i + 1 === look ? "step" : undefined}
+          >
+            {i + 1} · {usd(price)}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 max-w-sm text-sm text-navy/75">That one went back. This one is a dollar more.</p>
     </div>
   );
 }

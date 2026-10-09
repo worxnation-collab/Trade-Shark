@@ -35,7 +35,7 @@ export default async function PayoutsPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Payouts</h1>
         <p className="text-sm text-navy/70">
-          Founders split a sold pack (keep $3.99 or blind $4.99, minus the Stripe fee and any stamp credit) by engine value. A consignment card takes no share: its sender is owed that
+          Founders split a sold pack (the amount actually charged: keep $3.99 / $4.99 / $5.99 by look, or blind $6.99, minus the Stripe fee and any stamp credit) by engine value. A consignment card takes no share: its sender is owed that
           card&apos;s engine price, paid from the reserve. Memberships are company money and fill the reserve; shipping pays the label. Looking is free; unsold cards and packs put back pay
           nothing. Every payout is a manual Stripe Connect transfer.
         </p>
