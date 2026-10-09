@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ebayDraftCsv, tcgplayerCsv, toCsv } from "@/lib/listing/export";
 import { renderTitle } from "@/lib/listing/templates";
 import { mergeCandidates } from "@/lib/identify/merge";
-import { netAfterFees, statusAfterPricing, suggest, type QuoteRow } from "@/lib/pricing/engine";
+import { netAfterFees, soldCompMedian, statusAfterPricing, suggest, type QuoteRow } from "@/lib/pricing/engine";
 import { DEFAULT_SETTINGS as S } from "@/lib/settings";
 import { filterComps, parsePastedComps } from "@/lib/sources/comps";
 
@@ -207,5 +207,30 @@ describe("rejected catalog guesses don't leak fields", () => {
     ]);
     expect(m.winner?.source).toBe("pasted");
     expect(m.fields.setName).toBeUndefined();
+  });
+});
+
+describe("recent sales line (best card only)", () => {
+  it("is the sold-comp median, cents kept", () => {
+    expect(soldCompMedian([q({ amount: 2.5 }), q({ amount: 3.25 }), q({ amount: 4.1 })])).toBe(3.25);
+    expect(soldCompMedian([q({ amount: 2.5 }), q({ amount: 3 })])).toBe(2.75);
+  });
+  it("is nothing without a sale", () => {
+    expect(soldCompMedian([])).toBeNull();
+    expect(
+      soldCompMedian([
+        q({ source: "scryfall", kind: "retail_ask", amount: 5 }),
+        q({ source: "pricecharting", kind: "market", amount: 6 }),
+        q({ source: "justtcg", kind: "market", amount: 7 }),
+        q({ source: "pokemontcg", kind: "market", label: "market", amount: 8 }),
+        q({ source: "ebay_active", kind: "retail_ask", amount: 9 }),
+      ]),
+    ).toBeNull();
+    expect(soldCompMedian([q({ amount: 3, excluded: true })])).toBeNull();
+    expect(soldCompMedian([q({ amount: 3, currency: "EUR" })])).toBeNull();
+  });
+  it("uses only the latest fetch", () => {
+    const old = new Date(Date.now() - 86400000);
+    expect(soldCompMedian([q({ amount: 1, fetchedAt: old }), q({ amount: 9 })])).toBe(9);
   });
 });

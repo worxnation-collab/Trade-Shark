@@ -89,7 +89,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
         <p className="font-display text-2xl tracking-tight text-navy">
           {packs.find((p) => p.id === open.id)?.product ?? "Pack"} {open.number ?? ""}
         </p>
-        <p className="text-xs text-navy/60">12 cards · pack value {usd(open.value)} · drag a card to tilt it, tap to see it bigger</p>
+        <p className="text-xs text-navy/60">12 cards · drag a card to tilt it, tap to see it bigger</p>
         <CardGrid pack={open} />
         <button className="btn-reveal mt-6 px-7 py-3" onClick={() => setOpen(null)}>
           Exit

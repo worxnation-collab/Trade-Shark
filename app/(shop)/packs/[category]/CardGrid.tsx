@@ -51,6 +51,12 @@ export function CardGrid({ pack }: { pack: PackView }) {
           {usd(best.price)}
           <Marks c={best} />
         </p>
+        {/* The best card only: its sold-comp median, once the card is on screen. Never a pack total. */}
+        {pack.bestRecentSales != null && (
+          <p className="card-in mt-1 text-xs text-navy/60" style={{ "--i": 3 } as React.CSSProperties}>
+            Recent sales around {usd(pack.bestRecentSales)}.
+          </p>
+        )}
       </div>
       <ul className="-mx-4 mt-6 flex w-[calc(100%+2rem)] snap-x gap-3 overflow-x-auto px-4 pb-2 text-left" aria-label="The other 11 cards in this pack">
         {rest.map((c, i) => (

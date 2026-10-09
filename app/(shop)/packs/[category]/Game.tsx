@@ -243,7 +243,7 @@ export function Game(p: GameProps) {
           {/* Stays on screen while you scroll the cards: the clock and both choices. */}
           <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-lg border border-navy/15 border-b-gold bg-sand p-3">
             <p className="text-xs text-navy/65" role="timer" aria-live="off" aria-label={`${left} seconds left`}>
-              <span className="font-semibold text-navy">{clock(left)}</span> left · pack value {usd(phase.pack.value)}
+              <span className="font-semibold text-navy">{clock(left)}</span> left
             </p>
             <div className="flex items-center gap-5">
               <button

@@ -18,6 +18,15 @@ export interface QuoteRow {
   fetchedAt: Date;
 }
 
+/**
+ * The sold-comp median from the latest fetch (USD, junk excluded), or null when no sale backs the card. Asks,
+ * PriceCharting, JustTCG and the TCGplayer market are never sales, so they never count here.
+ */
+export function soldCompMedian(quotes: QuoteRow[]): number | null {
+  const sold = latestPerSource(quotes).filter((q) => q.kind === "sold_comp" && !q.excluded && q.currency === "USD" && q.source !== "manual");
+  return sold.length ? round2(median(sold.map((q) => q.amount))!) : null;
+}
+
 /** Only the most recent fetch of each source counts; older rows are history. */
 export function latestPerSource(quotes: QuoteRow[]): QuoteRow[] {
   const newest = new Map<string, number>();

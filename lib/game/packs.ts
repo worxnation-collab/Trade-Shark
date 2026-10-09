@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { CATEGORY_KEYS, type Category } from "../categories";
 import { db } from "../db";
+import { soldCompMedian, type QuoteRow } from "../pricing/engine";
 import { getSettings } from "../settings";
 import { fitsReserve } from "../partners/split";
 import { BIN, CHASE_RESERVE_CAP, SLOTS, cryptoRng, drawPack, isBump, nextKind, round2, showable, shortages, slotOf, type PackKind, type PoolCard, type Rng } from "./rules";
@@ -329,7 +330,12 @@ export async function packView(packId: string) {
       bumped: c.id === pack.hitCardId && pack.kind === "member",
     }))
     .sort((a, b) => a.price - b.price); // best card last: the reveal builds to it
-  return { id: pack.id, number: pack.number, kind: pack.kind, category: pack.category, value: pack.value, chase: pack.chase, cards };
+  // "Recent sales around $X." under the best card only: its sold-comp median, never an ask or a fallback price.
+  const best = cards[cards.length - 1];
+  const bestRecentSales = best
+    ? soldCompMedian((await db.priceQuote.findMany({ where: { cardId: best.id } })) as QuoteRow[])
+    : null;
+  return { id: pack.id, number: pack.number, kind: pack.kind, category: pack.category, value: pack.value, chase: pack.chase, cards, bestRecentSales };
 }
 export type PackView = Awaited<ReturnType<typeof packView>>;
 
