@@ -1,0 +1,599 @@
+// Trade Shark — single seller. No users/sellers tables on purpose.
+
+generator client {
+  provider      = "prisma-client-js"
+  // native for local dev, rhel-openssl-3.0.x for Netlify Functions (AWS Lambda, Amazon Linux 2023)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+// Supabase Postgres. DATABASE_URL = transaction pooler (port 6543, ?pgbouncer=true&schema=trade_shark),
+// DIRECT_URL = session pooler (port 5432, ?schema=trade_shark) for `prisma db push`.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Batch {
+  id              String       @id @default(cuid())
+  name            String
+  notes           String?
+  pairMode        String       @default("auto") // auto | filename | order | fronts
+  pairDecision    String? // JSON BackDecision from Auto pairing: did this batch contain backs?
+  partnerId       String? // founder who owns every card in this upload; copied onto each card
+  senderId        String? // or: the outside sender (consignment) who owns every card in it. Exactly one of the two.
+  ingestState     String? // queued (processing in the background) | done
+  ingestOptions   String? // JSON { pairMode, manifest, pastedLines } for organizing its image files
+  ingestLockUntil DateTime? // one background worker per batch at a time
+  createdAt       DateTime     @default(now())
+  cards           Card[]
+  files           UploadFile[]
+  lilStacks       LilStack[]
+}
+
+// Every file I dropped, kept even if it never becomes a card.
+model UploadFile {
+  id        String   @id @default(cuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name      String // original filename incl. folder path
+  rel       String // path under data/images
+  hash      String
+  phash     String?
+  mime      String
+  size      Int
+  readable  Boolean
+  cardId    String?
+  // Flatbed crops: explicit pairing (front/back crop N of the same sheet pair) and where the crop came from.
+  pairKey   String?
+  side      String? // front | back
+  sheetName String?
+  sheetRel  String?
+  sheetHash String?
+  cropIndex Int?
+  cropBox   String? // JSON corners in sheet pixels
+  page      Int? // PDF crops: the page it came from (1-based)
+  flag      String? // why its card must wait for a look (e.g. "PDF page 3: no card found"); copied to Card.holdReason
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+}
+
+// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold | LilStack
+// pile:   none | unpaired | unreadable | likely_bulk | duplicate
+model Card {
+  id      String @id @default(cuid())
+  batchId String
+  batch   Batch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  pairId  String
+  status  String @default("Inbox")
+  pile    String @default("none")
+
+  // identity
+  game           String    @default("Other") // Pokemon | Sports | Magic | Other
+  cardType       String? // Pokemon energy type (CardSight); pack rule: no more than two of one type
+  location       String? // physical tray slot on the desk, e.g. "B-14" (tray letter = value bin), per category
+  sortedAt       DateTime? // a founder put it in that slot (only sorted cards can go into a pack)
+  pulledAt       DateTime? // pulled for a confirmed pack; if that pack comes back, it goes back to its slot
+  partnerId      String? // founder owner: matthew | adrian | mike (Partner.id)
+  senderId       String? // consignment owner (Sender.id). A card needs a founder or a sender to enter a bin
+  category       String? // baseball | football | pokemon: which pack product it goes in (null = never packed)
+  categorySource String? // auto | manual
+  name           String?
+  setName        String?
+  setCode        String?
+  number         String?
+  year           String?
+  variant        String?
+  rarity         String?
+  player         String?
+  team           String?
+  condition      String    @default("NM") // NM | LP | MP | HP | DMG
+  graded         String? // e.g. "PSA 10" — empty means raw
+  quantity       Int       @default(1)
+  cost           Float?
+  notes          String?
+
+  // images + provenance
+  frontImage    String?
+  backImage     String?
+  frontOrigName String?
+  backOrigName  String?
+  frontHash     String?
+  backHash      String?
+  frontPhash    String? // 64-bit dHash (hex) for near-duplicate rescans
+  backPhash     String?
+  readable      Boolean @default(true)
+
+  // Auto-orientation on upload (lib/orient.ts). Images are fixed in place; originals kept only for a guess.
+  orientedAt    DateTime?
+  rotation      Int       @default(0) // degrees clockwise applied to front and back
+  rotationNote  String? // vision | layout guess | upright | unsure
+  frontOriginal String?
+  backOriginal  String?
+  holdReason    String? // why a card waits in Needs a look: rotation, pay link, same scan twice
+  sheetInfo     String? // JSON: { front: { sheet, rel, index, box }, back: {...} } for flatbed crops
+  duplicateOfId String?
+
+  // Lil' Stack: a free pack of sub-$1 cards from one batch. A card sits in at most one pack.
+  // Wow score for the home hero (never price). Recomputed whenever the card is identified or repriced.
+  wowScore Int    @default(0)
+  wowTags  String @default("") // comma list: art, chase, graded, newest
+
+  lilStackId   String?
+  lilStack     LilStack? @relation(fields: [lilStackId], references: [id], onDelete: SetNull)
+  // The reveal game: the built pack this card sits in (available / reserved / kept / sold-blind).
+  gamePackId   String?
+  gamePack     GamePack? @relation(fields: [gamePackId], references: [id], onDelete: SetNull)
+  // The scan presented as a finished card (straightened, trimmed, rounded border, soft shadow). Never redrawn.
+  frontDisplay String?
+
+  // identification
+  identSource      String? // filename | manifest | pasted | pokemontcg | scryfall | vision:anthropic | vision:openai | manual
+  sourceConfidence Float     @default(0)
+  fieldConfidence  String    @default("{}") // JSON: { name: 0.9, number: 0.4, ... }
+  identAlternates  String    @default("[]") // JSON: IdentCandidate[]
+  seedCandidates   String    @default("[]") // JSON: what the upload itself said (filename / manifest / pasted line)
+  processedAt      DateTime?
+  confirmedAt      DateTime? // set when I save the card in review
+  identConflict    Boolean   @default(false)
+  catalogId        String? // pokemontcg id or scryfall id
+  catalogImage     String?
+  tcgplayerId      String?
+  tcgplayerUrl     String?
+
+  // pricing
+  suggestedPrice  Float?
+  suggestedSource String?
+  manualPrice     Float?
+  listPrice       Float?
+  priceConflict   Boolean   @default(false)
+  pastedComps     String?
+  shippingProfile String    @default("standard") // standard | bubble | slab
+  pricedAt        DateTime?
+
+  // Stripe Payment Link (direct buy). Created before a card can become Ready.
+  paymentLinkId         String?
+  paymentLinkUrl        String?
+  paymentLinkCreatedAt  DateTime?
+  paymentLinkAmount     Float? // price baked into the link; a different list price means regenerate
+  paymentLinkActive     Boolean   @default(false)
+  stripeSessionId       String? // checkout session that sold it (webhook)
+  paymentLinkHistory    String    @default("") // earlier link ids (comma list) so a checkout on an old link still marks the card Sold
+  // Shipping baked into the live link (added on top of the merchandise price), and the order once sold.
+  paymentLinkShipping   Float? // what the shipping line charges; 0 = free
+  paymentLinkShipMethod String? // pwe | bubble
+  shippingCharged       Float?
+  shipMethod            String? // pwe | bubble
+  shipTo                String? // JSON name + address from Stripe checkout
+  trackingNumber        String?
+  shippedAt             DateTime?
+
+  // listing
+  title         String?
+  description   String?
+  listedChannel String? // ebay | tcgplayer | local
+  listedUrl     String?
+  listedAt      DateTime?
+  exportedAt    DateTime?
+  soldPrice     Float?
+  soldChannel   String?
+  soldAt        DateTime?
+  // eBay lane (lib/ebay/seller.ts): one fixed-price listing per card, sku TS-<id>. Listed = status Listed + listedChannel ebay.
+  ebayOfferId   String?
+  ebayListingId String?
+  ebayOrderId   String?
+  ebayError     String? // last failed listing attempt; the card stayed in stock
+  ebayTriedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes PriceQuote[]
+  runs   SourceRun[]
+
+  @@index([batchId])
+  @@index([status])
+  @@index([frontHash])
+  @@index([paymentLinkId])
+  @@index([backHash])
+  @@index([lilStackId])
+  @@index([gamePackId])
+}
+
+// A pack of exactly 12 cards from one category (the only thing the shop sells). Opening it is free; buying it is one Payment Link. cardIds keeps the pack's order.
+model LilStack {
+  id        String   @id @default(cuid())
+  batchId   String? // packs built before category packs belonged to one batch
+  category  String? // baseball | football | pokemon
+  batch     Batch?   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  seq       Int // 1, 2, 3… within the batch
+  cardIds   String[]
+  cards     Card[]
+  status    String   @default("open") // open | sold | retired (emptied; kept so an old pay link still matches)
+  createdAt DateTime @default(now())
+
+  // One Stripe Payment Link for the whole pack. Price = sum of card list prices, rounded up, min $3.
+  price                 Float?
+  paymentLinkId         String?
+  paymentLinkUrl        String?
+  paymentLinkAmount     Float?
+  paymentLinkActive     Boolean   @default(false)
+  paymentLinkHistory    String    @default("")
+  linkError             String?
+  soldAt                DateTime?
+  soldPrice             Float?
+  stripeSessionId       String?
+  // Shipping baked into the live link (added on top of the merchandise price), and the order once sold.
+  paymentLinkShipping   Float? // what the shipping line charges; 0 = free
+  paymentLinkShipMethod String? // pwe | bubble
+  shippingCharged       Float?
+  shipMethod            String? // pwe | bubble
+  shipTo                String? // JSON name + address from Stripe checkout
+  trackingNumber        String?
+  shippedAt             DateTime?
+
+  @@unique([batchId, seq])
+  @@index([category, status])
+  @@index([paymentLinkId])
+}
+
+// Every price we ever saw. Never overwritten; the panel shows the latest per source.
+model PriceQuote {
+  id            String    @id @default(cuid())
+  cardId        String
+  card          Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source        String // pokemontcg | cardmarket | scryfall | ebay_sold | ebay_active | pasted | manual
+  kind          String // market | retail_ask | sold_comp | manual | summary
+  label         String? // market | low | mid | high | usd | usd_foil | comp | median
+  amount        Float
+  currency      String    @default("USD")
+  condition     String? // NM when the source price is NM; null when unknown
+  rawTitle      String?
+  url           String?
+  soldAt        DateTime?
+  excluded      Boolean   @default(false)
+  excludeReason String?
+  fetchedAt     DateTime  @default(now())
+
+  @@index([cardId, source])
+}
+
+// One row per source attempt, so every skip/failure has a recorded reason.
+model SourceRun {
+  id         String   @id @default(cuid())
+  cardId     String
+  card       Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  source     String
+  phase      String // identify | price
+  status     String // ok | no_match | skipped | error
+  reason     String?
+  durationMs Int      @default(0)
+  at         DateTime @default(now())
+
+  @@index([cardId])
+}
+
+model VisionCache {
+  hash      String   @id // sha256 of front(+back) bytes + provider
+  provider  String
+  result    String
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+/// A player: a Stripe customer with a saved card. No password; the browser holds a signed cookie.
+model Buyer {
+  id                   String       @id @default(cuid())
+  createdAt            DateTime     @default(now())
+  email                String
+  name                 String
+  shipTo               String // JSON name + address, for fulfillment
+  tz                   String // IANA zone from their browser at signup; locks end at its local midnight
+  stripeCustomerId     String       @unique
+  paymentMethodId      String?
+  cardFingerprint      String? // locks follow the card too, so a fresh cookie doesn't reset them
+  cardLabel            String? // "Visa ·· 4242"
+  // Shippo-verified ship-to address id (column name kept from EasyPost; verified at signup and again at checkout).
+  easypostAddressId    String?
+  addressVerified      Boolean      @default(false)
+  // Membership ($7.99/mo Stripe subscription). Status is re-read from Stripe at most hourly.
+  memberSubscriptionId String?
+  memberStatus         String? // active | trialing | past_due | canceled | …
+  memberPeriodStart    DateTime?
+  memberUntil          DateTime?
+  memberCancelAtEnd    Boolean      @default(false)
+  memberCheckedAt      DateTime?
+  orders               ShipOrder[]
+  perks                MemberPerk[]
+  stampCards           StampCard[]
+  cycles               GameCycle[]
+  charges              GameCharge[]
+  locks                GameLock[]
+
+  @@index([cardFingerprint])
+}
+
+/// A built pack for the reveal game: 12 cards of one category. Base: 7 bulk + 4 mid + 1 top, $3.20–$3.80. Hit: 7 bulk + 4 mid + one $4–$9.99 card, $5–$12. Chase: a $10+ card in the top slot.
+model GamePack {
+  id             String     @id @default(cuid())
+  number         Int? // permanent pack number within its category ("Pokemon Pack 12")
+  kind           String     @default("base") // base | hit | chase | member
+  hitCardId      String? // the one $4–$9.99 card in a hit pack (or the $2–$4 top of a member stack)
+  publicAt       DateTime   @default(now()) // a new drop is members-only until this time
+  locationNote   String? // where the physical stack sits, for the pull sheet
+  orderId        String? // null on a kept / blind pack = stored in the player's Collection, not shipped yet
+  order          ShipOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  category       String // baseball | football | pokemon
+  cardIds        String[]
+  cards          Card[]
+  partnerIds     String[] // founders whose cards are in this stack (copied from the cards when built)
+  senderIds      String[] // consignment senders whose cards are in this stack
+  value          Float // summed engine prices of the 12 cards
+  status         String     @default("available") // available | reserved | kept | expired | sold-blind | sold-facebook | dissolved
+  chase          Boolean    @default(false) // top slot swapped for a $10+ chase card (flag on only)
+  chaseCardId    String?
+  builtAt        DateTime   @default(now())
+  reservedBy     String? // Buyer id; nobody else ever sees a reserved pack
+  reservedAt     DateTime?
+  closedAt       DateTime?
+  packedAt       DateTime? // the founder pulled this stack into a pack (Packed); never decides whether it is for sale
+  // Fulfillment once kept or sold blind.
+  charged        Float? // what the player paid in total for this pack ($3.99 keep, $4.99 blind)
+  shipTo         String?
+  trackingNumber String?
+  shippedAt      DateTime?
+
+  @@unique([category, number])
+  @@index([category, status])
+  @@index([reservedBy])
+  @@index([orderId])
+}
+
+/// One play: $1 reveal → keep ($2.99) / pass → optional blind ($4.99). Or a blind buy after a pass.
+model GameCycle {
+  id          String       @id @default(cuid())
+  buyerId     String
+  buyer       Buyer        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  category    String
+  kind        String // peek | blind
+  member      Boolean      @default(false) // this reveal used the monthly member stack
+  shipQuoteId String?
+  creditUsed  Boolean      @default(false) // paid with the category's $4 stamp-card credit
+  status      String // revealing | kept | passed | expired | blind-bought | failed
+  packId      String?
+  revealedAt  DateTime?
+  deadline    DateTime? // reveal + 30 s; keep is refused after it
+  endedAt     DateTime?
+  createdAt   DateTime     @default(now())
+  charges     GameCharge[]
+
+  @@index([buyerId, status])
+}
+
+/// Every charge the game makes (and any refund), for the books and for support.
+model GameCharge {
+  id              String     @id @default(cuid())
+  buyerId         String
+  buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  cycleId         String?
+  cycle           GameCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  ref             String? // shipping charges: the parcel (ShipOrder id), for the idempotency key
+  kind            String // reveal | keep | blind | ship | refund
+  amount          Float
+  paymentIntentId String?
+  status          String // succeeded | failed
+  error           String?
+  createdAt       DateTime   @default(now())
+
+  @@index([buyerId])
+}
+
+/// "$1 reveal with no purchase": that category is closed for this buyer (and their card) until local midnight.
+model GameLock {
+  id          String   @id @default(cuid())
+  buyerId     String
+  buyer       Buyer    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  fingerprint String?
+  category    String
+  until       DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([buyerId, category])
+  @@index([fingerprint, category])
+}
+
+/// One shipping price shown in Collection → Ship: USPS Ground Advantage for one parcel holding the selected packs.
+model ShipQuote {
+  id          String    @id @default(cuid())
+  buyerId     String
+  amount      Float // what the player pays for shipping (0 = rides with an open order, or the member mailer credit)
+  how         String // rate | join | credit | fallback
+  shipmentId  String? // Shippo shipment the rate came from
+  rateId      String?
+  rateAmount  Float? // what Shippo charges me for the label
+  joinOrderId String? // retired: packs no longer join a parcel at purchase
+  packIds     String[] // the stored packs this quote ships together (Collection → Ship)
+  error       String?
+  createdAt   DateTime  @default(now())
+  usedAt      DateTime?
+
+  @@index([buyerId])
+}
+
+/// A parcel: the packs a player picked in Collection → Ship, one label, shipping charged on its own.
+model ShipOrder {
+  id              String     @id @default(cuid())
+  buyerId         String
+  buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  packs           GamePack[]
+  shipTo          String // JSON name + address at purchase
+  shippingCharged Float // what the player paid for shipping
+  paymentIntentId String? // the shipping-only charge
+  how             String // rate | credit | fallback
+  shipmentId      String?
+  rateId          String?
+  labelCost       Float?
+  labelPath       String? // stored PDF (private bucket)
+  labelError      String?
+  trackingCode    String?
+  trackingUrl     String?
+  emailedAt       DateTime?
+  emailError      String?
+  createdAt       DateTime   @default(now())
+  shippedAt       DateTime?
+
+  @@index([buyerId, shippedAt])
+}
+
+/// Member perks used, one row per kind per billing period (mailer credit, member stack).
+model MemberPerk {
+  id        String   @id @default(cuid())
+  buyerId   String
+  buyer     Buyer    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  kind      String // mailer | stack
+  period    String // billing period start, ISO date
+  createdAt DateTime @default(now())
+
+  @@unique([buyerId, kind, period])
+}
+
+/// Stamp card, one per player per category: a paid keep or blind pack = one stamp; 10 stamps = one $4 credit for that
+/// category (one keep or one blind pack). Stamps and credits clear 90 days after the last paid pack in the category.
+model StampCard {
+  id             String    @id @default(cuid())
+  buyerId        String
+  buyer          Buyer     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  category       String
+  stamps         Int       @default(0) // 0–9 toward the next credit
+  credits        Int       @default(0) // unused $4 credits
+  lastPurchaseAt DateTime?
+
+  @@unique([buyerId, category])
+}
+
+/// A partner who owns cards: Matthew, Adrian or Mike. Each gets paid by a manual Stripe Connect transfer.
+model Partner {
+  id              String           @id // matthew | adrian | mike
+  name            String
+  stripeAccountId String? // connected account (acct_…)
+  createdAt       DateTime         @default(now())
+  earnings        PartnerEarning[]
+  payouts         PartnerPayout[]
+}
+
+/// One partner's cut of one sold pack (keep or blind only): pack price minus the Stripe fee, split by engine value.
+model PartnerEarning {
+  id           String         @id @default(cuid())
+  partnerId    String
+  partner      Partner        @relation(fields: [partnerId], references: [id])
+  packId       String
+  saleKind     String // kept | sold-blind
+  packPrice    Float // what the player paid for the pack (shipping is never in here)
+  stripeFee    Float // fees on the charges that make up that price
+  feeEstimated Boolean        @default(false) // Stripe didn't report the fee: 2.9% + $0.30 per charge
+  net          Float
+  cardValue    Float // this partner's cards, summed engine value
+  packValue    Float // the whole stack, summed engine value
+  amount       Float // owed for this pack, rounded to cents
+  payoutId     String?
+  payout       PartnerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+
+  @@unique([packId, partnerId])
+  @@index([partnerId, payoutId])
+}
+
+/// A manual payout: the owed balance sent to the partner's connected account with one Stripe transfer.
+model PartnerPayout {
+  id         String           @id @default(cuid())
+  partnerId  String
+  partner    Partner          @relation(fields: [partnerId], references: [id])
+  amount     Float
+  status     String // pending | paid | failed | retained (moved into the reserve instead of paid out)
+  transferId String?
+  error      String?
+  createdAt  DateTime         @default(now())
+  earnings   PartnerEarning[]
+}
+
+/// An outside sender who consigns cards. Created by me from an accepted submission, only while consignment is unlocked.
+model Sender {
+  id              String          @id @default(cuid())
+  name            String
+  email           String?
+  stripeAccountId String?
+  createdAt       DateTime        @default(now())
+  earnings        SenderEarning[]
+  payouts         SenderPayout[]
+}
+
+/// A sold consignment card: the sender is owed the card's engine price (not a share of the pack).
+model SenderEarning {
+  id        String        @id @default(cuid())
+  senderId  String
+  sender    Sender        @relation(fields: [senderId], references: [id])
+  cardId    String        @unique
+  packId    String
+  amount    Float
+  payoutId  String?
+  payout    SenderPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdAt DateTime      @default(now())
+
+  @@index([senderId, payoutId])
+}
+
+model SenderPayout {
+  id         String          @id @default(cuid())
+  senderId   String
+  sender     Sender          @relation(fields: [senderId], references: [id])
+  amount     Float
+  status     String // pending | paid | failed
+  transferId String?
+  error      String?
+  createdAt  DateTime        @default(now())
+  earnings   SenderEarning[]
+}
+
+/// The consignment reserve, as a ledger. In: peeks, memberships, the company's part of sold packs, founder shares
+/// retained. Out: sender payouts. Never filled from one sender's money to cover another's card.
+model ReserveEntry {
+  id        String   @id @default(cuid())
+  kind      String // peek | membership | pack | retained | sender-payout | adjust
+  amount    Float
+  ref       String?  @unique // idempotency: peek:<cycle>, member:<invoice>, pack:<pack>, payout:<id>
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([kind])
+}
+
+/// A public request to mail in bulk for consignment. Only accepted (and only open to the public) while unlocked.
+model ConsignSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  about     String
+  status    String   @default("pending") // pending | accepted | declined
+  senderId  String?
+  createdAt DateTime @default(now())
+}
+
+/// A PDF of scanned cards. Split on the server one page per request; each card on a page becomes its own crop.
+/// The same PDF (by hash) is never ingested twice.
+model PdfIngest {
+  id        String   @id @default(cuid())
+  batchId   String
+  name      String
+  hash      String   @unique
+  rel       String // the original PDF in storage
+  pages     Int
+  results   String   @default("[]") // JSON [{ page, cards, note? }] filled in as pages are split
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+}

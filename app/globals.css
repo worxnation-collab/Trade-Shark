@@ -1,0 +1,279 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy: #0b1f3a;
+  --color-navy-2: #14305a;
+  --color-teal: #1aa6a6;
+  --color-teal-2: #138585;
+  --color-sand: #f4efe6;
+  --color-sand-2: #e9e1d2;
+  --color-coral: #e85d4c;
+  --color-gold: #d9a441;
+  --color-keep: #2f6b3a;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-sand);
+  color: var(--color-navy);
+}
+
+@utility btn {
+  @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50;
+  transition-duration: 120ms;
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+@utility btn-primary {
+  @apply btn bg-teal text-white hover:bg-teal-2;
+}
+@utility btn-dark {
+  @apply btn bg-navy text-white hover:bg-navy-2;
+}
+@utility btn-ghost {
+  @apply btn border border-navy/20 bg-white text-navy hover:border-navy/40;
+}
+@utility btn-coral {
+  @apply btn bg-coral text-white hover:brightness-95;
+}
+@utility card {
+  @apply rounded-lg border border-navy/10 bg-white;
+}
+@utility input {
+  @apply w-full rounded-md border border-navy/20 bg-white px-2 py-1.5 text-sm outline-none focus:border-teal focus:ring-2 focus:ring-teal/30;
+}
+@utility input-uncertain {
+  @apply border-coral bg-coral/5 ring-1 ring-coral/40;
+}
+@utility label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-navy/60;
+}
+@utility chip {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
+}
+@layer components {
+table.grid-table {
+  @apply w-full text-sm;
+}
+table.grid-table th {
+  @apply border-b border-navy/10 px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-navy/60;
+}
+table.grid-table td {
+  @apply border-b border-navy/5 px-2 py-1.5 align-middle;
+}
+kbd {
+  @apply rounded border border-navy/20 bg-white px-1 font-mono text-[11px];
+}
+}
+
+/* Cards lift a touch on hover. */
+@utility lift {
+  transition: transform 160ms ease;
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+/* The reveal button: navy with a gold edge; dips a little when pressed. */
+@utility btn-reveal {
+  @apply inline-flex items-center justify-center rounded-lg border-2 border-gold bg-navy font-bold text-sand transition-transform disabled:opacity-50;
+  transition-duration: 90ms;
+  &:active:not(:disabled) {
+    transform: translateY(2px) scale(0.985);
+  }
+}
+/* Keep: green and still. */
+@utility btn-keep {
+  @apply inline-flex items-center justify-center rounded-lg bg-keep font-bold text-white disabled:opacity-50;
+}
+/* The only object with a shadow. */
+.pack-shadow {
+  filter: drop-shadow(0 18px 22px rgb(0 0 0 / 0.45));
+}
+/* A thin gold line under page titles. */
+.gold-rule {
+  height: 2px;
+  width: 4.5rem;
+  background: var(--color-gold);
+}
+
+/* ---------- Lil' Stack pack ---------- */
+.ls-pack {
+  filter: drop-shadow(0 18px 28px rgb(0 0 0 / 0.45));
+}
+.ls-body {
+  background: linear-gradient(160deg, #14305a 0%, #0b1f3a 55%, #081629 100%);
+  border-left: 1px solid rgb(244 239 230 / 0.12);
+  border-right: 1px solid rgb(244 239 230 / 0.12);
+}
+.ls-crimp {
+  background:
+    repeating-linear-gradient(90deg, rgb(244 239 230 / 0.28) 0 3px, transparent 3px 7px),
+    linear-gradient(#138585, #0e6e6e);
+  border-radius: 4px;
+  transition: transform 120ms ease-out;
+}
+.ls-sheen {
+  background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.16) 45%, transparent 60%);
+  background-size: 250% 100%;
+  animation: ls-sheen 3.5s ease-in-out infinite;
+}
+@keyframes ls-sheen {
+  0% { background-position: 120% 0; }
+  60%, 100% { background-position: -40% 0; }
+}
+/* Torn: the top strip is gone and the edge is ragged. */
+.ls-torn .ls-body {
+  top: 0;
+  clip-path: polygon(0 6%, 6% 2%, 12% 7%, 19% 1%, 26% 6%, 33% 2%, 41% 8%, 49% 1%, 57% 6%, 64% 2%, 72% 7%, 80% 1%, 87% 6%, 94% 2%, 100% 5%, 100% 100%, 0 100%);
+}
+/* The 10 s / 20 s nudge: a small tilt of the pack, never the page. */
+.ls-nudge {
+  animation: ls-nudge 520ms ease-in-out;
+  transform-origin: 50% 90%;
+}
+@keyframes ls-nudge {
+  30% { transform: rotate(-4deg); }
+  65% { transform: rotate(3deg); }
+}
+/* After payment the seal splits open (about half a second): the top strip lifts away, the pack drops and fades. */
+.seal-top {
+  clip-path: inset(0 0 82% 0);
+  animation: seal-top 500ms cubic-bezier(0.3, 0.7, 0.3, 1) forwards;
+}
+.seal-body {
+  clip-path: inset(18% 0 0 0);
+  animation: seal-body 500ms ease-in forwards;
+}
+@keyframes seal-top {
+  to { transform: translate(14%, -26%) rotate(9deg); opacity: 0; }
+}
+@keyframes seal-body {
+  60% { opacity: 1; }
+  to { transform: translateY(10%); opacity: 0; }
+}
+.ls-arrow {
+  animation: ls-arrow 1.4s ease-in-out infinite;
+}
+@keyframes ls-arrow {
+  50% { transform: translateX(6px); }
+}
+/* Cards fly out of the pack, flip face up and settle into a fan. */
+.ls-card {
+  transform: rotate(var(--rot)) translateY(var(--lift));
+  animation: ls-deal 560ms cubic-bezier(0.2, 0.8, 0.25, 1.15) both;
+  animation-delay: calc(var(--i) * 70ms);
+}
+@keyframes ls-deal {
+  from {
+    opacity: 0;
+    transform: translateY(-160px) scale(0.35) rotate(0deg);
+  }
+}
+.ls-flip {
+  transform-style: preserve-3d;
+  animation: ls-flip 520ms ease-out both;
+  animation-delay: calc(var(--i) * 70ms + 220ms);
+}
+@keyframes ls-flip {
+  from { transform: rotateY(180deg); }
+  to { transform: rotateY(0deg); }
+}
+/* After the pass puff, the pack stays faded: it's gone for you. */
+.gone {
+  opacity: 0.25;
+  filter: grayscale(0.6);
+  transition: opacity 400ms, filter 400ms;
+}
+/* Then the cards fan out from the pack, one after another. */
+.card-in {
+  animation: card-in 420ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  animation-delay: calc(var(--i) * 50ms);
+  transform-origin: 50% 120%;
+}
+.after-seal .card-in {
+  animation-delay: calc(480ms + var(--i) * 50ms);
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(-28px) rotate(calc((var(--i) - 5.5) * 2deg)) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+.ls-buy {
+  animation: ls-rise 420ms ease-out both;
+  animation-delay: 700ms;
+}
+@keyframes ls-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.ls-face {
+  backface-visibility: hidden;
+}
+.ls-back {
+  transform: rotateY(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+  .btn:active,
+  .btn-primary:active,
+  .btn-dark:active,
+  .btn-ghost:active,
+  .btn-coral:active,
+  .lift:hover {
+    transform: none !important;
+  }
+  .ls-card,
+  .card-in,
+  .ls-nudge,
+  .seal-top,
+  .seal-body,
+  .ls-buy,
+  .ls-flip,
+  .ls-sheen,
+  .ls-arrow {
+    animation: none !important;
+  }
+}
+
+/* Gemini scene art (lib/brandScenes.json). Art sits behind the pack only; text never sits on busy art. */
+.stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--color-navy);
+}
+.stage > .stage-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The case: columns of cards drifting slowly down, looping (the list is doubled; one copy's height per loop). */
+.case-col {
+  animation: case-drift 120s linear infinite;
+  will-change: transform;
+}
+.case-reel[data-paused] .case-col {
+  animation-play-state: paused;
+}
+@keyframes case-drift {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .case-col { animation: none !important; }
+  .case-reel { height: auto !important; overflow: visible !important; }
+  .case-dup { display: none !important; }
+}

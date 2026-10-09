@@ -1,0 +1,13 @@
+node_modules
+.next
+next-env.d.ts
+*.tsbuildinfo
+.env
+.env.local
+/data/*
+!/data/.gitkeep
+prisma/*.db
+prisma/*.db-journal
+.netlify
+/public/vendor
+.art-raw/
