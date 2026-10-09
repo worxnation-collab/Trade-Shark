@@ -10,7 +10,7 @@ export interface ChargeApi {
 
 export const chargeApi = () => stripe() as unknown as ChargeApi | null;
 
-export type ChargeKind = "reveal" | "keep" | "blind" | "ship";
+export type ChargeKind = "keep" | "blind" | "ship";
 
 /**
  * Charge the player's saved card right now. Every attempt is written to GameCharge. The idempotency key is the

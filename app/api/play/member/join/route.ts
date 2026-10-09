@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { siteUrl } from "@/lib/env";
-import { currentBuyer } from "@/lib/game/buyer";
+import { currentBuyer, isGuest } from "@/lib/game/buyer";
 import { isMember, memberPrice } from "@/lib/game/member";
 import { stripe, stripeErrorMessage } from "@/lib/stripe";
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const back = (msg: string) => NextResponse.redirect(`${base}/play/member?error=${encodeURIComponent(msg)}`, 303);
   const s = stripe();
   const buyer = await currentBuyer();
-  if (!buyer) return NextResponse.redirect(`${base}/play/card?next=`, 303);
+  if (!buyer || isGuest(buyer)) return NextResponse.redirect(`${base}/play/card?next=`, 303);
   if (!s) return back("Payments aren't set up yet.");
   if (isMember(buyer)) return NextResponse.redirect(`${base}/play/member`, 303);
   try {

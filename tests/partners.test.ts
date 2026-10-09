@@ -49,7 +49,7 @@ describe("partner split", () => {
   });
 });
 
-import { fitsReserve, KEEP_SPLIT_INCLUDES_REVEAL, ownerValue, parseOwner, reserveState } from "@/lib/partners/split";
+import { fitsReserve, ownerValue, parseOwner, reserveState } from "@/lib/partners/split";
 
 describe("owners", () => {
   it("a tag is a founder or a sender, never both, never blank", () => {
@@ -59,10 +59,6 @@ describe("owners", () => {
     expect(parseOwner("")).toBe(null);
     expect(ownerValue({ partnerId: "mike" })).toBe("f:mike");
     expect(ownerValue({ senderId: "x1" })).toBe("s:x1");
-  });
-
-  it("the $1 peek is company money: a keep splits the $2.99 keep charge only", () => {
-    expect(KEEP_SPLIT_INCLUDES_REVEAL).toBe(false);
   });
 
   it("a consignment card takes no founder share; its part of the net stays with the company", () => {

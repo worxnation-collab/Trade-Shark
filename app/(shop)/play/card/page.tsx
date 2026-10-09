@@ -1,18 +1,19 @@
 import { RULES_LINE } from "@/lib/game/rules";
-import { currentBuyer } from "@/lib/game/buyer";
+import { currentBuyer, isGuest } from "@/lib/game/buyer";
 import { TzField } from "./TzField";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Save a card · Trade Shark" };
 
-/** Before the first $1 reveal: a saved card (Stripe) and where to ship. */
+/** Save or change a card (Stripe) and where to ship. Not needed to look: a first Keep saves the card with its payment. */
 export default async function SaveCard({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next, error } = await searchParams;
-  const buyer = await currentBuyer();
+  const raw = await currentBuyer();
+  const buyer = raw && !isGuest(raw) ? raw : null;
   return (
     <div className="mx-auto max-w-md space-y-5 py-4">
       <div>
-        <h1 className="text-3xl font-extrabold">{buyer ? "Change your card" : "Save a card to play"}</h1>
+        <h1 className="text-3xl font-extrabold">{buyer ? "Change your card" : "Save a card"}</h1>
         <p className="mt-2 text-sm text-navy/70">{RULES_LINE}</p>
         <p className="mt-2 text-sm text-navy/70">
           Your card is saved with Stripe so each step is one tap. Nothing is charged until you tap a price. Packs you keep ship to the address below.

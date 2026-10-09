@@ -29,9 +29,9 @@ export default async function CollectionPage() {
       <PageTitle title="Collection" />
       {!buyer ? (
         <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
-          Your packs show up here once you play.{" "}
-          <Link href="/play/card" className="underline">
-            Save a card to start
+          Your packs show up here once you keep one.{" "}
+          <Link href="/" className="underline">
+            Have a look
           </Link>
           .
         </p>

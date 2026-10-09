@@ -4,17 +4,17 @@ import { ShopUnavailable } from "@/components/ShopUnavailable";
 import { Pack } from "@/components/Pack";
 import { PageTitle, Stage } from "@/components/Stage";
 import { doorSlug } from "@/lib/auth";
-import { CATEGORIES } from "@/lib/categories";
+import { CATEGORIES, PUBLIC_CATEGORIES } from "@/lib/categories";
 import { categoryStatus } from "@/lib/game/packs";
 import { RULES_LINE } from "@/lib/game/rules";
 
 export const dynamic = "force-dynamic";
 
-/** Pick a category: three pack objects on their stages. The rules sentence is here and on the pack screen, before any payment (navy on sand, never on a stage). */
+/** The public packs (PUBLIC_CATEGORIES: Pokémon only for now) on their stages. The rules sentence is here and on the pack screen, before anyone looks (navy on sand, never on a stage). */
 export default async function Home() {
   let items;
   try {
-    items = await Promise.all(CATEGORIES.map(async (c) => ({ ...c, ...(await categoryStatus(c.key)) })));
+    items = await Promise.all(CATEGORIES.filter((c) => PUBLIC_CATEGORIES.includes(c.key)).map(async (c) => ({ ...c, ...(await categoryStatus(c.key)) })));
   } catch (e) {
     console.error("catalog query failed", e);
     return <ShopUnavailable />;
@@ -22,11 +22,11 @@ export default async function Home() {
   const door = doorSlug();
   return (
     <div className="relative space-y-10 pb-6">
-      <PageTitle title="Pick a pack.">
+      <PageTitle title={items.length === 1 ? "Open a pack." : "Pick a pack."}>
         <p>{RULES_LINE}</p>
-        <p className="mt-2 text-sm font-normal text-navy/65">Every pack is 12 real cards from my shop. You see all 12 before you decide to keep it.</p>
+        <p className="mt-2 text-sm font-normal text-navy/65">Every pack is 12 real cards from my shop.</p>
       </PageTitle>
-      <ul className="grid gap-6 sm:grid-cols-3">
+      <ul className={items.length === 1 ? "mx-auto max-w-sm" : "grid gap-6 sm:grid-cols-3"}>
         {items.map((it) => (
           <li key={it.key}>
             <Link href={`/packs/${it.key}`} className="group block">
@@ -37,7 +37,7 @@ export default async function Home() {
               </Stage>
               <div className="pt-3 text-center">
                 <h2 className="font-display text-xl text-navy">{it.product}</h2>
-                <p className="mt-0.5 text-base text-navy/75">{it.open ? "$1 to reveal." : "Restocking. Check back soon."}</p>
+                <p className="mt-0.5 text-base text-navy/75">{it.open ? "Looking is free." : "Restocking. Check back soon."}</p>
               </div>
             </Link>
           </li>

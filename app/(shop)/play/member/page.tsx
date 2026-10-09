@@ -32,7 +32,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
           ))}
         </ul>
         <h2 className="pt-2 font-bold">What it isn&apos;t</h2>
-        <p className="text-sm text-navy/70">No extra reveals, no cheaper everyday packs, and no free shipping on every pack. Reveals are still $1 and packs still cost what they cost.</p>
+        <p className="text-sm text-navy/70">No extra looks, no cheaper everyday packs, and no free shipping on every pack. Packs still cost what they cost.</p>
       </div>
 
       {!buyer || !buyer.paymentMethodId ? (

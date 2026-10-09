@@ -15,6 +15,11 @@ export const isCategory = (v: unknown): v is Category => typeof v === "string" &
 export const categoryOf = (key: string | null | undefined) => CATEGORIES.find((c) => c.key === key) ?? null;
 export const productName = (key: string | null | undefined) => categoryOf(key)?.product ?? "Pack";
 
+/** Categories on the public shop. The desk still scans, prices and builds all three. */
+// Baseball and football come back by adding "baseball" / "football" to this list once they're stocked.
+export const PUBLIC_CATEGORIES: Category[] = ["pokemon"];
+export const isPublicCategory = (v: unknown): v is Category => isCategory(v) && PUBLIC_CATEGORIES.includes(v);
+
 // Full names settle the cities two leagues share (Giants, Cardinals); nicknames catch "Yankees" on its own.
 const MLB = [
   "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", "Chicago Cubs", "Chicago White Sox", "Cincinnati Reds",

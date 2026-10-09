@@ -3,7 +3,7 @@ import { siteUrl } from "../env";
 import { PRICES } from "../game/rules";
 import { getSettings } from "../settings";
 import { stripe, stripeErrorMessage } from "../stripe";
-import { KEEP_SPLIT_INCLUDES_REVEAL, PARTNERS, STAMP_CREDIT, estimateFee, reserveState, splitNet } from "./split";
+import { PARTNERS, STAMP_CREDIT, estimateFee, reserveState, splitNet } from "./split";
 
 export * from "./split";
 
@@ -27,11 +27,6 @@ export async function addReserve(kind: string, amount: number, ref: string, note
   await db.reserveEntry.create({ data: { kind, amount: r2(amount), ref, note } }).catch((e: { code?: string }) => {
     if (e.code !== "P2002") throw e; // already recorded
   });
-}
-
-/** A $1 peek was charged: company revenue, into the reserve (after Stripe's cut). */
-export async function reservePeek(cycleId: string) {
-  await addReserve("peek", PRICES.reveal - estimateFee(PRICES.reveal), `peek:${cycleId}`, "$1 peek (fee estimated)").catch((e) => console.error("reserve peek failed", e));
 }
 
 /** A membership invoice was paid: company revenue, into the reserve. */
@@ -98,9 +93,9 @@ export async function recordSale(packId: string) {
   if (!pack || (pack.status !== "kept" && pack.status !== "sold-blind")) return { ok: false as const, error: "not a sold pack" };
   const cycle = await db.gameCycle.findFirst({ where: { packId, status: { in: ["kept", "blind-bought"] } }, include: { charges: { where: { status: "succeeded" } } } });
   if (!cycle) return { ok: false as const, error: "no completed purchase for this pack" };
-  const kinds = pack.status === "kept" ? (KEEP_SPLIT_INCLUDES_REVEAL ? ["reveal", "keep"] : ["keep"]) : ["blind"];
+  const kinds = pack.status === "kept" ? ["keep"] : ["blind"];
   const charges = cycle.charges.filter((c) => kinds.includes(c.kind));
-  const packPrice = pack.status === "kept" ? (KEEP_SPLIT_INCLUDES_REVEAL ? PRICES.keepTotal : PRICES.keepMore) : PRICES.blind;
+  const packPrice = pack.status === "kept" ? PRICES.keep : PRICES.blind;
   let fee = 0;
   let estimated = false;
   for (const c of charges) {

@@ -5,6 +5,7 @@ import {
   HARD_CAP,
   HIT_TARGET,
   isBump,
+  LOOKS_PER_DAY,
   nextLocalMidnight,
   oddsLines,
   PRICES,
@@ -15,6 +16,7 @@ import {
   slotOf,
   sumValue,
   TARGET,
+  TIMER_SECONDS,
   type PackKind,
   type PoolCard,
   type Rng,
@@ -151,26 +153,23 @@ describe("pack mix", () => {
 });
 
 describe("game copy and prices", () => {
-  it("the rules sentence and prices", () => {
-    expect(RULES_LINE).toBe("$1 to reveal. Keep for $2.99 more. Pass, or let the timer end, and the only option left is a $4.99 pack you see after you pay.");
-    expect(PRICES).toEqual({ reveal: 1, keepMore: 2.99, keepTotal: 3.99, blind: 4.99 });
-    expect(PRICES.reveal + PRICES.keepMore).toBeCloseTo(PRICES.keepTotal, 10);
+  it("looking is free: the rules sentence, one $3.99 keep, a 120 s clock, 3 looks a day", () => {
+    expect(RULES_LINE).toBe("See all 12 first. Keep them for $3.99, or put them back. Looking is free.");
+    expect(PRICES).toEqual({ keep: 3.99, blind: 4.99 });
+    expect(TIMER_SECONDS).toBe(120);
+    expect(LOOKS_PER_DAY).toBe(3);
   });
 
-  it("odds: the same lines for peek and blind; the hit line always, the $10 line only with chase on", () => {
-    const base = [
-      "7 of 12 cards are bulk, usually under $0.25",
-      "4 are modest, usually $0.25 to $1",
-      "1 is the best card in the pack, usually $1 to $2",
-      "Pack value is usually close to the $3.99 keep price",
-      "About 18 in 100 packs contain a card priced from $4 to $10.",
-    ];
-    expect(oddsLines(false)).toEqual([...base, "Chase cards are not in packs until that feature is turned on"]);
-    expect(oddsLines(true)).toEqual([...base, "About 2 in 100 packs contain a card priced at $10 or more."]);
+  it("odds: never says what a pack is worth; chase only when it's on", () => {
+    const base = ["11 cards are under $1.", "1 is the best card in the pack.", "About 1 in 5 packs, that best card is $4 or more."];
+    const raw = "Raw, as scanned. Sleeved and top-loaded. Not for grading.";
+    expect(oddsLines(false)).toEqual([...base, raw]);
+    expect(oddsLines(false).join(" ")).not.toMatch(/chase|\$10|worth|3\.99/i);
+    expect(oddsLines(true)).toEqual([...base, "About 2 in 100 packs contain a card priced at $10 or more.", raw]);
   });
 });
 
-describe("lock until local midnight", () => {
+describe("the daily look count resets at local midnight", () => {
   it("ends at the player's next midnight, DST included", () => {
     // 9 pm in New York (EDT, UTC-4) on Oct 5 → midnight Oct 6 local = 04:00 UTC.
     expect(nextLocalMidnight(new Date("2026-10-06T01:00:00Z"), "America/New_York").toISOString()).toBe("2026-10-06T04:00:00.000Z");

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isCategory } from "@/lib/categories";
 import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
-import { currentBuyer, PLAYER_COOKIE, PLAYER_COOKIE_OPTS, playerToken } from "@/lib/game/buyer";
+import { currentBuyer, isGuest, PLAYER_COOKIE, PLAYER_COOKIE_OPTS, playerToken } from "@/lib/game/buyer";
 import { isValidZone } from "@/lib/game/rules";
 import { shippingReady, verifyAddress } from "@/lib/ship/shippo";
 import { stripe, stripeErrorMessage } from "@/lib/stripe";
@@ -12,8 +12,9 @@ export const runtime = "nodejs";
 const field = (f: FormData, k: string, max = 120) => String(f.get(k) ?? "").trim().slice(0, max);
 
 /**
- * Save a card to play. Name, email and a US shipping address come from my form; the card goes to Stripe
- * Checkout in setup mode (no charge). Returning players can come back here to swap cards.
+ * Save a card (optional: a first Keep saves one with its payment). Name, email and a US shipping address come from
+ * my form; the card goes to Stripe Checkout in setup mode (no charge). Returning players can come back here to swap
+ * cards. A guest (looked, never paid) is filled in rather than made again.
  */
 export async function POST(req: Request) {
   const f = await req.formData();
@@ -23,7 +24,8 @@ export async function POST(req: Request) {
   if (!s) return back("Payments aren't set up yet.");
   const next = isCategory(field(f, "next")) ? field(f, "next") : "";
   try {
-    let buyer = await currentBuyer();
+    const current = await currentBuyer();
+    let buyer = current && !isGuest(current) ? current : null;
     if (!buyer) {
       const ship = { name: field(f, "name"), line1: field(f, "line1"), line2: field(f, "line2"), city: field(f, "city"), state: field(f, "state", 2).toUpperCase(), postal: field(f, "postal", 10) };
       const email = field(f, "email");
@@ -39,16 +41,15 @@ export async function POST(req: Request) {
         shipping: { name: ship.name, address: { line1: ship.line1, line2: ship.line2 || undefined, city: ship.city, state: ship.state, postal_code: ship.postal, country: "US" } },
         metadata: { trade_shark: "player" },
       });
-      buyer = await db.buyer.create({
-        data: {
-          email,
-          name: ship.name,
-          shipTo: JSON.stringify({ name: ship.name, email, address: { ...ship, country: "US" } }),
-          tz,
-          stripeCustomerId: customer.id,
-          ...(v?.ok ? { easypostAddressId: v.id, addressVerified: true } : {}),
-        },
-      });
+      const data = {
+        email,
+        name: ship.name,
+        shipTo: JSON.stringify({ name: ship.name, email, address: { ...ship, country: "US" } }),
+        tz,
+        stripeCustomerId: customer.id,
+        ...(v?.ok ? { easypostAddressId: v.id, addressVerified: true } : {}),
+      };
+      buyer = current ? await db.buyer.update({ where: { id: current.id }, data }) : await db.buyer.create({ data });
     }
     const session = await s.checkout.sessions.create({
       mode: "setup",

@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { categorize, sportOf } from "@/lib/categories";
+import { CATEGORY_KEYS, categorize, isCategory, isPublicCategory, PUBLIC_CATEGORIES, sportOf } from "@/lib/categories";
 
 
 describe("categories", () => {
+  it("the public shop shows Pokémon only; baseball and football stay categories for the desk", () => {
+    expect(PUBLIC_CATEGORIES).toEqual(["pokemon"]);
+    expect(isPublicCategory("pokemon")).toBe(true);
+    expect(isPublicCategory("baseball")).toBe(false);
+    expect(isPublicCategory("football")).toBe(false);
+    expect(CATEGORY_KEYS).toEqual(["baseball", "football", "pokemon"]);
+    expect(isCategory("baseball")).toBe(true);
+  });
+
   it("Pokemon cards go in the Pokemon Pack; Magic and other games never get packed", () => {
     expect(categorize({ game: "Pokemon" })).toBe("pokemon");
     expect(categorize({ game: "Magic" })).toBe(null);

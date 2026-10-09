@@ -1,10 +1,11 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { db } from "../db";
 
 /**
- * A player is a Stripe customer with a saved card, held in a signed cookie. No password, no profile page.
- * Locks also follow the card fingerprint, so clearing cookies doesn't reset a category lock.
+ * A player is a Buyer held in a signed cookie. No password, no profile page. Looking is free, so a visitor who has
+ * never paid is a guest Buyer (no Stripe customer yet, `stripeCustomerId` "guest_…"); the first Keep turns them into
+ * a Stripe customer with a saved card. The daily look count also follows the card fingerprint.
  */
 export const PLAYER_COOKIE = "ts_player";
 
@@ -35,4 +36,19 @@ export const PLAYER_COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, se
 export async function currentBuyer() {
   const id = buyerIdFromToken((await cookies()).get(PLAYER_COOKIE)?.value);
   return id ? db.buyer.findUnique({ where: { id } }) : null;
+}
+
+/** A guest has looked but never paid: no Stripe customer, no card, no address yet. */
+export const GUEST_PREFIX = "guest_";
+export const isGuest = (b: { stripeCustomerId: string } | null | undefined) => !!b && b.stripeCustomerId.startsWith(GUEST_PREFIX);
+
+/** A new guest for a signed-out visitor's first look. The cookie is set by the route that made it. */
+export async function newGuest(tz: string) {
+  return db.buyer.create({ data: { email: "", name: "", shipTo: "{}", tz, stripeCustomerId: `${GUEST_PREFIX}${randomBytes(12).toString("hex")}` } });
+}
+
+/** The visitor's network address, hashed (only to cap looks per address; never stored raw). */
+export function ipKey(h: Pick<Headers, "get">): string | null {
+  const ip = h.get("x-nf-client-connection-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  return ip ? `ip:${createHash("sha256").update(`look:${ip}`).digest("hex").slice(0, 32)}` : null;
 }

@@ -13,4 +13,4 @@ export function play<A extends unknown[]>(fn: (...a: A) => Promise<Response>) {
   };
 }
 
-export const statusFor = (code?: string) => (code === "no-card" ? 402 : code === "locked" || code === "busy" || code === "not-offered" || code === "ship-changed" || code === "no-stack" ? 409 : code === "closed" || code === "expired" ? 410 : 400);
+export const statusFor = (code?: string) => (code === "no-card" ? 402 : code === "no-looks" || code === "busy" || code === "ship-changed" || code === "no-stack" ? 409 : code === "closed" || code === "expired" ? 410 : 400);

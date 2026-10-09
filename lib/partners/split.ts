@@ -2,7 +2,7 @@
  * Owner payouts, the pure part. Every card has an owner: a founder (Matthew, Adrian, Mike) or an outside sender
  * (consignment). A sold pack (keep or blind only): pack price − Stripe fee − any stamp credit = net, split among
  * founders by engine value. A consignment card takes no share: its sender is owed the card's engine price, paid
- * from the reserve. The $1 peek, memberships and shipping are company money and never split.
+ * from the reserve. Memberships and shipping are company money and never split. Looking at a pack is free.
  */
 
 export const PARTNERS = [
@@ -13,12 +13,6 @@ export const PARTNERS = [
 export type PartnerId = (typeof PARTNERS)[number]["id"];
 export const isPartner = (v: unknown): v is PartnerId => typeof v === "string" && PARTNERS.some((p) => p.id === v);
 export const partnerName = (id: string | null | undefined) => PARTNERS.find((p) => p.id === id)?.name ?? "No partner";
-
-/**
- * The $1 peek is company revenue (it goes to the reserve), so a keep splits only the $2.99 keep charge.
- * Set true to split the whole $3.99 instead (both charges and both fees).
- */
-export const KEEP_SPLIT_INCLUDES_REVEAL = false;
 
 /** A stamp-card credit takes this off the pack price before the split. */
 export const STAMP_CREDIT = 4;

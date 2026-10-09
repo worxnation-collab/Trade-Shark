@@ -35,8 +35,8 @@ export default async function PayoutsPage() {
       <div>
         <h1 className="text-2xl font-extrabold">Payouts</h1>
         <p className="text-sm text-navy/70">
-          Founders split a sold pack (keep $2.99 or blind $4.99, minus the Stripe fee and any stamp credit) by engine value. A consignment card takes no share: its sender is owed that
-          card&apos;s engine price, paid from the reserve. The $1 peek and memberships are company money and fill the reserve; shipping pays the label. Unsold cards and expired peeks pay
+          Founders split a sold pack (keep $3.99 or blind $4.99, minus the Stripe fee and any stamp credit) by engine value. A consignment card takes no share: its sender is owed that
+          card&apos;s engine price, paid from the reserve. Memberships are company money and fill the reserve; shipping pays the label. Looking is free; unsold cards and packs put back pay
           nothing. Every payout is a manual Stripe Connect transfer.
         </p>
         {untagged > 0 && <p className="mt-2 rounded bg-coral/10 p-2 text-sm text-coral">{untagged} card(s) in stock have no owner and can&apos;t go in a pack. Tag them on their batch page.</p>}
@@ -72,7 +72,7 @@ export default async function PayoutsPage() {
             </div>
           </dl>
           <p className="mt-2 text-xs text-navy/60">
-            Filled only by company money: peeks, memberships, the company&apos;s part of sold packs, and founder shares retained here. A stack is built with consignment cards only
+            Filled only by company money: memberships, the company&apos;s part of sold packs, and founder shares retained here. A stack is built with consignment cards only
             if the reserve covers all of them together.
           </p>
         </div>

@@ -3,6 +3,7 @@ import { db } from "./db";
 import { markPackSold, packForLink } from "./lilStack";
 
 /**
+ * checkout.session.completed for a Keep (metadata kind "keep") → finish that Keep (lib/game/play.ts completeCheckout).
  * checkout.session.completed → mark the matching card (or Lil' Stack and all its cards) Sold. Matching is by
  * the Payment Link id stored on the card or pack; sessions from anything else are ignored. Idempotent: a repeat delivery
  * for an already-sold card changes nothing.
@@ -25,6 +26,18 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<{ handled:
     const { applySubscription } = await import("./game/member");
     const r = await applySubscription(event.data.object as Stripe.Subscription);
     return { handled: r.count > 0, note: `membership ${event.type} (${r.count})` };
+  }
+  // A Keep paid on Checkout (no saved card yet). The return URL usually gets there first; this catches a closed tab.
+  if (event.type.startsWith("checkout.session.") && (event.data.object as Stripe.Checkout.Session).metadata?.kind === "keep") {
+    const s = event.data.object as Stripe.Checkout.Session;
+    const { closeCheckout, completeCheckout } = await import("./game/play");
+    if (event.type === "checkout.session.expired") {
+      const r = await closeCheckout(s.metadata!.cycle_id!, "expired");
+      return { handled: true, note: `keep checkout ${s.id} ${r.status}` };
+    }
+    if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { handled: false, note: `ignored ${event.type}` };
+    const r = await completeCheckout(s.id);
+    return { handled: r.ok, note: r.ok ? `keep ${s.id} kept` : `keep ${s.id}: ${r.error}` };
   }
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded")
     return { handled: false, note: `ignored ${event.type}` };

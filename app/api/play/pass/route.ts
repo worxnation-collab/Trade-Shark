@@ -4,7 +4,7 @@ import { json, play } from "../_util";
 
 export const runtime = "nodejs";
 
-/** Pass, or the page going away (sent with navigator.sendBeacon, so it may arrive as text/plain). Never charges. */
+/** Pass, or the 120 s running out. Never charges. Leaving the page is not a pass. */
 export const POST = play(async (req: Request) => {
   const buyer = await currentBuyer();
   if (!buyer) return json({ ok: false, error: "Not signed in." }, 401);

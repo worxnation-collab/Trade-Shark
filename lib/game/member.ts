@@ -4,14 +4,13 @@ import { db } from "../db";
 import { stripe } from "../stripe";
 
 /**
- * Membership: $7.99 a month (Stripe subscription). It does NOT add reveals, cheaper packs or free shipping on every
- * pack. It gives: no midnight lockout, one mailer credit a month (zeros one label), one member stack a month (top slot
- * bumped to a $2–$4 card), and the first hour of every new drop.
+ * Membership: $7.99 a month (Stripe subscription). It does NOT add looks, cheaper packs or free shipping on every
+ * pack. It gives: one mailer credit a month (zeros one label), one member stack a month (top slot bumped to a $2–$4
+ * card), and the first hour of every new drop.
  */
 export const MEMBER_PRICE = 7.99;
 export const MEMBER_LOOKUP_KEY = "trade_shark_member_monthly";
 export const MEMBER_PERKS = [
-  "No midnight lockout after a pass",
   "One mailer credit a month: one parcel ships free",
   "One member stack a month: the best card is bumped to $2–$4",
   "New drops an hour before everyone else",

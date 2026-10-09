@@ -29,28 +29,32 @@ export const HIT_CAP = { recent: 0.2, ready: 0.2 } as const;
 
 export type PackKind = "base" | "hit" | "chase" | "member";
 
-export const PRICES = { reveal: 1, keepMore: 2.99, keepTotal: 3.99, blind: 4.99 } as const;
-export const TIMER_SECONDS = 30;
-/** When the pack graphic nudges and the Keep button pulses (seconds after the reveal). */
-export const NUDGES = [10, 20] as const;
-/** Network slack on top of the 30 s before the server refuses a Keep. */
+/** Looking is free. Keep is one $3.99 charge. The blind pack ("Dealer's choice") is an optional quiet link. */
+export const PRICES = { keep: 3.99, blind: 4.99 } as const;
+/** How long a looked-at pack is held for the player. */
+export const TIMER_SECONDS = 120;
+/** Network slack on top of the 120 s before the server refuses a Keep. */
 export const KEEP_GRACE_MS = 3000;
+/** Free looks per category per local day (account and card), so nobody can fish the pool. */
+export const LOOKS_PER_DAY = 3;
+/** The same cap per network address, for visitors who clear their cookies. Higher: households share an address. */
+export const LOOKS_PER_DAY_PER_IP = 12;
+/** A Keep that goes to Stripe Checkout (no saved card yet) holds the pack this long (Stripe's shortest session). */
+export const CHECKOUT_HOLD_MS = 30 * 60_000;
 
 /** At most this many chase packs reserved at once per category, so one player can't drain the list. */
 export const CHASE_RESERVE_CAP = 1;
 
-export const RULES_LINE = "$1 to reveal. Keep for $2.99 more. Pass, or let the timer end, and the only option left is a $4.99 pack you see after you pay.";
+export const RULES_LINE = "See all 12 first. Keep them for $3.99, or put them back. Looking is free.";
 
-/** The odds shown before anyone pays the $1. Peeked and blind packs share them. */
+/** The odds shown before anyone looks. Looked-at and blind packs share them. Chase is mentioned only when it's on. */
 export function oddsLines(chaseOn: boolean): string[] {
   return [
-    "7 of 12 cards are bulk, usually under $0.25",
-    "4 are modest, usually $0.25 to $1",
-    "1 is the best card in the pack, usually $1 to $2",
-    "Pack value is usually close to the $3.99 keep price",
-    "About 18 in 100 packs contain a card priced from $4 to $10.",
-    // Flag off: $10+ cards never go in packs, and the odds say so. Flag on: the $10 line replaces it.
-    chaseOn ? "About 2 in 100 packs contain a card priced at $10 or more." : "Chase cards are not in packs until that feature is turned on",
+    "11 cards are under $1.",
+    "1 is the best card in the pack.",
+    "About 1 in 5 packs, that best card is $4 or more.",
+    ...(chaseOn ? ["About 2 in 100 packs contain a card priced at $10 or more."] : []),
+    "Raw, as scanned. Sleeved and top-loaded. Not for grading.",
   ];
 }
 
