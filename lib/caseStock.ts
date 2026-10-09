@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { PUBLIC_CATEGORIES } from "./categories";
 import { db } from "./db";
 
 /**
@@ -11,7 +12,7 @@ export const caseWhere: Prisma.CardWhereInput = {
   listPrice: { not: null },
   readable: true,
   frontImage: { not: null },
-  category: { not: null },
+  category: { in: PUBLIC_CATEGORIES }, // public categories only: baseball and football stay on the desk
   OR: [{ partnerId: { not: null } }, { senderId: { not: null } }],
   NOT: { name: { contains: "energy", mode: "insensitive" } },
 };
