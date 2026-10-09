@@ -74,6 +74,7 @@ Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` �
 | `EBAY_MARKETPLACE` | no (default `EBAY_US`) | Marketplace header for eBay calls. |
 | `STRIPE_SECRET_KEY` | to sell | Saves players' cards (Checkout setup mode) and charges them for reveal / keep / blind (PaymentIntents, off-session). A restricted key needs Customers, Checkout Sessions, PaymentIntents, Refunds and Payment Links (to expire old links) write. |
 | `SHIPPO_API_KEY` | to ship | USPS Ground Advantage rates, address checks and labels (Shippo). Without it every parcel is the $5.95 fallback and you buy labels by hand. |
+| `ROSTER_ROLL_KEY` | for Roster Roll | Shared secret Roster Roll sends as `Authorization: Bearer <key>` to `POST /api/roster-roll/claim`. Without it that route answers 503 and no winner can be recorded. |
 | `RESEND_API_KEY`, `MAIL_FROM` | for tracking emails | e.g. `MAIL_FROM="Trade Shark <ship@yourdomain>"` on a domain verified in Resend. Without them labels still work; the order says the email wasn't sent. |
 | `PLAYER_SECRET` | recommended | Signs the player cookie. Falls back to `TRADE_SHARK_PASSWORD`, so changing the desk password would sign every player out. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
@@ -182,6 +183,17 @@ A bought pack (keep or blind) is stored on the account, never auto-shipped. **Co
 ### Membership ($7.99/month, optional)
 
 No midnight lockout · one mailer credit a month (zeros one label) · one member stack a month (the top slot bumped to a $2–$4 card) · the first hour of every new drop. It does not add reveals, make everyday packs cheaper, or ship every pack free. Join and cancel at `/play/member` (Stripe subscription; perks last to the end of the paid month).
+
+### Roster Roll daily winner
+
+Roster Roll records each day's winner here; Trade Shark honors the prize from its own stock. Roster Roll never picks a card or touches inventory.
+
+1. **Record** (Roster Roll's server, the only writer of the `RosterRollClaim` table): `POST /api/roster-roll/claim` with `Authorization: Bearer $ROSTER_ROLL_KEY` and JSON `{ "date": "YYYY-MM-DD", "handle": "…", "score": 1234 }`. The date is the America/New_York day (not in the future); the handle is 3–16 characters with no spaces; the score a whole number. `201` recorded, `409` that date already has a winner, `400` bad input, `401` wrong key, `503` no key set.
+2. **Link**: the winner opens `https://tradeshark.app/case?reward=roster-roll&date=YYYY-MM-DD&handle=HANDLE`. If the row for that date has that handle (any case) and is unclaimed, and there is stock, The case shows one line above the drift, "Roster Roll winner. One free single.", with **Pull it.**
+3. **Pull**: one random card from loose stock (the same rule as The case: priced, owned, readable, not in a pack, never energy; founder-owned and under $10), at $0, no $1 reveal. In one transaction the row flips to claimed and the card leaves stock as **Sold** (`soldChannel` roster-roll, `soldPrice` 0), so no pack can take it. The card is shown like a pack's best card, then "That's the single. Packs are the rest of the stock."
+4. A claimed row, a missing row, a bad handle or date, or empty stock leaves The case exactly as it is. A second pull on that date does nothing.
+
+After adding the table (`npx prisma db push`), set `ROSTER_ROLL_KEY` on Netlify and give the same value to Roster Roll.
 
 ### Brand
 

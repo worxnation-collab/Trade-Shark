@@ -597,3 +597,15 @@ model PdfIngest {
 
   @@index([batchId])
 }
+
+/// Roster Roll daily winner: one row per America/New_York date, written only by POST /api/roster-roll/claim.
+/// The winner's link (/case?reward=roster-roll&date=…&handle=…) pulls one free single from loose stock; the row then flips to claimed.
+model RosterRollClaim {
+  date      String    @id // YYYY-MM-DD, America/New_York
+  handle    String // 3–16 characters, matched case-insensitively against the link
+  score     Int
+  status    String    @default("unclaimed") // unclaimed | claimed
+  cardId    String? // the single that was pulled
+  createdAt DateTime  @default(now())
+  claimedAt DateTime?
+}

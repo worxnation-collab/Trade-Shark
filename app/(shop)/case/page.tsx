@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { caseCards } from "@/lib/caseStock";
+import { canPull } from "@/lib/rosterRoll";
 import { CaseReel } from "./CaseReel";
+import { RosterRollPull } from "./RosterRollPull";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "The case · Trade Shark" };
 
 /** The case: real cards from my stock drifting by. Look only; packs are the only thing for sale. */
-export default async function CasePage() {
-  const cards = await caseCards().catch(() => []);
+export default async function CasePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const q = await searchParams;
+  // A Roster Roll winner's link adds one line above the drift; any other link, or a used one, leaves the page as it is.
+  const reward = q.reward === "roster-roll" && typeof q.date === "string" && typeof q.handle === "string" ? { date: q.date, handle: q.handle } : null;
+  const [cards, offer] = await Promise.all([caseCards().catch(() => []), reward ? canPull(reward.date, reward.handle).catch(() => false) : false]);
   return (
     <section className="-mx-4 -my-8 sm:-my-10">
       <div className="px-4 pb-3 pt-6 text-center">
@@ -21,6 +26,7 @@ export default async function CasePage() {
           .
         </p>
       </div>
+      {offer && reward && <RosterRollPull date={reward.date} handle={reward.handle} />}
       {cards.length ? <CaseReel cards={cards} /> : <p className="px-4 py-16 text-center text-navy/60">The case is being restocked.</p>}
     </section>
   );
