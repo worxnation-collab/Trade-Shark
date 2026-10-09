@@ -20,13 +20,13 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
         <h1 className="text-3xl font-extrabold">Membership</h1>
         <p className="mt-1 text-lg font-semibold text-navy">${MEMBER_PRICE.toFixed(2)} a month, optional.</p>
       </div>
-      {error && <p className="rounded bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+      {error && <p className="rounded border border-navy/20 bg-white p-3 text-sm text-navy">{error}</p>}
       <div className="card space-y-2 p-4">
         <h2 className="font-bold">What you get</h2>
         <ul className="space-y-1 text-sm">
           {MEMBER_PERKS.map((p) => (
             <li key={p} className="flex gap-2">
-              <span className="text-gold">✓</span>
+              <span className="text-navy">✓</span>
               {p}
             </li>
           ))}
@@ -36,7 +36,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
       </div>
 
       {!buyer || !buyer.paymentMethodId ? (
-        <Link href="/play/card" className="btn-primary block py-3 text-center">
+        <Link href="/play/card" className="btn-reveal block py-3 text-center">
           Save a card first
         </Link>
       ) : member ? (

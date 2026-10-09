@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ConfettiOnce } from "@/components/ConfettiOnce";
 import { SharkFin } from "@/components/SharkFin";
 import { db } from "@/lib/db";
 import { shipFromLink, type ShipQuote } from "@/lib/shipping";
@@ -39,11 +38,10 @@ export default async function ThankYou({ searchParams }: { searchParams: Promise
   }
   return (
     <div className="mx-auto max-w-lg py-10 text-center">
-      <ConfettiOnce id={stack ? `stack-${stack}` : (card ?? "order")} />
-      <div id="thanks-fin" className="mx-auto mb-4 w-fit">
+      <div className="mx-auto mb-4 w-fit">
         <SharkFin size={72} />
       </div>
-      <h1 className="text-3xl font-extrabold">Thank you!</h1>
+      <h1 className="font-display text-3xl">Thank you!</h1>
       {label && <p className="mt-2 text-lg font-semibold text-navy">{label}</p>}
       <p className="mt-3 text-navy/70">
         Your payment went through and a receipt is on its way from Stripe. I&apos;ll pack {stack ? "every card in sleeves" : "the card in a sleeve and top loader"} and ship{" "}
@@ -58,7 +56,7 @@ export default async function ThankYou({ searchParams }: { searchParams: Promise
         )}
       </p>
       <div className="mt-6 flex justify-center gap-3">
-        <Link href="/" className="btn-primary px-5 py-2.5">Keep browsing</Link>
+        <Link href="/" className="btn-reveal px-5 py-2.5">Keep browsing</Link>
         <Link href="/contact" className="btn-ghost px-5 py-2.5">Questions?</Link>
       </div>
     </div>

@@ -43,7 +43,7 @@ How it fits Netlify's limits:
    - <kbd>J</kbd>/<kbd>K</kbd> next/previous, <kbd>Enter</kbd> save + next, <kbd>F</kbd> flip front/back.
    - Winning source plus alternates; **Use** an alternate to swap identity.
    - Saving confirms the card: priced → stock (**Priced**), and it joins its category's next pack. No price → **Identified**.
-5. **Pay link (Stripe):** each 12-card pack gets one Stripe Payment Link when it's built: quantity 1, USD at the sum of its cards, the card names in the description, US shipping address collection, a mailer shipping line, and a one-sale limit. A pack whose cards or price change gets a new link (the old one expired first). After checkout Stripe sends the buyer to `/shop/thank-you?stack=<id>` (confetti, nothing else). The pack and its cards are marked **Sold** only by the signed webhook at `/api/stripe/webhook` (`checkout.session.completed`, matched to the pack's current or earlier link) or by **Mark sold**. Single-card pay links are retired.
+5. **Pay link (Stripe):** each 12-card pack gets one Stripe Payment Link when it's built: quantity 1, USD at the sum of its cards, the card names in the description, US shipping address collection, a mailer shipping line, and a one-sale limit. A pack whose cards or price change gets a new link (the old one expired first). After checkout Stripe sends the buyer to `/shop/thank-you?stack=<id>` (a plain thank-you, nothing else). The pack and its cards are marked **Sold** only by the signed webhook at `/api/stripe/webhook` (`checkout.session.completed`, matched to the pack's current or earlier link) or by **Mark sold**. Single-card pay links are retired.
 5. **Export** (`/admin/export`): eBay File Exchange **draft** CSV (`Action=Draft`) and a TCGplayer-style CSV. Exported cards become **Listed**. Publish them yourself, then paste the live URL back (export page or review screen).
 6. **Shop** (`/`): the catalog of three packs; each opens at `/packs/<category>`.
 
@@ -77,8 +77,6 @@ Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` �
 | `RESEND_API_KEY`, `MAIL_FROM` | for tracking emails | e.g. `MAIL_FROM="Trade Shark <ship@yourdomain>"` on a domain verified in Resend. Without them labels still work; the order says the email wasn't sent. |
 | `PLAYER_SECRET` | recommended | Signs the player cookie. Falls back to `TRADE_SHARK_PASSWORD`, so changing the desk password would sign every player out. |
 | `STRIPE_WEBHOOK_SECRET` | to sell direct | Signing secret for the webhook endpoint `https://<site>/api/stripe/webhook` listening to `checkout.session.completed`. Without it, Stripe sales aren't marked Sold automatically. |
-| `GEMINI_API_KEY` | no | Server-only. Draws the pack art (closed + torn open) once, server-side, from a text prompt. Without it the shop uses the CSS pack. |
-| `GEMINI_IMAGE_MODEL` | no (default `gemini-2.5-flash-image`) | Gemini image model for the pack art. |
 | `SPORTS_CATALOG_API_KEY` | no | Turns on the `SportsCatalog` adapter. It's a stub until a provider is wired in `lib/sources/sportsCatalog.ts`. |
 
 Missing keys skip that source and record why (`Source log` on each card, `Sources` on the dashboard). They never crash a batch.
@@ -185,13 +183,13 @@ A bought pack (keep or blind) is stored on the account, never auto-shipped. **Co
 
 No midnight lockout · one mailer credit a month (zeros one label) · one member stack a month (the top slot bumped to a $2–$4 card) · the first hour of every new drop. It does not add reveals, make everyday packs cheaper, or ship every pack free. Join and cancel at `/play/member` (Stripe subscription; perks last to the end of the paid month).
 
-### Pack art and animations (Gemini)
+### Brand
 
-Each category has its own sealed and torn-open pack, drawn with Gemini, and short Veo clips made from those stills: a tear-open when a pack is revealed or bought blind, a puff when a pack is passed or the timer ends, and a teal-and-coral sparkle that bursts from the hit (or chase) card. They're static files in `public/brand/` (about 2 MB total), so visitors never wait on Gemini. Remake them with `GEMINI_API_KEY=... node scripts/gemini-art.mjs images` then `... videos`; `node scripts/gemini-art.mjs encode` re-trims without calling Gemini. Text prompts only, no card photos, no characters or logos. Clips play once, muted, and are skipped for anyone with reduced motion on.
+The pack is drawn from the fin (`components/Pack.tsx`: flat navy body, one gold edge, the fin, the category name in Archivo Black), the same drawing for every category and the only object with a shadow. Stages are flat color (`components/Stage.tsx`): Pokémon near-black with one soft light behind the pack, Baseball and Football two flat daylight felts. Type is Archivo, with Archivo Black for pack names, page titles and the wordmark, self-hosted from `@fontsource`. The shop is sand with a gold edge; shop actions are the navy button with a gold edge. The desk is a dark bench (`.desk` on the admin shell). Text never sits on the art. No image files, no image APIs, no confetti in the shop.
 
 ### Card presentation
 
-Players see the real scan, framed: on upload it's straightened, the scanner background trimmed, and laid on a white rounded border with a thin inner edge and a soft shadow, kept sharp (scaled down only). Drag a card to tilt it a few degrees (max 8°, highlight follows your thumb, snaps back); tap it to open it larger, where it tilts too. No flips, no card backs, no gyroscope.
+Players see the real scan, framed: on upload it's straightened, the scanner background trimmed, and laid on a white rounded border with a thin inner edge and a soft shadow, kept sharp (scaled down only). An opened pack shows the best card first and large (name, set, number and variant under it, never on the scan), the other eleven in one sideways strip. Drag to tilt: thumbs about 8°, the big card about 18°, snapping back; holo, reverse, foil, refractor and parallel cards get a small highlight that follows your finger, commons stay matte. Tap a thumb to open it larger. No flips, no card backs, no gyroscope.
 
 ### Category
 

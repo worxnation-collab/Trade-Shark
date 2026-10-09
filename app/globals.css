@@ -10,7 +10,9 @@
   --color-coral: #e85d4c;
   --color-gold: #d9a441;
   --color-keep: #2f6b3a;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Two faces only, self-hosted from @fontsource in app/layout.tsx. No serif, no script. */
+  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Archivo Black", "Archivo", ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -83,51 +85,21 @@ kbd {
     transform: translateY(2px) scale(0.985);
   }
 }
-/* Keep: green and still. */
+/* Keep-green is a desk status mark only; the shop's Keep is the navy btn-reveal. */
 @utility btn-keep {
   @apply inline-flex items-center justify-center rounded-lg bg-keep font-bold text-white disabled:opacity-50;
 }
-/* The only object with a shadow. */
+/* The only object with a shadow: the pack (components/Pack.tsx). */
 .pack-shadow {
   filter: drop-shadow(0 18px 22px rgb(0 0 0 / 0.45));
 }
-/* A thin gold line under page titles. */
+/* A gold hairline under page titles. Gold is an edge, never a fill or a glow. */
 .gold-rule {
-  height: 2px;
+  height: 1px;
   width: 4.5rem;
   background: var(--color-gold);
 }
 
-/* ---------- Lil' Stack pack ---------- */
-.ls-pack {
-  filter: drop-shadow(0 18px 28px rgb(0 0 0 / 0.45));
-}
-.ls-body {
-  background: linear-gradient(160deg, #14305a 0%, #0b1f3a 55%, #081629 100%);
-  border-left: 1px solid rgb(244 239 230 / 0.12);
-  border-right: 1px solid rgb(244 239 230 / 0.12);
-}
-.ls-crimp {
-  background:
-    repeating-linear-gradient(90deg, rgb(244 239 230 / 0.28) 0 3px, transparent 3px 7px),
-    linear-gradient(#138585, #0e6e6e);
-  border-radius: 4px;
-  transition: transform 120ms ease-out;
-}
-.ls-sheen {
-  background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.16) 45%, transparent 60%);
-  background-size: 250% 100%;
-  animation: ls-sheen 3.5s ease-in-out infinite;
-}
-@keyframes ls-sheen {
-  0% { background-position: 120% 0; }
-  60%, 100% { background-position: -40% 0; }
-}
-/* Torn: the top strip is gone and the edge is ragged. */
-.ls-torn .ls-body {
-  top: 0;
-  clip-path: polygon(0 6%, 6% 2%, 12% 7%, 19% 1%, 26% 6%, 33% 2%, 41% 8%, 49% 1%, 57% 6%, 64% 2%, 72% 7%, 80% 1%, 87% 6%, 94% 2%, 100% 5%, 100% 100%, 0 100%);
-}
 /* The 10 s / 20 s nudge: a small tilt of the pack, never the page. */
 .ls-nudge {
   animation: ls-nudge 520ms ease-in-out;
@@ -238,26 +210,109 @@ kbd {
   .seal-body,
   .ls-buy,
   .ls-flip,
-  .ls-sheen,
   .ls-arrow {
     animation: none !important;
   }
 }
 
-/* Gemini scene art (lib/brandScenes.json). Art sits behind the pack only; text never sits on busy art. */
+/*
+ * The stage is a color, not a photograph (components/Stage.tsx). Pokemon: near-black with one soft light behind the
+ * pack. Baseball and Football: two flat daylight felts. Text, rules and buttons never sit on a stage.
+ */
 .stage {
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  background: var(--color-navy);
+  background: #2b3a4f;
 }
-.stage > .stage-art {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.stage-pokemon {
+  background: radial-gradient(circle at 50% 46%, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 55%), #07080c;
+}
+.stage-baseball {
+  background: #b7a58b;
+}
+.stage-football {
+  background: #6f8b72;
+}
+
+/*
+ * The desk is a bench, not the counter: a dark scoped theme for the admin shell. Navy ink is re-pointed to off-white
+ * (so text-navy/60, border-navy/10 and the like read as off-white type and ~10% hairlines), solid navy and sand
+ * surfaces become raised bench. No gold rules, no lift, no uppercase tracked labels, no white rounded cards.
+ */
+.desk {
+  --color-navy: #e9e7e2;
+  --color-navy-2: #ffffff;
+  --color-sand-2: #1d2025;
+  color-scheme: dark;
+  min-height: 100vh;
+  background: #121418;
+  color: #e9e7e2;
+}
+.desk .card {
+  border-radius: 6px;
+  border-color: rgb(255 255 255 / 0.1);
+  background: transparent;
+}
+.desk .bg-white,
+.desk .btn-ghost,
+.desk .input,
+.desk kbd {
+  background-color: #181b20;
+}
+.desk .bg-navy {
+  background-color: #262a31;
+}
+.desk .bg-navy\/80 {
+  background-color: rgb(38 42 49 / 0.9);
+}
+.desk .bg-sand {
+  background-color: #121418;
+}
+.desk .bg-sand\/60,
+.desk .bg-sand\/70,
+.desk .hover\:bg-sand\/60:hover {
+  background-color: rgb(18 20 24 / 0.7);
+}
+.desk .bg-gold.text-navy {
+  color: #121418;
+}
+.desk .shadow,
+.desk .shadow-sm,
+.desk .shadow-md,
+.desk .shadow-lg,
+.desk .shadow-xl {
+  box-shadow: none;
+}
+.desk .rounded-xl,
+.desk .rounded-2xl,
+.desk .rounded-3xl {
+  border-radius: 6px;
+}
+.desk .border-gold,
+.desk .border-b-gold {
+  border-color: rgb(255 255 255 / 0.1);
+}
+.desk .gold-rule {
+  display: none;
+}
+.desk .lift:hover {
+  transform: none;
+}
+.desk .label,
+.desk .uppercase,
+.desk table.grid-table th {
+  text-transform: none;
+}
+.desk .label,
+.desk .tracking-wide,
+.desk .tracking-wider,
+.desk .tracking-widest,
+.desk table.grid-table th {
+  letter-spacing: normal;
+}
+.desk input,
+.desk select,
+.desk textarea {
+  color: inherit;
 }
 
 /* The case: columns of cards drifting slowly down, looping (the list is doubled; one copy's height per loop). */

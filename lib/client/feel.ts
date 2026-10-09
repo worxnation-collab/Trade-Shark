@@ -1,7 +1,7 @@
 /**
  * Small moments of delight that never get in the way:
  * - pop(): one soft synthesized bubble pop (~140 ms), no audio files to load.
- * - confetti(el): one ~1.2 s teal/coral/navy burst from an element, then the canvas is removed.
+ * - confetti(el): one ~1.2 s burst from an element, then the canvas is removed. Desk only: the shop never fires it.
  * Everything is fire-and-forget and swallows its own errors, so it can't block a save.
  */
 

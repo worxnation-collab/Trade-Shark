@@ -2,7 +2,8 @@
 export function SharkFin({ size = 28, className = "", mono = false }: { size?: number; className?: string; mono?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <polygon points="6,24 19,5 24,9 25,24" fill={mono ? "currentColor" : "#0B1F3A"} />
+      {/* Navy ink via the token, so on the desk bench the fin turns light on its own. */}
+      <polygon points="6,24 19,5 24,9 25,24" style={{ fill: mono ? "currentColor" : "var(--color-navy, #0B1F3A)" }} />
       <rect x="3" y="25.5" width="26" height="2" rx="1" fill={mono ? "currentColor" : "#D9A441"} />
     </svg>
   );
@@ -12,8 +13,8 @@ export function SharkFin({ size = 28, className = "", mono = false }: { size?: n
 export function Wordmark({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
   return (
     <span className="flex items-center gap-2">
-      <SharkFin mono={light} className={light ? "text-sand" : ""} />
-      <span className={`${compact ? "hidden sm:inline" : ""} whitespace-nowrap text-lg font-extrabold tracking-tight ${light ? "text-white" : "text-navy"}`}>
+      <SharkFin mono={light} className={light ? "text-white/90" : ""} />
+      <span className={`${compact ? "hidden sm:inline" : ""} whitespace-nowrap font-display text-lg tracking-tight ${light ? "text-white" : "text-navy"}`}>
         Trade Shark
       </span>
     </span>

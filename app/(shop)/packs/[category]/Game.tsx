@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { packStill } from "@/lib/brandAssets";
-import { confetti, pop } from "@/lib/client/feel";
+import { pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { NUDGES, PRICES, RULES_LINE, TIMER_SECONDS } from "@/lib/game/rules";
+import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
 import { CardGrid } from "./CardGrid";
 
@@ -59,7 +59,6 @@ export function Game(p: GameProps) {
     return () => window.clearTimeout(t);
   }, [seal]);
   const packRef = useRef<HTMLDivElement>(null);
-  const keepRef = useRef<HTMLButtonElement>(null);
   const cycleRef = useRef<string | null>(null);
   cycleRef.current = phase.k === "revealing" ? phase.cycleId : null;
 
@@ -99,7 +98,6 @@ export function Game(p: GameProps) {
       return setError(r.error ?? "That didn't work.");
     }
     cycleRef.current = null;
-    confetti(keepRef.current);
     setPhase({ k: "won", pack: r.pack as PackView, how: "kept" });
   }
 
@@ -109,7 +107,6 @@ export function Game(p: GameProps) {
     const r = await post("/api/play/blind", { category: p.category });
     setBusy("");
     if (!r.ok) return setError(r.error ?? "That didn't work.");
-    confetti(packRef.current);
     setSeal(true);
     setPhase({ k: "won", pack: r.pack as PackView, how: "blind" });
   }
@@ -153,14 +150,11 @@ export function Game(p: GameProps) {
     };
   }, [phase.k]);
 
-  // This category's sealed shark pack (public/brand). The only object with a shadow.
-  const packArt = (cls = "") => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={packStill(p.category)} alt="" className={`pack-shadow w-full ${cls}`} draggable={false} />
-  );
+  // The pack drawn from the fin (components/Pack.tsx). The only object with a shadow.
+  const packArt = (cls = "") => <Pack category={p.category} className={cls} />;
   // The seal split: the crimped top lifts away while the body drops and fades.
   const sealSplit = (
-    <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg border-b-2 border-gold">
+    <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg">
       <div className="relative w-40 sm:w-48">
         {packArt("seal-body")}
         <div className="absolute inset-0">{packArt("seal-top")}</div>
@@ -172,12 +166,12 @@ export function Game(p: GameProps) {
 
   return (
     <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
-      {error && <p className="mb-4 rounded border border-coral/40 bg-white px-3 py-2 text-sm text-navy">{error}</p>}
+      {error && <p className="mb-4 rounded border border-navy/20 bg-white px-3 py-2 text-sm text-navy">{error}</p>}
 
       {phase.k === "intro" && (
         <>
-          {/* The stage sits behind the pack only; the rules and the $1 button stay on cream below. */}
-          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg border-b-2 border-gold p-12">
+          {/* The stage sits behind the pack only; the rules and the $1 button stay on sand below. */}
+          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg p-12">
             <div className="w-40 sm:w-48">{packArt()}</div>
           </Stage>
           <Rules odds={p.odds} />
@@ -226,7 +220,7 @@ export function Game(p: GameProps) {
             sealSplit
           ) : (
             <div className="flex items-center gap-4">
-              <Stage category={p.category} className="flex items-center justify-center rounded-lg border-b-2 border-gold p-3">
+              <Stage category={p.category} className="flex items-center justify-center rounded-lg p-3">
                 <div ref={packRef} key={`n${nudge}`} className={`w-16 ${nudge ? "ls-nudge" : ""}`}>
                   {packArt()}
                 </div>
@@ -236,19 +230,19 @@ export function Game(p: GameProps) {
           )}
           {phase.pack.kind === "member" && <p className="mt-3 text-sm font-semibold text-navy">Member stack: your best card is bumped.</p>}
           <div className="after-seal w-full">
-            <CardGrid pack={phase.pack} light />
+            <CardGrid pack={phase.pack} />
           </div>
           {/* Stays on screen while you scroll the cards: the clock and both choices. */}
-          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-lg border border-navy/15 border-b-2 border-b-gold bg-sand p-3">
+          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-lg border border-navy/15 border-b-gold bg-sand p-3">
             <p className="text-xs text-navy/65">Pack value {usd(phase.pack.value)} · stored in your Collection until you ship</p>
             <p className="text-sm font-semibold text-navy">
-              Keep all 12 for {usd(PRICES.keepMore)} more ({usd(PRICES.keepTotal)} in all) · <span className={left <= 10 ? "text-coral" : ""}>{left}s</span>
+              Keep all 12 for {usd(PRICES.keepMore)} more ({usd(PRICES.keepTotal)} in all) · <span className={left <= 10 ? "font-extrabold" : ""}>{left}s</span>
             </p>
             <div className="flex items-center gap-5">
               <button className="px-2 py-3 text-base font-semibold text-navy/70 underline-offset-4 hover:underline" disabled={!!busy} onClick={() => passNow("pass")} data-nopop>
                 Pass
               </button>
-              <button ref={keepRef} className="btn-keep px-8 py-3 text-lg" disabled={!!busy} onClick={keepIt} data-pop>
+              <button className="btn-reveal px-8 py-3 text-lg" disabled={!!busy} onClick={keepIt} data-pop>
                 {busy === "keep" ? "Keeping…" : `Keep · ${usd(PRICES.keepMore)}`}
               </button>
             </div>
@@ -258,7 +252,7 @@ export function Game(p: GameProps) {
 
       {phase.k === "passed" && (
         <>
-          <Stage category={p.category} className="flex items-center justify-center rounded-lg border-b-2 border-gold p-6">
+          <Stage category={p.category} className="flex items-center justify-center rounded-lg p-6">
             <div ref={packRef} className="gone w-32">
               {packArt()}
             </div>
@@ -288,7 +282,7 @@ export function Game(p: GameProps) {
       {phase.k === "won" && (
         <>
           {seal && <div className="mb-4 w-full max-w-sm">{sealSplit}</div>}
-          <p className="text-2xl font-extrabold text-navy">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
+          <p className="font-display text-2xl text-navy">{phase.how === "kept" ? "It's yours!" : "Here's your pack!"}</p>
           <p className="mt-1 text-sm text-navy/75">
             {phase.pack.number ? `Pack ${phase.pack.number} is` : "It's"} in your{" "}
             <Link href="/collection" className="underline">
@@ -297,7 +291,7 @@ export function Game(p: GameProps) {
             . Ship it whenever you like, on its own or with other packs.
           </p>
           <div className="after-seal w-full">
-            <CardGrid pack={phase.pack} light />
+            <CardGrid pack={phase.pack} />
           </div>
           <div className="mt-6 flex items-center gap-4">
             <button
@@ -326,7 +320,7 @@ function Rules({ odds }: { odds: string[] }) {
       <ul className="mt-3 space-y-1 text-left text-sm text-navy/80">
         {odds.map((o) => (
           <li key={o} className="flex gap-2">
-            <span className="text-gold">•</span>
+            <span className="text-navy/40">•</span>
             {o}
           </li>
         ))}
@@ -342,9 +336,9 @@ function Timer({ left }: { left: number }) {
     <div className="relative h-16 w-16" role="timer" aria-live="off" aria-label={`${left} seconds left`}>
       <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
         <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(11,31,58,0.12)" strokeWidth="3" />
-        <circle cx="18" cy="18" r="15.5" fill="none" stroke={left <= 10 ? "#E85D4C" : "#0B1F3A"} strokeWidth="3" strokeDasharray={`${frac * 97.4} 97.4`} strokeLinecap="round" />
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#0B1F3A" strokeWidth="3" strokeDasharray={`${frac * 97.4} 97.4`} strokeLinecap="round" />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-xl font-extrabold text-navy">{left}</span>
+      <span className="absolute inset-0 flex items-center justify-center font-display text-xl text-navy">{left}</span>
     </div>
   );
 }

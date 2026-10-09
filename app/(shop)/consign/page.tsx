@@ -26,7 +26,7 @@ export default async function ConsignPage() {
             ["A pack sells, you're owed that card's price.", "If a pack with your card in it sells, you're owed the scanner price of that card. A $50 card pays $50, not a share of the pack."],
           ].map(([h, t], i) => (
             <li key={h} className="flex gap-3 rounded-lg border border-navy/15 bg-white p-4">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy text-sm font-black text-gold">{i + 1}</span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy text-sm font-black text-sand">{i + 1}</span>
               <span>
                 <b className="block font-black">{h}</b>
                 <span className="text-sm text-navy/75">{t}</span>
@@ -42,7 +42,7 @@ export default async function ConsignPage() {
         {open ? (
           <ConsignForm />
         ) : (
-          <p className="border-t-2 border-gold pt-4 text-center text-sm font-bold uppercase tracking-widest text-navy">Coming soon</p>
+          <p className="border-t border-gold pt-4 text-center text-sm font-bold uppercase tracking-widest text-navy">Coming soon</p>
         )}
       </div>
     </section>

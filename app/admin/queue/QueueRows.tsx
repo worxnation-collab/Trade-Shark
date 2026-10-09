@@ -13,13 +13,14 @@ async function patch(id: string, body: Record<string, unknown>) {
   return j as { packed?: boolean };
 }
 
-function Thumb({ image, v }: { image: string | null; v?: number }) {
+/** The scan is the large object in a fix row. */
+function Scan({ image, v }: { image: string | null; v?: number }) {
   // ?v= busts the browser cache after a card is turned.
   return image ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={`/api/admin/images/${image}${v ? `?v=${v}` : ""}`} alt="" className="h-20 w-14 shrink-0 rounded object-cover" loading="lazy" />
+    <img src={`/api/admin/images/${image}${v ? `?v=${v}` : ""}`} alt="" className="aspect-[5/7] w-36 shrink-0 rounded object-contain sm:w-48" loading="lazy" />
   ) : (
-    <div className="h-20 w-14 shrink-0 rounded bg-sand-2" />
+    <div className="aspect-[5/7] w-36 shrink-0 rounded bg-sand-2 sm:w-48" />
   );
 }
 
@@ -62,10 +63,10 @@ export function LookRow({
   }
 
   return (
-    <li className="card flex flex-wrap items-center gap-3 p-3">
-      <Thumb image={card.image} v={card.v} />
-      <div className="min-w-0 flex-1">
-        <Link href={`/admin/review/${card.id}`} className="font-semibold hover:text-teal-2">
+    <li className="card flex items-start gap-4 p-3">
+      <Scan image={card.image} v={card.v} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <Link href={`/admin/review/${card.id}`} className="font-semibold hover:underline">
           {card.label || "Unnamed"}
         </Link>
         <div className="text-sm">
@@ -108,31 +109,31 @@ export function LookRow({
           </div>
         )}
         {err && <p className="text-xs text-coral">{err}</p>}
-      </div>
-      <div className="flex gap-2">
-        {editing ? (
-          <>
-            <button className="btn-ghost" disabled={busy} onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-            <button
-              className="btn-primary"
-              disabled={busy || !name.trim() || !(Number(price) > 0)}
-              onClick={(e) => go({ ...(name.trim() !== card.name ? { name: name.trim() } : {}), manualPrice: Number(price) }, e.currentTarget)}
-            >
-              {busy ? "Saving…" : "Save + approve"}
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="btn-ghost" disabled={busy} onClick={() => setEditing(true)}>
-              Correct
-            </button>
-            <button className="btn-primary" disabled={busy || card.price == null} onClick={(e) => go({}, e.currentTarget)}>
-              {busy ? "Approving…" : "Approve"}
-            </button>
-          </>
-        )}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {editing ? (
+            <>
+              <button className="btn-ghost" disabled={busy} onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                disabled={busy || !name.trim() || !(Number(price) > 0)}
+                onClick={(e) => go({ ...(name.trim() !== card.name ? { name: name.trim() } : {}), manualPrice: Number(price) }, e.currentTarget)}
+              >
+                {busy ? "Saving…" : "Save + approve"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn-ghost" disabled={busy} onClick={() => setEditing(true)}>
+                Correct
+              </button>
+              <button className="btn-primary" disabled={busy || card.price == null} onClick={(e) => go({}, e.currentTarget)}>
+                {busy ? "Approving…" : "Approve"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </li>
   );

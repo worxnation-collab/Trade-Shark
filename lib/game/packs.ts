@@ -311,7 +311,7 @@ export async function categoryStatus(category: Category, member = false, now = n
 export async function packView(packId: string) {
   const pack = await db.gamePack.findUniqueOrThrow({
     where: { id: packId },
-    include: { cards: { select: { id: true, game: true, name: true, player: true, setName: true, year: true, listPrice: true } } },
+    include: { cards: { select: { id: true, game: true, name: true, player: true, setName: true, year: true, number: true, variant: true, listPrice: true } } },
   });
   const byId = new Map(pack.cards.map((c) => [c.id, c]));
   const cards = pack.cardIds
@@ -321,6 +321,8 @@ export async function packView(packId: string) {
       id: c.id,
       name: (c.game === "Sports" ? c.player || c.name : c.name) || "Mystery card",
       setName: [c.year, c.setName].filter(Boolean).join(" ") || null,
+      number: c.number || null,
+      variant: c.variant || null,
       price: c.listPrice ?? 0,
       chase: c.id === pack.chaseCardId,
       hit: c.id === pack.hitCardId && pack.kind === "hit",

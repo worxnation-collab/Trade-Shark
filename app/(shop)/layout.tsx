@@ -3,12 +3,12 @@ import { MuteToggle } from "@/components/Feel";
 import { Wordmark } from "@/components/SharkFin";
 import { consignOpen } from "@/lib/partners";
 
-/** The quiet card counter: a short cream header with the fin mark, navy ink, one gold edge. */
+/** The counter: a short sand header with the fin and the Archivo Black wordmark, navy ink, a gold hairline. */
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   const open = await consignOpen().catch(() => false);
   return (
     <div className="flex min-h-screen flex-col bg-sand">
-      <header className="border-b-2 border-gold bg-sand">
+      <header className="border-b border-gold bg-sand">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2.5">
           <Link href="/" aria-label="Trade Shark home">
             <Wordmark compact />
@@ -26,7 +26,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:py-10">{children}</main>
       <footer className="border-t border-navy/15">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-xs text-navy/60">
-          <span className="font-extrabold text-navy">Trade Shark</span>
+          <span className="font-display text-navy">Trade Shark</span>
           <span>
             Ships from Florida with tracking ·{" "}
             <Link href="/consign" className="underline">

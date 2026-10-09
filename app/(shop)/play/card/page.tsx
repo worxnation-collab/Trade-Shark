@@ -18,7 +18,7 @@ export default async function SaveCard({ searchParams }: { searchParams: Promise
           Your card is saved with Stripe so each step is one tap. Nothing is charged until you tap a price. Packs you keep ship to the address below.
         </p>
       </div>
-      {error && <p className="rounded bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+      {error && <p className="rounded border border-navy/20 bg-white p-3 text-sm text-navy">{error}</p>}
       <form action="/api/play/signup" method="post" className="card space-y-3 p-4">
         <input type="hidden" name="next" value={next ?? ""} />
         {buyer ? (
@@ -61,7 +61,7 @@ export default async function SaveCard({ searchParams }: { searchParams: Promise
             </div>
           </>
         )}
-        <button className="btn-primary w-full py-3">{buyer?.paymentMethodId ? "Use a different card" : "Save my card with Stripe"}</button>
+        <button className="btn-reveal w-full py-3">{buyer?.paymentMethodId ? "Use a different card" : "Save my card with Stripe"}</button>
         <p className="text-xs text-navy/50">US addresses only. Card details go straight to Stripe; my shop never sees them.</p>
       </form>
     </div>

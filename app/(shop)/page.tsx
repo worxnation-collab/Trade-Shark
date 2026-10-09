@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { SharkFin } from "@/components/SharkFin";
 import { ShopUnavailable } from "@/components/ShopUnavailable";
+import { Pack } from "@/components/Pack";
 import { PageTitle, Stage } from "@/components/Stage";
 import { doorSlug } from "@/lib/auth";
-import { packStill } from "@/lib/brandAssets";
 import { CATEGORIES } from "@/lib/categories";
 import { categoryStatus } from "@/lib/game/packs";
 import { RULES_LINE } from "@/lib/game/rules";
 
 export const dynamic = "force-dynamic";
 
-/** Pick a category. The rules sentence is here and on the pack screen, before any payment (navy on cream, never on art). */
+/** Pick a category: three pack objects on their stages. The rules sentence is here and on the pack screen, before any payment (navy on sand, never on a stage). */
 export default async function Home() {
   let items;
   try {
@@ -30,14 +30,13 @@ export default async function Home() {
         {items.map((it) => (
           <li key={it.key}>
             <Link href={`/packs/${it.key}`} className="group block">
-              <Stage category={it.key} className="flex aspect-[4/5] items-center justify-center rounded-lg border-b-2 border-gold p-12">
+              <Stage category={it.key} className="flex aspect-[4/5] items-center justify-center rounded-lg p-12">
                 <div className={`w-36 transition-transform duration-200 group-hover:-translate-y-1 ${it.open ? "" : "opacity-50 grayscale"}`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={packStill(it.key)} alt="" className="pack-shadow w-full" />
+                  <Pack category={it.key} />
                 </div>
               </Stage>
               <div className="pt-3 text-center">
-                <h2 className="text-xl font-extrabold text-navy">{it.product}</h2>
+                <h2 className="font-display text-xl text-navy">{it.product}</h2>
                 <p className="mt-0.5 text-base text-navy/75">{it.open ? "$1 to reveal." : "Restocking. Check back soon."}</p>
               </div>
             </Link>

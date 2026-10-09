@@ -11,7 +11,7 @@ export default async function CasePage() {
   return (
     <section className="-mx-4 -my-8 sm:-my-10">
       <div className="px-4 pb-3 pt-6 text-center">
-        <h1 className="text-3xl font-black tracking-tight text-navy sm:text-4xl">The case</h1>
+        <h1 className="font-display text-3xl tracking-tight text-navy sm:text-4xl">The case</h1>
         <div className="gold-rule mx-auto mt-2" aria-hidden />
         <p className="mx-auto mt-3 max-w-md text-sm text-navy/70">
           Real cards from my stock, drifting by. Tap one for a closer look. Cards aren&apos;t sold one by one: they turn up in{" "}

@@ -30,7 +30,7 @@ export function MuteToggle({ className = "" }: { className?: string }) {
       onClick={() => setMuted(!muted)}
       aria-pressed={muted}
       title={muted ? "Sounds off" : "Sounds on"}
-      className={`rounded px-2 py-1 text-sand/70 hover:bg-white/10 hover:text-white ${className}`}
+      className={`rounded px-2 py-1 text-navy/60 hover:bg-navy/10 hover:text-navy ${className}`}
     >
       <span className="sr-only">{muted ? "Unmute sounds" : "Mute sounds"}</span>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
