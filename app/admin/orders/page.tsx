@@ -41,7 +41,7 @@ export default async function OrdersPage() {
   const parcels = await db.shipOrder.findMany({
     orderBy: [{ shippedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
     take: 200,
-    include: { packs: { select: { id: true, number: true, category: true, kind: true, status: true } }, buyer: { select: { email: true } } },
+    include: { packs: { select: { id: true, number: true, category: true, kind: true, status: true } }, vaultItems: { select: { id: true, name: true, condition: true } }, buyer: { select: { email: true } } },
   });
   const orders: Order[] = [
     ...cards.map((c) => ({
@@ -96,7 +96,7 @@ export default async function OrdersPage() {
           <ul className="space-y-3">
             {parcels.map((o) => {
               const to = safeJson<{ name?: string; address?: { line1?: string; line2?: string; city?: string; state?: string; postal?: string } }>(o.shipTo, {});
-              const names = o.packs.map((p) => `Pack ${p.number ?? "?"}`).join(", ");
+              const names = [...o.packs.map((p) => `Pack ${p.number ?? "?"}`), ...o.vaultItems.map((v) => v.name)].join(", ");
               return (
                 <li key={o.id} className={`card grid gap-3 p-4 md:grid-cols-[1.4fr_1fr_1.3fr] ${o.shippedAt ? "opacity-70" : ""}`}>
                   <div>
@@ -110,9 +110,16 @@ export default async function OrdersPage() {
                           {p.kind !== "base" && <span className="ml-1 text-xs text-coral">{p.kind.toUpperCase()}</span>}
                         </span>
                       ))}
+                      {o.vaultItems.map((v, i) => (
+                        <span key={v.id}>
+                          {(i > 0 || o.packs.length > 0) && ", "}
+                          {v.name} <span className="text-xs text-navy/60">({v.condition}, vault single)</span>
+                        </span>
+                      ))}
                     </div>
                     <div className="text-xs text-navy/60">
-                      {o.createdAt.toLocaleString()} · {o.packs.length} pack{o.packs.length === 1 ? "" : "s"} · one parcel
+                      {o.createdAt.toLocaleString()} · {o.packs.length} pack{o.packs.length === 1 ? "" : "s"}
+                      {o.vaultItems.length > 0 && ` + ${o.vaultItems.length} single${o.vaultItems.length === 1 ? "" : "s"}`} · one parcel
                     </div>
                     <div className="mt-1 text-sm">
                       Shipping paid {money(o.shippingCharged)}

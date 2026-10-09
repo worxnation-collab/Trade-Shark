@@ -59,7 +59,7 @@ model UploadFile {
   @@index([batchId])
 }
 
-// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold | LilStack
+// status: Inbox | Identified | Priced | Ready | Listed | Sold | Archived | BulkHold | LilStack | Vaulted (a prize held in a player's vault)
 // pile:   none | unpaired | unreadable | likely_bulk | duplicate
 model Card {
   id      String @id @default(cuid())
@@ -314,6 +314,8 @@ model Buyer {
   cycles               GameCycle[]
   charges              GameCharge[]
   locks                GameLock[]
+  vault                VaultItem[]
+  credits              CreditEntry[]
 
   @@index([cardFingerprint])
 }
@@ -420,6 +422,7 @@ model ShipQuote {
   rateAmount  Float? // what Shippo charges me for the label
   joinOrderId String? // retired: packs no longer join a parcel at purchase
   packIds     String[] // the stored packs this quote ships together (Collection → Ship)
+  vaultIds    String[] @default([]) // and the vault singles riding in the same parcel
   error       String?
   createdAt   DateTime  @default(now())
   usedAt      DateTime?
@@ -433,6 +436,7 @@ model ShipOrder {
   buyerId         String
   buyer           Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   packs           GamePack[]
+  vaultItems      VaultItem[]
   shipTo          String // JSON name + address at purchase
   shippingCharged Float // what the player paid for shipping
   paymentIntentId String? // the shipping-only charge
@@ -608,6 +612,49 @@ model RosterRollClaim {
   score     Int
   status    String    @default("unclaimed") // unclaimed | claimed
   cardId    String? // the single that was pulled
+  buyerId   String? // the player whose vault it went into
   createdAt DateTime  @default(now())
   claimedAt DateTime?
+}
+
+/// A single won as a prize, held for the player instead of shipping. The card is reserved (Card.status Vaulted) so no
+/// pack, case or sale can take it. The player ships it from Collection (quote → confirm → charge → label) or sells it
+/// back for store credit, which puts the card back in stock.
+/// status: in_vault | ship_requested | shipped | sold_back | cancelled
+model VaultItem {
+  id           String     @id @default(cuid())
+  buyerId      String
+  buyer        Buyer      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  cardId       String // the exact inventory item (Card.id); one live vault row per card
+  name         String
+  image        String? // framed scan (Card.frontDisplay ?? frontImage) at the time it was won
+  condition    String
+  value        Float // assigned value when won (the card's engine list price); sell-back pays a share of it
+  source       String // roster-roll | …
+  sourceRef    String? // roster-roll: the YYYY-MM-DD date
+  status       String     @default("in_vault")
+  stockStatus  String // the card's status before it was vaulted, restored on sell-back
+  orderId      String?
+  order        ShipOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  wonAt        DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([source, sourceRef])
+  @@index([buyerId, status])
+  @@index([cardId])
+  @@index([orderId])
+}
+
+/// Store credit, as a ledger. Balance = sum of amounts. In: sell-backs. Out: (later) credit spent.
+model CreditEntry {
+  id        String   @id @default(cuid())
+  buyerId   String
+  buyer     Buyer    @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  kind      String // sell-back | spend | adjust
+  amount    Float
+  ref       String?  @unique // idempotency: sellback:<vault item id>
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([buyerId])
 }

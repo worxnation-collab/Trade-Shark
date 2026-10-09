@@ -37,6 +37,8 @@ export interface Settings {
   consignOpen: boolean;
   /** Packs the engine may still list on its own, per category. Starts at 10; the desk's "List next 10" adds 10. */
   listBudget: { baseball: number; football: number; pokemon: number };
+  /** Vault sell-back: store credit paid, as a percent of the single's assigned value. */
+  sellBackPct: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -74,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chaseOn: { baseball: false, football: false, pokemon: false },
   consignOpen: false,
   listBudget: { baseball: 10, football: 10, pokemon: 10 },
+  sellBackPct: 80,
 };
 
 function deepMerge<T>(base: T, over: unknown): T {

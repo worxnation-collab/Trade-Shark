@@ -19,6 +19,18 @@ export interface StoredPack {
   tracking: string | null;
 }
 
+/** A prize single in the vault. Ships with packs in one parcel, or sells back for store credit. */
+export interface VaultSingle {
+  id: string;
+  name: string;
+  condition: string;
+  value: number;
+  at: string;
+  how: string;
+  status: "in_vault" | "ship_requested" | "shipped" | "sold_back";
+  tracking: string | null;
+}
+
 type Res = Record<string, unknown> & { ok: boolean; error?: string };
 const call = async (path: string, body?: unknown): Promise<Res> => {
   const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -27,17 +39,42 @@ const call = async (path: string, body?: unknown): Promise<Res> => {
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 
-type Ship = { k: "off" } | { k: "pick" } | { k: "address" } | { k: "quote"; line: ShipLine } | { k: "done"; shipping: number; packs: number; tracking: string | null };
+type Ship = { k: "off" } | { k: "pick" } | { k: "address" } | { k: "quote"; line: ShipLine } | { k: "done"; shipping: number; items: string; tracking: string | null };
 
-export function Collection({ packs, order, address }: { packs: StoredPack[]; order: string[]; address: ShipToFields }) {
+const items = (packs: number, singles: number) => {
+  const part = (n: number, w: string) => (n ? `${n} ${w}${n === 1 ? "" : "s"}` : "");
+  return [part(packs, "pack"), part(singles, "single")].filter(Boolean).join(" and ");
+};
+const vaultState: Record<VaultSingle["status"], string> = { in_vault: "In vault", ship_requested: "Shipping soon", shipped: "Shipped", sold_back: "Sold back" };
+
+export function Collection({
+  packs,
+  singles = [],
+  credit = 0,
+  sellBackPct = 80,
+  order,
+  address,
+}: {
+  packs: StoredPack[];
+  singles?: VaultSingle[];
+  credit?: number;
+  sellBackPct?: number;
+  order: string[];
+  address: ShipToFields;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState<PackView | null>(null);
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
   const [ship, setShip] = useState<Ship>({ k: "off" });
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pickedV, setPickedV] = useState<Set<string>>(new Set());
+  const [selling, setSelling] = useState<string | null>(null);
   const [addr, setAddr] = useState<ShipToFields>(address);
   const stored = packs.filter((p) => p.state === "stored");
+  const inVault = singles.filter((v) => v.status === "in_vault");
+  const waiting = stored.length + inVault.length;
+  const pickedN = picked.size + pickedV.size;
   const picking = ship.k === "pick";
 
   async function view(id: string) {
@@ -48,6 +85,25 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
     if (!r.ok) return setError(r.error ?? "Couldn't open that pack.");
     setOpen(r.pack as PackView);
     window.scrollTo({ top: 0 });
+  }
+
+  function toggleV(id: string) {
+    setPickedV((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
+  async function sellBack(id: string) {
+    setLoading(`sell:${id}`);
+    setError("");
+    const r = await call(`/api/play/vault/${id}/sell-back`, {});
+    setLoading("");
+    setSelling(null);
+    if (!r.ok) return setError(r.error ?? "Couldn't sell that back.");
+    router.refresh();
   }
 
   function toggle(id: string) {
@@ -62,7 +118,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
   async function quote() {
     setLoading("quote");
     setError("");
-    const r = await call("/api/play/ship/quote", { packIds: [...picked], address: addr });
+    const r = await call("/api/play/ship/quote", { packIds: [...picked], vaultIds: [...pickedV], address: addr });
     setLoading("");
     if (!r.ok) return setError(r.error ?? "Couldn't price shipping.");
     if (r.address) setAddr(r.address as ShipToFields);
@@ -79,7 +135,8 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
       return setError(r.error ?? "That didn't go through.");
     }
     setPicked(new Set());
-    setShip({ k: "done", shipping: r.shipping as number, packs: r.packs as number, tracking: (r.tracking as string | null) ?? null });
+    setPickedV(new Set());
+    setShip({ k: "done", shipping: r.shipping as number, items: items(r.packs as number, (r.singles as number) ?? 0), tracking: (r.tracking as string | null) ?? null });
     router.refresh();
   }
 
@@ -97,7 +154,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
       </div>
     );
 
-  if (!packs.length)
+  if (!packs.length && !singles.length)
     return (
       <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
         No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
@@ -114,7 +171,84 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
 
   return (
     <div className="mx-auto mt-6 max-w-2xl">
-      {error && <p className="mb-4 rounded border border-navy/20 bg-white px-3 py-2 text-center text-sm font-semibold text-navy">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border border-navy/20 bg-white px-3 py-2 text-center text-sm font-semibold text-navy">
+          {error}
+          {error === "Save a card first." && (
+            <>
+              {" "}
+              <Link href="/play/card" className="underline">
+                Save one
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      {singles.length > 0 && (
+        <div className="mt-6">
+          <h2 className="font-display text-sm text-navy">
+            Vault{credit > 0 && <span className="ml-2 font-sans text-xs font-semibold text-navy/70">Store credit {usd(credit)}</span>}
+          </h2>
+          <ul className="mt-2 divide-y divide-navy/10 overflow-hidden rounded-2xl border-2 border-navy bg-white">
+            {singles.map((v) => {
+              const can = picking && v.status === "in_vault";
+              const live = v.status === "in_vault" || v.status === "ship_requested" || v.status === "shipped";
+              return (
+                <li key={v.id} className="flex items-center gap-3 px-4 py-3">
+                  {picking && (
+                    <button
+                      aria-label={`Ship ${v.name}`}
+                      disabled={!can}
+                      onClick={() => toggleV(v.id)}
+                      className={`flex h-5 w-5 items-center justify-center rounded border-2 disabled:opacity-40 ${pickedV.has(v.id) ? "border-navy bg-navy text-sand" : "border-navy/40"}`}
+                    >
+                      {pickedV.has(v.id) ? "✓" : ""}
+                    </button>
+                  )}
+                  {live ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/play/vault/${v.id}/image`} alt={v.name} className="h-16 w-12 rounded object-cover" loading="lazy" />
+                  ) : (
+                    <span className="h-16 w-12 rounded bg-sand" aria-hidden />
+                  )}
+                  <span className="flex-1">
+                    <span className="block font-extrabold text-navy">{v.name}</span>
+                    <span className="block text-xs text-navy/60">
+                      {day(v.at)} · {v.how} · {v.condition} · {usd(v.value)}
+                    </span>
+                    {selling === v.id && (
+                      <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-navy">
+                        Sell back for {usd(Math.round(v.value * sellBackPct) / 100)} store credit?
+                        <button className="btn-ghost px-3 py-1" onClick={() => setSelling(null)}>
+                          Keep it
+                        </button>
+                        <button className="btn-reveal px-3 py-1" disabled={loading === `sell:${v.id}`} onClick={() => sellBack(v.id)}>
+                          {loading === `sell:${v.id}` ? "Selling…" : "Sell back"}
+                        </button>
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-right text-xs">
+                    {v.tracking && v.status !== "in_vault" ? (
+                      <a href={v.tracking} target="_blank" rel="noreferrer" className="font-semibold text-navy underline">
+                        {vaultState[v.status]} · track
+                      </a>
+                    ) : (
+                      <span className="block font-semibold text-navy/70">{vaultState[v.status]}</span>
+                    )}
+                    {v.status === "in_vault" && !picking && selling !== v.id && (
+                      <button className="mt-1 block text-navy underline" disabled={!!loading} onClick={() => setSelling(v.id)}>
+                        Sell back
+                      </button>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-1 text-xs text-navy/60">Prizes wait here. Ship them with your packs, or sell one back for {sellBackPct}% of its value in store credit.</p>
+        </div>
+      )}
       {groups.map((g) => (
         <div key={g.c} className="mt-6">
           <h2 className="font-display text-sm text-navy">{g.list[0].product}s</h2>
@@ -159,20 +293,24 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
       <div className="sticky bottom-3 z-10 mt-8 rounded-lg border border-navy/15 border-b-gold bg-sand p-4 text-center">
         {ship.k === "off" && (
           <>
-            <button className="btn-reveal px-8 py-3 text-lg" disabled={!stored.length} onClick={() => (pop(), setShip({ k: "pick" }), setPicked(new Set(stored.map((p) => p.id))))}>
+            <button
+              className="btn-reveal px-8 py-3 text-lg"
+              disabled={!waiting}
+              onClick={() => (pop(), setShip({ k: "pick" }), setPicked(new Set(stored.map((p) => p.id))), setPickedV(new Set(inVault.map((v) => v.id))))}
+            >
               Ship
             </button>
-            <p className="mt-1 text-xs text-navy/60">{stored.length ? `${stored.length} pack${stored.length === 1 ? "" : "s"} waiting. Ship one or several in one parcel.` : "Nothing waiting to ship."}</p>
+            <p className="mt-1 text-xs text-navy/60">{waiting ? `${items(stored.length, inVault.length)} waiting. Ship one or several in one parcel.` : "Nothing waiting to ship."}</p>
           </>
         )}
         {ship.k === "pick" && (
           <>
-            <p className="text-sm text-navy">Tick the packs to send together ({picked.size} picked).</p>
+            <p className="text-sm text-navy">Tick what to send together ({pickedN} picked).</p>
             <div className="mt-2 flex justify-center gap-3">
               <button className="btn-ghost px-5 py-2" onClick={() => setShip({ k: "off" })}>
                 Cancel
               </button>
-              <button className="btn-reveal px-6 py-2" disabled={!picked.size} onClick={() => setShip({ k: "address" })}>
+              <button className="btn-reveal px-6 py-2" disabled={!pickedN} onClick={() => setShip({ k: "address" })}>
                 Next
               </button>
             </div>
@@ -180,7 +318,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
         )}
         {ship.k === "address" && (
           <>
-            <p className="text-sm font-semibold text-navy">Ship {picked.size} pack{picked.size === 1 ? "" : "s"} to:</p>
+            <p className="text-sm font-semibold text-navy">Ship {items(picked.size, pickedV.size)} to:</p>
             <div className="mt-2 grid grid-cols-6 gap-2">
               {field("name", "Name", "col-span-6")}
               {field("line1", "Street", "col-span-6")}
@@ -202,7 +340,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
         {ship.k === "quote" && (
           <>
             <p className="text-sm text-navy">
-              {ship.line.packs} pack{ship.line.packs === 1 ? "" : "s"}, one parcel, to {addr.line1}, {addr.city} {addr.state}
+              {items(ship.line.packs, ship.line.singles)}, one parcel, to {addr.line1}, {addr.city} {addr.state}
             </p>
             <p className="mt-1 text-base font-semibold text-navy">Shipping · {ship.line.label}</p>
             <div className="mt-3 flex justify-center gap-3">
@@ -218,7 +356,7 @@ export function Collection({ packs, order, address }: { packs: StoredPack[]; ord
         {ship.k === "done" && (
           <>
             <p className="text-base font-bold text-navy">
-              {ship.packs} pack{ship.packs === 1 ? "" : "s"} on the way{ship.shipping ? ` · ${usd(ship.shipping)} shipping charged` : ""}!
+              {ship.items} on the way{ship.shipping ? ` · ${usd(ship.shipping)} shipping charged` : ""}!
             </p>
             <p className="mt-1 text-xs text-navy/70">
               {ship.tracking ? (

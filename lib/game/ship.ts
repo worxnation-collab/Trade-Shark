@@ -13,7 +13,8 @@ import { perkLeft, usePerk } from "./member";
  * (GamePack.orderId = null). The player picks one or more stored packs, confirms the address, sees one USPS Ground
  * Advantage rate for one combined parcel, and pays shipping only. One label for the whole selection. Nothing auto-ships.
  * The member mailer credit zeros one parcel a billing period. If the Shippo rate fails, $5.95 is charged and I buy the
- * label from the order.
+ * label from the order. Vault singles (prizes, ./vault) ride in the same parcel: a picked single goes in_vault →
+ * ship_requested when the parcel is claimed, back to in_vault if the charge fails, and shipped once the label is bought.
  */
 const QUOTE_TTL_MS = 30 * 60_000;
 export const BOUGHT = ["kept", "sold-blind"];
@@ -24,6 +25,7 @@ export interface ShipLine {
   how: string;
   label: string;
   packs: number;
+  singles: number;
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -55,9 +57,15 @@ export function cleanAddress(a: Partial<Record<keyof ShipToFields, unknown>>): S
   return f;
 }
 
-export function lineFor(q: Pick<ShipQuote, "id" | "amount" | "how" | "packIds">): ShipLine {
+export function lineFor(q: Pick<ShipQuote, "id" | "amount" | "how" | "packIds" | "vaultIds">): ShipLine {
   const label = q.how === "credit" ? `${SERVICE.label} · member mailer credit · $0.00` : `${SERVICE.label} · ${money(q.amount)}`;
-  return { quoteId: q.id, amount: q.amount, how: q.how, label, packs: q.packIds.length };
+  return { quoteId: q.id, amount: q.amount, how: q.how, label, packs: q.packIds.length, singles: q.vaultIds.length };
+}
+
+/** "2 packs and 1 single" */
+export function itemsLabel(packs: number, singles: number) {
+  const part = (n: number, w: string) => (n ? `${n} ${w}${n === 1 ? "" : "s"}` : "");
+  return [part(packs, "pack"), part(singles, "single")].filter(Boolean).join(" and ") || "nothing";
 }
 
 /** Verify the player's address with Shippo and remember it (signup, and again before a rate if it wasn't verified). */
@@ -84,14 +92,22 @@ async function storedPacks(buyerId: string, ids: string[]) {
   return db.gamePack.findMany({ where: { id: { in: ids }, reservedBy: buyerId, status: { in: BOUGHT }, orderId: null }, select: { id: true, number: true, category: true } });
 }
 
+/** Of these ids, the vault singles that are this player's and still waiting in the vault. */
+async function storedSingles(buyerId: string, ids: string[]) {
+  if (!ids.length) return [];
+  return db.vaultItem.findMany({ where: { id: { in: ids }, buyerId, status: "in_vault", orderId: null }, select: { id: true } });
+}
+
 /**
- * Step 1 of Ship: confirm (or change) the address, then one rate for one parcel holding the selected packs.
- * A changed address is saved and verified first; USPS has to be able to deliver it.
+ * Step 1 of Ship: confirm (or change) the address, then one rate for one parcel holding the selected packs and vault
+ * singles. A changed address is saved and verified first; USPS has to be able to deliver it. Nothing is charged here.
  */
-export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?: ShipToFields | null) {
+export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?: ShipToFields | null, vaultIds: string[] = []) {
   const ids = [...new Set(packIds.map(String))];
-  const packs = await storedPacks(buyerIn.id, ids);
-  if (!packs.length || packs.length !== ids.length) return { ok: false as const, error: "Pick packs from your collection that haven't shipped yet." };
+  const vids = [...new Set(vaultIds.map(String))];
+  const [packs, singles] = await Promise.all([storedPacks(buyerIn.id, ids), storedSingles(buyerIn.id, vids)]);
+  if (!ids.length && !vids.length) return { ok: false as const, error: "Pick something from your collection to ship." };
+  if (packs.length !== ids.length || singles.length !== vids.length) return { ok: false as const, error: "Pick packs and singles from your collection that haven't shipped yet." };
   let buyer = buyerIn;
   if (address) {
     const cur = shipFields(buyer);
@@ -114,7 +130,7 @@ export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?:
     if (!v.ok) error = v.error;
     else
       try {
-        rate = await groundAdvantageRate(v.id, parcelFor(packs.length));
+        rate = await groundAdvantageRate(v.id, parcelFor(packs.length + singles.length));
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       }
@@ -122,7 +138,7 @@ export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?:
   const how = credit ? "credit" : rate ? "rate" : "fallback";
   const amount = credit ? 0 : rate ? rate.amount : FALLBACK_SHIPPING;
   const q = await db.shipQuote.create({
-    data: { buyerId: buyer.id, amount, how, packIds: ids, shipmentId: rate?.shipmentId, rateId: rate?.rateId, rateAmount: rate?.amount, error: error?.slice(0, 300) },
+    data: { buyerId: buyer.id, amount, how, packIds: ids, vaultIds: vids, shipmentId: rate?.shipmentId, rateId: rate?.rateId, rateAmount: rate?.amount, error: error?.slice(0, 300) },
   });
   return { ok: true as const, ship: lineFor(q), address: shipFields(buyer) };
 }
@@ -131,7 +147,7 @@ export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?:
 export async function validQuote(buyer: Buyer, quoteId: string | null | undefined, now = new Date()) {
   if (!quoteId) return null;
   const q = await db.shipQuote.findFirst({ where: { id: quoteId, buyerId: buyer.id, usedAt: null } });
-  if (!q || !q.packIds.length || now.getTime() - q.createdAt.getTime() > QUOTE_TTL_MS) return null;
+  if (!q || (!q.packIds.length && !q.vaultIds.length) || now.getTime() - q.createdAt.getTime() > QUOTE_TTL_MS) return null;
   if (q.how === "credit" && !(await perkLeft(buyer, "mailer"))) return null;
   return q;
 }
@@ -153,20 +169,26 @@ export async function shipStored(buyer: Buyer, quoteId: string, opts: { api?: Ch
       const o = await tx.shipOrder.create({
         data: { buyerId: buyer.id, shipTo: buyer.shipTo, shippingCharged: quote.amount, how: quote.how, shipmentId: quote.shipmentId, rateId: quote.rateId, labelCost: quote.rateAmount },
       });
-      const n = await tx.gamePack.updateMany({ where: { id: { in: quote.packIds }, reservedBy: buyer.id, status: { in: BOUGHT }, orderId: null }, data: { orderId: o.id } });
-      if (n.count !== quote.packIds.length) throw new Error("pack moved");
+      if (quote.packIds.length) {
+        const n = await tx.gamePack.updateMany({ where: { id: { in: quote.packIds }, reservedBy: buyer.id, status: { in: BOUGHT }, orderId: null }, data: { orderId: o.id } });
+        if (n.count !== quote.packIds.length) throw new Error("pack moved");
+      }
+      if (quote.vaultIds.length) {
+        const v = await tx.vaultItem.updateMany({ where: { id: { in: quote.vaultIds }, buyerId: buyer.id, status: "in_vault", orderId: null }, data: { orderId: o.id, status: "ship_requested" } });
+        if (v.count !== quote.vaultIds.length) throw new Error("single moved");
+      }
       return o;
     })
     .catch(() => null);
-  if (!order) return { ok: false as const, error: "Some of those packs already shipped. Pick again.", code: "ship-changed" };
+  if (!order) return { ok: false as const, error: "Some of those already shipped or left your vault. Pick again.", code: "ship-changed" };
   const unclaim = async () => {
     await db.gamePack.updateMany({ where: { orderId: order.id }, data: { orderId: null } });
+    await db.vaultItem.updateMany({ where: { orderId: order.id, status: "ship_requested" }, data: { orderId: null, status: "in_vault" } });
     await db.shipOrder.delete({ where: { id: order.id } });
   };
   const api = opts.api !== undefined ? opts.api : chargeApi();
   if (quote.amount > 0) {
-    const n = quote.packIds.length;
-    const paid = await chargeSaved(buyer, quote.amount, "ship", null, `Trade Shark · shipping ${n} pack${n === 1 ? "" : "s"}`, api, order.id);
+    const paid = await chargeSaved(buyer, quote.amount, "ship", null, `Trade Shark · shipping ${itemsLabel(quote.packIds.length, quote.vaultIds.length)}`, api, order.id);
     if (!paid.ok) {
       await unclaim();
       return { ok: false as const, error: paid.error, code: "declined" };
@@ -174,7 +196,7 @@ export async function shipStored(buyer: Buyer, quoteId: string, opts: { api?: Ch
     await db.shipOrder.update({ where: { id: order.id }, data: { paymentIntentId: paid.paymentIntentId } });
   } else if (quote.how === "credit") await usePerk(buyer, "mailer");
   const done = quote.how === "fallback" ? order : await buyAndStoreLabel(order.id).catch(() => order);
-  return { ok: true as const, orderId: order.id, shipping: quote.amount, packs: quote.packIds.length, tracking: done.trackingUrl ?? null };
+  return { ok: true as const, orderId: order.id, shipping: quote.amount, packs: quote.packIds.length, singles: quote.vaultIds.length, tracking: done.trackingUrl ?? null };
 }
 
 /** Refund a parcel's shipping (I cancel a shipment by hand). */
@@ -186,14 +208,14 @@ export async function refundShipping(orderId: string, api: ChargeApi | null = ch
 
 /** Buy the parcel's label (making the shipment first if it doesn't have one), store the PDF, email tracking. */
 export async function buyAndStoreLabel(orderId: string) {
-  const order = await db.shipOrder.findUniqueOrThrow({ where: { id: orderId }, include: { buyer: true, packs: { select: { number: true, category: true } } } });
+  const order = await db.shipOrder.findUniqueOrThrow({ where: { id: orderId }, include: { buyer: true, packs: { select: { number: true, category: true } }, vaultItems: { select: { name: true } } } });
   if (order.labelPath) return order;
   try {
     let { shipmentId, rateId } = order;
     if (!shipmentId || !rateId) {
       const v = await ensureVerified(order.buyer);
       if (!v.ok) throw new Error(v.error);
-      const r = await groundAdvantageRate(v.id, parcelFor(order.packs.length));
+      const r = await groundAdvantageRate(v.id, parcelFor(order.packs.length + order.vaultItems.length));
       shipmentId = r.shipmentId;
       rateId = r.rateId;
     }
@@ -204,11 +226,12 @@ export async function buyAndStoreLabel(orderId: string) {
       where: { id: order.id },
       data: { shipmentId, rateId, labelPath, labelError: null, trackingCode: label.trackingCode, trackingUrl: label.trackingUrl, labelCost: label.cost ?? order.labelCost },
     });
-    const packs = order.packs.map((p) => `${productName(p.category)} ${p.number ?? ""}`.trim()).join(", ");
+    await db.vaultItem.updateMany({ where: { orderId: order.id, status: "ship_requested" }, data: { status: "shipped" } });
+    const items = [...order.packs.map((p) => `${productName(p.category)} ${p.number ?? ""}`.trim()), ...order.vaultItems.map((v) => v.name)];
     const mail = await sendMail({
       to: order.buyer.email,
-      subject: "Your Trade Shark packs are on their way",
-      text: `Hi ${order.buyer.name}!\n\nYour ${packs} ship${order.packs.length === 1 ? "s" : ""} from Florida by USPS Ground Advantage.\nTracking: ${label.trackingUrl}\n\nThanks for playing!\nTrade Shark`,
+      subject: order.packs.length ? "Your Trade Shark packs are on their way" : "Your Trade Shark single is on its way",
+      text: `Hi ${order.buyer.name}!\n\nYour ${items.join(", ")} ship${items.length === 1 ? "s" : ""} from Florida by USPS Ground Advantage.\nTracking: ${label.trackingUrl}\n\nThanks for playing!\nTrade Shark`,
     });
     return db.shipOrder.update({ where: { id: updated.id }, data: mail.ok ? { emailedAt: new Date(), emailError: null } : { emailError: mail.error } });
   } catch (e) {

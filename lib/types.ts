@@ -1,7 +1,7 @@
 export const GAMES = ["Pokemon", "Sports", "Magic", "Other"] as const;
 export type Game = (typeof GAMES)[number];
 
-export const STATUSES = ["Inbox", "Identified", "Priced", "Ready", "Listed", "Sold", "Archived", "BulkHold", "LilStack", "NeedsLook", "Pulled"] as const;
+export const STATUSES = ["Inbox", "Identified", "Priced", "Ready", "Listed", "Sold", "Archived", "BulkHold", "LilStack", "NeedsLook", "Pulled", "Vaulted"] as const;
 export type Status = (typeof STATUSES)[number];
 export const STATUS_LABEL: Record<Status, string> = {
   Inbox: "Inbox",
@@ -15,6 +15,7 @@ export const STATUS_LABEL: Record<Status, string> = {
   LilStack: "In a pack",
   NeedsLook: "Needs a look",
   Pulled: "Pulled",
+  Vaulted: "In a vault",
 };
 /** Cards the public shop may show. */
 export const FOR_SALE: Status[] = ["Ready", "Listed"];

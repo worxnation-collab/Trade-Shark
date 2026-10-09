@@ -3,15 +3,17 @@ import { Prisma } from "@prisma/client";
 import { caseWhere } from "./caseStock";
 import { db } from "./db";
 import { BIN } from "./game/rules";
+import { vaultCard } from "./game/vault";
 import type { SingleView } from "./rosterRollLink";
 
-export { addressMailto, type SingleView } from "./rosterRollLink";
+export type { SingleView } from "./rosterRollLink";
 
 /**
  * Roster Roll daily winner. Roster Roll writes one row per America/New_York date (POST /api/roster-roll/claim, the
  * only writer); the winner's link /case?reward=roster-roll&date=…&handle=… offers one free single from the same loose
  * stock the packs draw from. One pull per date: the row flips unclaimed → claimed as the card is taken. A bad link,
- * a claimed row or no row leaves The case as it is.
+ * a claimed row or no row leaves The case as it is. The prize never ships on its own: it goes into the winner's vault
+ * (Collection), and they choose to ship it or sell it back from there.
  */
 
 /** A real YYYY-MM-DD calendar date, or null. */
@@ -57,11 +59,12 @@ export async function canPull(date: unknown, handle: unknown): Promise<boolean> 
 class NoStock extends Error {}
 
 /**
- * Pull the single: flip the row to claimed and take one random card in one transaction. The card leaves stock as
- * Sold at $0 (soldChannel roster-roll). Returns null when the link doesn't match an unclaimed row (a second pull) or
- * there is nothing to give; nothing changes then.
+ * Pull the single: flip the row to claimed, reserve one random card and put it in the winner's vault, in one
+ * transaction. The card is not sold and nothing ships: it sits as Vaulted under `buyerId` until they ship it or sell
+ * it back. Returns null when the link doesn't match an unclaimed row (a second pull) or there is nothing to give;
+ * nothing changes then.
  */
-export async function pullSingle(date: unknown, handle: unknown, now = new Date()): Promise<SingleView | null> {
+export async function pullSingle(date: unknown, handle: unknown, buyerId: string, now = new Date()): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
   if (!d || !h) return null;
@@ -74,10 +77,10 @@ export async function pullSingle(date: unknown, handle: unknown, now = new Date(
         if (!n) break;
         const pick = await tx.card.findFirst({ where: SINGLE_WHERE, orderBy: { id: "asc" }, skip: Math.floor(Math.random() * n), select: { id: true } });
         if (!pick) continue;
-        // Re-check the stock rule on the write, so a pack that took the card a moment ago wins and we draw again.
-        const took = await tx.card.updateMany({ where: { AND: [{ id: pick.id }, SINGLE_WHERE] }, data: { status: "Sold", soldChannel: "roster-roll", soldPrice: 0, soldAt: now } });
-        if (!took.count) continue;
-        const row = await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id } });
+        // vaultCard re-checks the stock rule on the write, so a pack that took the card a moment ago wins and we draw again.
+        const item = await vaultCard(tx, { buyerId, cardId: pick.id, where: SINGLE_WHERE, source: "roster-roll", sourceRef: d, now });
+        if (!item) continue;
+        const row = await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id, buyerId } });
         return singleView(row, await tx.card.findUniqueOrThrow({ where: { id: pick.id }, select: VIEW_SELECT }));
       }
       throw new NoStock();
