@@ -1,7 +1,11 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { caseWhere } from "./caseStock";
 import { db } from "./db";
 import { BIN } from "./game/rules";
+import type { SingleView } from "./rosterRollLink";
+
+export { addressMailto, type SingleView } from "./rosterRollLink";
 
 /**
  * Roster Roll daily winner. Roster Roll writes one row per America/New_York date (POST /api/roster-roll/claim, the
@@ -49,13 +53,6 @@ export async function canPull(date: unknown, handle: unknown): Promise<boolean> 
   return !!row && (await db.card.count({ where: SINGLE_WHERE })) > 0;
 }
 
-export interface SingleView {
-  id: string;
-  name: string;
-  setName: string | null;
-  number: string | null;
-  variant: string | null;
-}
 
 class NoStock extends Error {}
 
@@ -80,8 +77,8 @@ export async function pullSingle(date: unknown, handle: unknown, now = new Date(
         // Re-check the stock rule on the write, so a pack that took the card a moment ago wins and we draw again.
         const took = await tx.card.updateMany({ where: { AND: [{ id: pick.id }, SINGLE_WHERE] }, data: { status: "Sold", soldChannel: "roster-roll", soldPrice: 0, soldAt: now } });
         if (!took.count) continue;
-        await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id } });
-        return singleView(await tx.card.findUniqueOrThrow({ where: { id: pick.id }, select: VIEW_SELECT }));
+        const row = await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id } });
+        return singleView(row, await tx.card.findUniqueOrThrow({ where: { id: pick.id }, select: VIEW_SELECT }));
       }
       throw new NoStock();
     });
@@ -92,9 +89,11 @@ export async function pullSingle(date: unknown, handle: unknown, now = new Date(
 }
 
 const VIEW_SELECT = { id: true, game: true, name: true, player: true, setName: true, year: true, number: true, variant: true } as const;
-function singleView(c: Prisma.CardGetPayload<{ select: typeof VIEW_SELECT }>): SingleView {
+function singleView(row: { date: string; handle: string }, c: Prisma.CardGetPayload<{ select: typeof VIEW_SELECT }>): SingleView {
   return {
     id: c.id,
+    date: row.date,
+    handle: row.handle,
     name: (c.game === "Sports" ? c.player || c.name : c.name) || "Card",
     setName: [c.year, c.setName].filter(Boolean).join(" ") || null,
     number: c.number || null,
@@ -102,14 +101,39 @@ function singleView(c: Prisma.CardGetPayload<{ select: typeof VIEW_SELECT }>): S
   };
 }
 
-/** The card a claimed row gave, for its image (only with the same date + handle). */
-export async function claimedCardId(date: unknown, handle: unknown): Promise<string | null> {
+/**
+ * The winner's browser keeps a signed cookie from the pull, so a refresh shows their card and the address link again.
+ * Anyone else opening the same link sees the normal Case.
+ */
+export const WINNER_COOKIE = "ts_rr";
+function cookieSecret() {
+  const s = process.env.PLAYER_SECRET || process.env.TRADE_SHARK_PASSWORD;
+  if (!s) throw new Error("PLAYER_SECRET (or TRADE_SHARK_PASSWORD) must be set to sign the Roster Roll cookie.");
+  return s;
+}
+const winnerSig = (date: string, handle: string) => createHmac("sha256", cookieSecret()).update(`roster-roll:${date}:${handle.toLowerCase()}`).digest("hex");
+export const winnerCookie = (date: string, handle: string) => `${date}.${winnerSig(date, handle)}`;
+
+/** True when the cookie is this browser's proof that it pulled the single for this date + handle. */
+export function isWinner(cookie: string | undefined, date: unknown, handle: unknown): boolean {
+  const d = parseDate(date);
+  const h = parseHandle(handle);
+  if (!cookie || !d || !h) return false;
+  const want = Buffer.from(winnerCookie(d, h));
+  const got = Buffer.from(cookie);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+/** The single a claimed row gave (for the winner's own refresh and image). */
+export async function claimedSingle(date: unknown, handle: unknown): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
   if (!d || !h) return null;
-  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h), status: "claimed" }, select: { cardId: true } });
-  return row?.cardId ?? null;
+  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h), status: "claimed", cardId: { not: null } } });
+  const card = row?.cardId ? await db.card.findUnique({ where: { id: row.cardId }, select: VIEW_SELECT }) : null;
+  return row && card ? singleView(row, card) : null;
 }
+
 
 export type RecordResult = { ok: true } | { ok: false; status: number; error: string };
 

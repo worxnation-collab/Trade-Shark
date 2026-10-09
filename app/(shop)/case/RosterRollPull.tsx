@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { isShiny } from "@/lib/shiny";
-import type { SingleView } from "@/lib/rosterRoll";
+import { addressMailto, type SingleView } from "@/lib/rosterRollLink";
 import { BIG_TILT, TiltCard } from "../packs/[category]/TiltCard";
 
 const details = (c: SingleView) => [c.setName, c.number ? `#${c.number.replace(/^#/, "")}` : null, c.variant].filter(Boolean).join(" · ");
 
 /**
  * A Roster Roll winner's line above the drift. "Pull it." takes one free single and shows it the way a pack reveal
- * shows its best card. If the pull doesn't go through (already pulled, nothing to give) the line simply goes away.
+ * shows its best card, then the address link. If the pull doesn't go through (already pulled, nothing to give) the
+ * line simply goes away. `pulled`: the winner came back (refresh), so show their card straight away.
  */
-export function RosterRollPull({ date, handle }: { date: string; handle: string }) {
+export function RosterRollPull({ date, handle, pulled = null, email }: { date: string; handle: string; pulled?: SingleView | null; email: string }) {
   const [state, setState] = useState<"offer" | "busy" | "gone">("offer");
-  const [card, setCard] = useState<SingleView | null>(null);
+  const [card, setCard] = useState<SingleView | null>(pulled);
 
   async function pull() {
     setState("busy");
@@ -41,6 +42,11 @@ export function RosterRollPull({ date, handle }: { date: string; handle: string 
           </Link>{" "}
           are the rest of the stock.
         </p>
+        {email && (
+          <a href={addressMailto(email, card)} className="mt-2 text-base text-navy underline">
+            Email me your address.
+          </a>
+        )}
       </div>
     );
   }

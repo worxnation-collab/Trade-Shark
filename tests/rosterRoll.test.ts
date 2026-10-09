@@ -33,12 +33,17 @@ const fake = {
       return { count: c ? 1 : 0 };
     },
     findUniqueOrThrow: async ({ where }: { where: { id: string } }) => ({ ...state.cards.find((c) => c.id === where.id)!, game: "Pokemon", player: null, setName: "Base", year: "1999", number: "58", variant: null }),
+    findUnique: async ({ where }: { where: { id: string } }) => {
+      const c = state.cards.find((x) => x.id === where.id);
+      return c ? { ...c, game: "Pokemon", player: null, setName: "Base", year: "1999", number: "58", variant: null } : null;
+    },
   },
 };
 const db = { ...fake, $transaction: async <T,>(fn: (tx: typeof fake) => Promise<T>) => fn(fake) };
 vi.mock("@/lib/db", () => ({ db }));
 
-const { canPull, nyToday, parseDate, parseHandle, pullSingle, recordWinner } = await import("@/lib/rosterRoll");
+process.env.PLAYER_SECRET = "test-secret";
+const { addressMailto, canPull, claimedSingle, isWinner, nyToday, parseDate, parseHandle, pullSingle, recordWinner, winnerCookie } = await import("@/lib/rosterRoll");
 
 beforeEach(() => {
   state.rows = [{ date: "2026-10-08", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null }];
@@ -93,5 +98,32 @@ describe("Roster Roll claim", () => {
     expect(await recordWinner({ date: "2026-10-10", handle: "Reef_99", score: 1 }, now)).toMatchObject({ ok: false, status: 400 });
     expect(await recordWinner({ date: "2026-10-01", handle: "no", score: 1 }, now)).toMatchObject({ ok: false, status: 400 });
     expect(await recordWinner({ date: "2026-10-01", handle: "Reef_99", score: -2 }, now)).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it("keeps the card for the winner's browser only", async () => {
+    const card = await pullSingle("2026-10-08", "sharkfan");
+    expect(card).toMatchObject({ date: "2026-10-08", handle: "SharkFan" }); // the handle as Roster Roll recorded it
+    const cookie = winnerCookie("2026-10-08", "SharkFan");
+    expect(isWinner(cookie, "2026-10-08", "SHARKFAN")).toBe(true);
+    expect(isWinner(undefined, "2026-10-08", "SharkFan")).toBe(false);
+    expect(isWinner(cookie, "2026-10-07", "SharkFan")).toBe(false);
+    expect(isWinner(cookie, "2026-10-08", "SomeoneElse")).toBe(false);
+    expect(isWinner(cookie.slice(0, -1) + "0", "2026-10-08", "SharkFan")).toBe(false);
+    expect(await claimedSingle("2026-10-08", "SharkFan")).toMatchObject({ id: card!.id, name: card!.name });
+  });
+
+  it("has no refresh view before the pull", async () => {
+    expect(await claimedSingle("2026-10-08", "SharkFan")).toBeNull();
+  });
+
+  it("builds the address email", () => {
+    const href = addressMailto("shop@example.com", { date: "2026-10-09", handle: "SharkFan", name: "Pikachu" });
+    const url = new URL(href);
+    expect(url.protocol).toBe("mailto:");
+    expect(url.pathname).toBe("shop@example.com");
+    expect(url.searchParams.get("subject")).toBe("Roster Roll single · 2026-10-09 · SharkFan");
+    expect(url.searchParams.get("body")).toBe(
+      ["Handle: SharkFan", "Date: 2026-10-09", "Card: Pikachu", "", "Ship to:", "Name:", "Address:", "City, state, ZIP:", "Phone:"].join("\r\n"),
+    );
   });
 });

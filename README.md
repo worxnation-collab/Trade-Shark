@@ -62,7 +62,7 @@ Statuses: `Inbox` (held) → stock (`Priced` / `Bulk Hold`) or `Needs a look` �
 | `DATA_DIR` | no (default `./data`) | Local-disk scan storage when Supabase Storage isn't configured. |
 | `VISION_TIMEOUT_MS` | no (default `22000`) | Per-call vision timeout; keep it under the function timeout. |
 | `SITE_URL` | no | Public shop URL. Fills eBay `PicURL` and TCGplayer photo URLs with the public image route. |
-| `SHOP_EMAIL` | no | Contact page and "Email to buy" links. |
+| `SHOP_EMAIL` | no | Contact page, "Email to buy" links and the Roster Roll "Email me your address." link (hidden while unset). |
 | `SHOP_OWNER_NAME` | no | Shown on `/about`. |
 | `POKEMONTCG_API_KEY` | no | Raises Pokemon TCG API rate limits. The API works without it. |
 | `ANTHROPIC_API_KEY` | no | Vision identification with Claude (front + back). Tried first. |
@@ -190,7 +190,7 @@ Roster Roll records each day's winner here; Trade Shark honors the prize from it
 
 1. **Record** (Roster Roll's server, the only writer of the `RosterRollClaim` table): `POST /api/roster-roll/claim` with `Authorization: Bearer $ROSTER_ROLL_KEY` and JSON `{ "date": "YYYY-MM-DD", "handle": "…", "score": 1234 }`. The date is the America/New_York day (not in the future); the handle is 3–16 characters with no spaces; the score a whole number. `201` recorded, `409` that date already has a winner, `400` bad input, `401` wrong key, `503` no key set.
 2. **Link**: the winner opens `https://tradeshark.app/case?reward=roster-roll&date=YYYY-MM-DD&handle=HANDLE`. If the row for that date has that handle (any case) and is unclaimed, and there is stock, The case shows one line above the drift, "Roster Roll winner. One free single.", with **Pull it.**
-3. **Pull**: one random card from loose stock (the same rule as The case: priced, owned, readable, not in a pack, never energy; founder-owned and under $10), at $0. In one transaction the row flips to claimed and the card leaves stock as **Sold** (`soldChannel` roster-roll, `soldPrice` 0), so no pack can take it. The card is shown like a pack's best card, then "That's the single. Packs are the rest of the stock."
+3. **Pull**: one random card from loose stock (the same rule as The case: priced, owned, readable, not in a pack, never energy; founder-owned and under $10), at $0. In one transaction the row flips to claimed and the card leaves stock as **Sold** (`soldChannel` roster-roll, `soldPrice` 0), so no pack can take it. The card is shown like a pack's best card, then "That's the single. Packs are the rest of the stock." and **Email me your address.**, a mailto to the shop's Contact address (`SHOP_EMAIL`) with the subject "Roster Roll single · <date> · <handle>" and a body holding the handle, date, card name and blank ship-to lines for the winner to fill in. The pull leaves a signed cookie in the winner's browser, so refreshing their link keeps the card and the address link; anyone else opening a claimed link sees the normal Case.
 4. A claimed row, a missing row, a bad handle or date, or empty stock leaves The case exactly as it is. A second pull on that date does nothing.
 
 After adding the table (`npx prisma db push`), set `ROSTER_ROLL_KEY` on Netlify and give the same value to Roster Roll.

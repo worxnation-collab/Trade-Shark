@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { caseCards } from "@/lib/caseStock";
-import { canPull } from "@/lib/rosterRoll";
+import { shopEmail } from "@/lib/env";
+import { canPull, claimedSingle, isWinner, WINNER_COOKIE } from "@/lib/rosterRoll";
 import { CaseReel } from "./CaseReel";
 import { RosterRollPull } from "./RosterRollPull";
 
@@ -13,6 +15,11 @@ export default async function CasePage({ searchParams }: { searchParams: Promise
   // A Roster Roll winner's link adds one line above the drift; any other link, or a used one, leaves the page as it is.
   const reward = q.reward === "roster-roll" && typeof q.date === "string" && typeof q.handle === "string" ? { date: q.date, handle: q.handle } : null;
   const [cards, offer] = await Promise.all([caseCards().catch(() => []), reward ? canPull(reward.date, reward.handle).catch(() => false) : false]);
+  // The winner's own browser (signed cookie from the pull) keeps their card and the address link; everyone else sees the plain Case.
+  const won =
+    reward && !offer && isWinner((await cookies()).get(WINNER_COOKIE)?.value, reward.date, reward.handle)
+      ? await claimedSingle(reward.date, reward.handle).catch(() => null)
+      : null;
   return (
     <section className="-mx-4 -my-8 sm:-my-10">
       <div className="px-4 pb-3 pt-6 text-center">
@@ -26,7 +33,7 @@ export default async function CasePage({ searchParams }: { searchParams: Promise
           .
         </p>
       </div>
-      {offer && reward && <RosterRollPull date={reward.date} handle={reward.handle} />}
+      {reward && (offer || won) && <RosterRollPull date={reward.date} handle={reward.handle} pulled={won} email={shopEmail()} />}
       {cards.length ? <CaseReel cards={cards} /> : <p className="px-4 py-16 text-center text-navy/60">The case is being restocked.</p>}
     </section>
   );
