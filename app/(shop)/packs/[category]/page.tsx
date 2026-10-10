@@ -56,9 +56,9 @@ export default async function PackPage({ params, searchParams }: { params: Promi
       {category === "pokemon" && (
         <p className="mx-auto mt-4 max-w-md text-center text-sm text-navy/70">
           <a href={POKEROLL_URL} target="_blank" rel="noopener noreferrer" className="underline">
-            Play the draft for a free card
+            Roll a lineup for a free card
           </a>
-          : the top Pokéroll score each day gets one.
+          : the top lineup score each day gets one.
         </p>
       )}
     </section>
