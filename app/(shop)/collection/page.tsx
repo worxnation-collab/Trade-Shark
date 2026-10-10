@@ -9,7 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { Collection, type StoredPack, type VaultSingle } from "./Collection";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "My collection · Trade Shark" };
+export const metadata = { title: "My collection" };
 
 /** Every pack the player bought, by category, and every prize single in their vault. Nothing ships until they choose to. */
 export default async function CollectionPage() {
@@ -45,8 +45,8 @@ export default async function CollectionPage() {
       {!buyer ? (
         <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
           Your packs and prizes show up here once you have one.{" "}
-          <Link href="/" className="underline">
-            Have a look
+          <Link href="/packs/pokemon" className="underline">
+            Roll a pack
           </Link>
           .
         </p>

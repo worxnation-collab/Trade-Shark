@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 import { db } from "@/lib/db";
 import { AUTO_PUBLISH_MAX } from "@/lib/publish";
 import { cardLabel } from "@/lib/shop";

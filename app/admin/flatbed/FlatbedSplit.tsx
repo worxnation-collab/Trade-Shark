@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SharkFin } from "@/components/SharkFin";
+import { LogoMark } from "@/components/Brand";
 import { OwnerSelect } from "@/components/PartnerSelect";
 import { createBatch, queueBatch, uploadItems, type UploadItem } from "@/lib/client/upload";
 import { cropCard, detectCards, manualBox } from "@/lib/flatbed/detect";
@@ -282,7 +282,7 @@ export function FlatbedSplit({ cvSrc, batchId, batchName, startAt }: { cvSrc: st
             />
           ) : (
             <div className="card flex flex-col items-center gap-3 px-6 py-16 text-center">
-              <SharkFin size={52} />
+              <LogoMark size={52} />
               <div className="text-lg font-bold">Drop a copier scan of several cards</div>
               <p className="max-w-md text-sm text-navy/60">
                 JPEG or PNG, light or dark lid. Leave a little gap between cards. For backs, flip each card in place and scan again so

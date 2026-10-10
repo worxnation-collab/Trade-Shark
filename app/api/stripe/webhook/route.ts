@@ -6,7 +6,7 @@ import { handleStripeEvent } from "@/lib/stripeWebhook";
 export const runtime = "nodejs";
 
 /**
- * Stripe → Trade Shark. Public route (no password), so every request must carry a valid
+ * Stripe → the shop. Public route (no password), so every request must carry a valid
  * Stripe signature for STRIPE_WEBHOOK_SECRET. This is the only automatic way a card becomes Sold.
  */
 export async function POST(req: Request) {

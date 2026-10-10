@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SharkFin } from "@/components/SharkFin";
+import { LogoMark } from "@/components/Brand";
 import { db } from "@/lib/db";
 import { shipFromLink, type ShipQuote } from "@/lib/shipping";
 import { cardLabel } from "@/lib/shop";
@@ -39,7 +39,7 @@ export default async function ThankYou({ searchParams }: { searchParams: Promise
   return (
     <div className="mx-auto max-w-lg py-10 text-center">
       <div className="mx-auto mb-4 w-fit">
-        <SharkFin size={72} />
+        <LogoMark size={72} />
       </div>
       <h1 className="font-display text-3xl">Thank you!</h1>
       {label && <p className="mt-2 text-lg font-semibold text-navy">{label}</p>}

@@ -8,7 +8,7 @@ export function cardLabel(c: { name: string | null; player?: string | null; setN
 
 export function mailtoFor(c: { id: string; name: string | null; setName: string | null; number: string | null; year: string | null }) {
   const to = shopEmail();
-  const subject = `Trade Shark: ${cardLabel(c)}`;
+  const subject = `Pokéroll: ${cardLabel(c)}`;
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Hi, I'm interested in this card (ref ${c.id}).`)}`;
 }
 

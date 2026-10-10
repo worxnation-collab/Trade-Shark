@@ -3,7 +3,7 @@ import { consignOpen } from "@/lib/partners";
 import { ConsignForm } from "./ConsignForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Send in your bulk · Trade Shark" };
+export const metadata = { title: "Send in your bulk" };
 
 /** What consignment will be. Locked = Coming soon, no form, nothing to sign up for. */
 export default async function ConsignPage() {
@@ -36,7 +36,7 @@ export default async function ConsignPage() {
         </ol>
         <ul className="space-y-1 text-sm text-navy/75">
           <li>• Payouts open only after the shop&apos;s reserve can cover your card. Until then it waits and isn&apos;t put in a pack.</li>
-          <li>• The membership stays with Trade Shark.</li>
+          <li>• The membership stays with Pokéroll.</li>
           <li>• Scanner prices are a cute-shop estimate, not a market quote.</li>
         </ul>
         {open ? (

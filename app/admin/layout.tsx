@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MuteToggle } from "@/components/Feel";
-import { Wordmark } from "@/components/SharkFin";
+import { Wordmark } from "@/components/Brand";
 import { missingConfig } from "@/lib/env";
 
 export const dynamic = "force-dynamic";

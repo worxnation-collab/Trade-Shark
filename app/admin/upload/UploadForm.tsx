@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { SharkFin } from "@/components/SharkFin";
+import { LogoMark } from "@/components/Brand";
 import { OwnerSelect } from "@/components/PartnerSelect";
 import { createBatch, queueBatch, uploadItems, uploadPdf } from "@/lib/client/upload";
 
@@ -127,7 +127,7 @@ export function UploadForm({ pdfjsVersion, cvSrc }: { pdfjsVersion: string; cvSr
           onDrop={onDrop}
           className={`card flex flex-col items-center justify-center gap-3 border-2 border-dashed px-6 py-14 text-center ${over ? "border-teal bg-teal/5" : "border-navy/20"}`}
         >
-          <SharkFin size={52} />
+          <LogoMark size={52} />
           <div className="text-lg font-bold">Drop a folder or a pile of scans</div>
           <div className="text-sm text-navy/60">Fronts + backs, phone shots, a CSV manifest — all at once is fine.</div>
           <div className="flex gap-2">

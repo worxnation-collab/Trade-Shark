@@ -151,7 +151,7 @@ async function setup(): Promise<NonNullable<SellerTokens["policies"]>> {
   const loc = await call("GET", `/sell/inventory/v1/location/${LOCATION_KEY}`, undefined, [404]);
   if (loc.status === 404) {
     await call("POST", `/sell/inventory/v1/location/${LOCATION_KEY}`, {
-      name: "Trade Shark",
+      name: "Pokéroll",
       merchantLocationStatus: "ENABLED",
       locationTypes: ["WAREHOUSE"],
       location: { address: { addressLine1: "1424 Orchid Lane", city: "Kissimmee", stateOrProvince: "FL", postalCode: "34744", country: "US" } },

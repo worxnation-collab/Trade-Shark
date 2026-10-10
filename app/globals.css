@@ -1,18 +1,27 @@
 @import "tailwindcss";
 
+/*
+ * Pokéroll palette, the same as pokeroll.fun. The token names are kept from the old brand so every class keeps working:
+ * navy = ink, sand = the canvas, gold = the Pokéroll yellow.
+ */
 @theme {
-  --color-navy: #0b1f3a;
-  --color-navy-2: #14305a;
+  --color-navy: #111317;
+  --color-navy-2: #2a2d33;
   --color-teal: #1aa6a6;
   --color-teal-2: #138585;
-  --color-sand: #f4efe6;
-  --color-sand-2: #e9e1d2;
+  --color-sand: #f6f7f9;
+  --color-sand-2: #eceef1;
   --color-coral: #e85d4c;
-  --color-gold: #d9a441;
+  --color-gold: #f5c518;
   --color-keep: #2f6b3a;
-  /* Two faces only, self-hosted from @fontsource in app/layout.tsx. No serif, no script. */
-  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Archivo Black", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  /* The system face, like pokeroll.fun; titles are the same face, heavy and tight. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.font-display {
+  font-weight: 800;
+  letter-spacing: -0.035em;
 }
 
 html,
@@ -77,9 +86,10 @@ kbd {
     transform: translateY(-2px);
   }
 }
-/* The reveal button: navy with a gold edge; dips a little when pressed. */
+/* The main action, like Pokéroll's Roll button: yellow, ink type, a soft yellow glow; dips a little when pressed. */
 @utility btn-reveal {
-  @apply inline-flex items-center justify-center rounded-lg border-2 border-gold bg-navy font-bold text-sand transition-transform disabled:opacity-50;
+  @apply inline-flex items-center justify-center rounded-2xl bg-gold font-semibold tracking-tight text-navy transition-transform disabled:opacity-50;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.06), 0 6px 20px rgb(245 197 24 / 0.35);
   transition-duration: 90ms;
   &:active:not(:disabled) {
     transform: translateY(2px) scale(0.985);
@@ -93,10 +103,11 @@ kbd {
 .pack-shadow {
   filter: drop-shadow(0 18px 22px rgb(0 0 0 / 0.45));
 }
-/* A gold hairline under page titles. Gold is an edge, never a fill or a glow. */
+/* A short yellow rule under page titles. */
 .gold-rule {
-  height: 1px;
-  width: 4.5rem;
+  height: 3px;
+  width: 3rem;
+  border-radius: 2px;
   background: var(--color-gold);
 }
 
@@ -166,6 +177,27 @@ kbd {
 }
 .after-seal .card-in {
   animation-delay: calc(480ms + var(--i) * 50ms);
+}
+/* The pack roll: five card backs riffle side to side (like the lineup's roll), then the cards land with card-in. */
+.roll-deck > * {
+  animation: roll-riffle 900ms ease-in-out both;
+  animation-delay: calc(var(--i) * 25ms);
+  transform: translateY(calc(var(--i) * -2px));
+}
+.roll-deck > *:nth-child(even) {
+  animation-name: roll-riffle-r;
+}
+@keyframes roll-riffle {
+  0%, 100% { transform: translate(0, calc(var(--i) * -2px)) rotate(0); }
+  25% { transform: translate(-38px, 0) rotate(-9deg); }
+  50% { transform: translate(0, calc(var(--i) * -2px)) rotate(0); }
+  75% { transform: translate(24px, 0) rotate(6deg); }
+}
+@keyframes roll-riffle-r {
+  0%, 100% { transform: translate(0, calc(var(--i) * -2px)) rotate(0); }
+  25% { transform: translate(38px, 0) rotate(9deg); }
+  50% { transform: translate(0, calc(var(--i) * -2px)) rotate(0); }
+  75% { transform: translate(-24px, 0) rotate(-6deg); }
 }
 @keyframes card-in {
   from { opacity: 0; transform: translateY(-28px) rotate(calc((var(--i) - 5.5) * 2deg)) scale(0.9); }

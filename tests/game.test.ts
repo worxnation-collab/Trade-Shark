@@ -158,7 +158,7 @@ describe("pack mix", () => {
 
 describe("game copy and prices", () => {
   it("looking is free: the rules sentence, a 120 s clock, 3 looks a day", () => {
-    expect(RULES_LINE).toBe("Looking is free. Three looks a day. The first is $3.99 to keep, the next is $4.99, the last is $5.99.");
+    expect(RULES_LINE).toBe("You roll it. You keep it or put it back. Three free rolls a day: the first is $3.99 to keep, the next is $4.99, the last is $5.99.");
     expect(TIMER_SECONDS).toBe(120);
     expect(LOOKS_PER_DAY).toBe(3);
   });

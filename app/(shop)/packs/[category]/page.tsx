@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const c = categoryOf((await params).category);
-  return { title: c ? `${c.product} · Trade Shark` : "Packs" };
+  return { title: c ? `Roll a ${c.product}` : "Packs" };
 }
 
 /** The pack screen for one public category. Rules and odds are on screen before the first look. Other categories go home. */

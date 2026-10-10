@@ -113,7 +113,7 @@ export async function look(buyerIn: Buyer, category: string, opts: { rng?: Rng; 
   const open = await db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: { in: ["revealing", "charging", "keeping", "checkout"] } } });
   if (open) return err("Finish the pack you have open first.", "busy");
   const today = await looksUsed(buyer, category, opts.ip ?? null, now);
-  if (today.net >= LOOKS_PER_DAY_PER_IP || today.used >= LOOKS_PER_DAY) return err(`That's ${LOOKS_PER_DAY} looks at ${productName(category)}s today. More tomorrow.`, "no-looks");
+  if (today.net >= LOOKS_PER_DAY_PER_IP || today.used >= LOOKS_PER_DAY) return err(`That's ${LOOKS_PER_DAY} rolls of ${productName(category)}s today. More tomorrow.`, "no-looks");
   if (!(await categoryStatus(category, member, now)).open) return err(`No ${productName(category)}s are ready right now.`, "closed");
   const memberStack = !!opts.memberStack && member && (await perkLeft(buyer, "stack"));
   if (opts.memberStack && !memberStack) return err("Your member stack for this month is used (or your membership isn't active).", "no-stack");
@@ -176,7 +176,7 @@ export async function keep(
   // One Keep at a time (double taps).
   const claimed = await db.gameCycle.updateMany({ where: { id: cycle.id, status: "revealing" }, data: { status: "keeping" } });
   if (!claimed.count) return err("This pack is closed.", "closed");
-  const label = `Trade Shark · ${productName(cycle.category)} kept`;
+  const label = `Pokéroll · ${productName(cycle.category)} kept`;
 
   if (!buyer.paymentMethodId) {
     const s = opts.checkout !== undefined ? opts.checkout : checkoutApi();
@@ -343,7 +343,7 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
   const cycle = await db.gameCycle.create({ data: { buyerId: buyer.id, category, kind: "blind", status: "charging" } });
   const api = opts.api !== undefined ? opts.api : chargeApi();
   const total = PRICES.blind;
-  const paid = await chargeSaved(buyer, total, "blind", cycle.id, `Trade Shark · ${productName(category)} dealer's choice`, api);
+  const paid = await chargeSaved(buyer, total, "blind", cycle.id, `Pokéroll · ${productName(category)} dealer's choice`, api);
   if (!paid.ok) {
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(paid.error, "declined");

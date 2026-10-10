@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
     "",
     "{shop_note}",
   ].join("\n"),
-  shopNote: "Thanks for hanging out at Trade Shark!",
+  shopNote: "Thanks for hanging out at Pokéroll!",
   ebayCategory: { Pokemon: "183454", Magic: "183454", Sports: "261328", Other: "183454" },
   ebayShippingProfileName: "",
   ebayReturnProfileName: "",

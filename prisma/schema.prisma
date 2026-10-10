@@ -1,4 +1,4 @@
-// Trade Shark — single seller. No users/sellers tables on purpose.
+// Pokéroll shop (formerly Trade Shark) — single seller. No users/sellers tables on purpose.
 
 generator client {
   provider      = "prisma-client-js"

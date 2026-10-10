@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CardTable } from "@/components/CardTable";
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 import { db } from "@/lib/db";
 import { QUEUE_ORDER, queueQuery, queueWhere } from "@/lib/queue";
 import { getSettings } from "@/lib/settings";

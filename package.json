@@ -2,7 +2,7 @@
   "name": "trade-shark",
   "version": "0.1.0",
   "private": true,
-  "description": "Trade Shark — personal card shop and listing desk. Scan it. Price it. List it.",
+  "description": "Pokéroll shop: pack rolls, the case, collection and the listing desk (formerly Trade Shark).",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/copy-opencv.mjs && prisma generate && next build",

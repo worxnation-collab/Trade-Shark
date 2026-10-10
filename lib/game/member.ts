@@ -21,7 +21,7 @@ export type Perk = "mailer" | "stack";
 export async function memberPrice(s: Stripe) {
   const found = await s.prices.list({ lookup_keys: [MEMBER_LOOKUP_KEY], active: true, limit: 1 });
   if (found.data[0]) return found.data[0].id;
-  const product = await s.products.create({ name: "Trade Shark Membership", description: MEMBER_PERKS.join(". ") + "." });
+  const product = await s.products.create({ name: "Pokéroll Membership", description: MEMBER_PERKS.join(". ") + "." });
   const price = await s.prices.create({
     product: product.id,
     currency: "usd",

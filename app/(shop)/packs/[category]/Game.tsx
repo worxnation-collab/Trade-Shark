@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
 import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, RULES_LINE, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
+import { CardBack } from "@/components/CardBack";
 import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
 import { CardGrid } from "./CardGrid";
@@ -34,6 +35,10 @@ export interface GameProps {
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
+// The roll: a short shuffle of our card backs before the cards land (like the lineup's roll). Skipped under reduced motion.
+const ROLL_MS = 900;
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 type Res = Record<string, unknown> & { ok: boolean; error?: string; code?: string };
 const post = async (path: string, body: unknown): Promise<Res> => {
@@ -63,6 +68,7 @@ export function Game(p: GameProps) {
   const [looks, setLooks] = useState(p.looksLeft);
   const [stackLeft, setStackLeft] = useState(p.stackLeft);
   const [nextLook, setNextLook] = useState(p.nextLook);
+  const [rolling, setRolling] = useState(false);
   // After a pass: a short beat (the price just passed, then the next one) before the next button shows.
   const [beat, setBeat] = useState(false);
   useEffect(() => {
@@ -84,7 +90,10 @@ export function Game(p: GameProps) {
     setBusy(memberStack ? "stack" : "look");
     setError("");
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const r = await post("/api/play/look", { category: p.category, memberStack, tz });
+    // The deck shuffles while the server picks the pack; the cards land once both are done.
+    setRolling(!reducedMotion());
+    const [r] = await Promise.all([post("/api/play/look", { category: p.category, memberStack, tz }), reducedMotion() ? null : wait(ROLL_MS)]);
+    setRolling(false);
     setBusy("");
     if (!r.ok) {
       if (r.code === "no-looks") setLooks(0);
@@ -159,7 +168,17 @@ export function Game(p: GameProps) {
     return () => window.clearInterval(t);
   }, [phase, passNow]);
 
-  // The pack drawn from the fin (components/Pack.tsx). The only object with a shadow.
+  // The roll on the stage: five of our card backs riffling (CSS only, app/globals.css .roll-deck).
+  const rollDeck = (
+    <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl" >
+      <div className="roll-deck relative h-44 w-32" aria-label="Rolling" role="status">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <CardBack key={i} className="pack-shadow absolute inset-0 w-full" style={{ "--i": i } as React.CSSProperties} />
+        ))}
+      </div>
+    </Stage>
+  );
+  // The pack, drawn in code (components/Pack.tsx). The only object with a shadow.
   const packArt = (cls = "") => <Pack category={p.category} className={cls} />;
   // The seal split after a blind buy: the crimped top lifts away while the body drops and fades.
   const sealSplit = (
@@ -188,18 +207,18 @@ export function Game(p: GameProps) {
     <>
       {looks > 0 ? (
         <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled={!!busy} onClick={() => look()} data-pop>
-          {busy === "look" ? "Opening…" : `${phase.k === "passed" ? "Show me the next one" : "Show me the cards"} · ${usd(keepPriceFor(nextLook))} to keep`}
+          {busy === "look" ? "Rolling…" : `${phase.k === "passed" ? "Roll again" : "Roll a pack"} · ${usd(keepPriceFor(nextLook))} to keep`}
         </button>
       ) : (
-        <p className="mt-6 text-sm text-navy/75">That&apos;s {LOOKS_PER_DAY} looks today. More tomorrow.</p>
+        <p className="mt-6 text-sm text-navy/75">That&apos;s {LOOKS_PER_DAY} rolls today. More tomorrow.</p>
       )}
       {looks > 0 && p.member && stackLeft && (
         <button className="btn-ghost mt-3 px-5 py-2" disabled={!!busy} onClick={() => look(true)}>
-          {busy === "stack" ? "Opening…" : "Show me my member stack"}
+          {busy === "stack" ? "Rolling…" : "Roll my member stack"}
         </button>
       )}
       <p className="mt-2 text-xs text-navy/55">
-        {looks > 0 ? `${looks} of ${LOOKS_PER_DAY} free looks left today · ` : ""}
+        {looks > 0 ? `${looks} of ${LOOKS_PER_DAY} free rolls left today · ` : ""}
         <Link href="/play/member" className="underline">
           {p.member ? "Membership" : "Membership $7.99/mo"}
         </Link>
@@ -222,12 +241,16 @@ export function Game(p: GameProps) {
 
       {phase.k === "intro" && (
         <>
-          {/* The stage sits behind the pack only; the rules and the button stay on sand below. */}
-          <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-lg p-12">
-            <div className="w-40 sm:w-48">{packArt()}</div>
-          </Stage>
+          {/* The stage sits behind the pack (or the rolling deck) only; the rules and the button stay below. */}
+          {rolling ? (
+            rollDeck
+          ) : (
+            <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl p-12">
+              <div className="w-40 sm:w-48">{packArt()}</div>
+            </Stage>
+          )}
           <Rules odds={p.odds} />
-          {lookButtons}
+          {!rolling && lookButtons}
         </>
       )}
 
@@ -268,9 +291,13 @@ export function Game(p: GameProps) {
 
       {phase.k === "passed" && (
         <>
-          <Stage category={p.category} className="flex items-center justify-center rounded-lg p-6">
-            <div className="gone w-32">{packArt()}</div>
-          </Stage>
+          {rolling ? (
+            rollDeck
+          ) : (
+            <Stage category={p.category} className="flex items-center justify-center rounded-2xl p-6">
+              <div className="gone w-32">{packArt()}</div>
+            </Stage>
+          )}
           {looks > 0 && p.open ? (
             <PriceStep passed={phase.keepPrice} look={nextLook} />
           ) : (
@@ -280,7 +307,7 @@ export function Game(p: GameProps) {
             </>
           )}
           {/* Not in the same tap: the next button waits out the beat. */}
-          {!beat && lookButtons}
+          {!beat && !rolling && lookButtons}
         </>
       )}
 
@@ -318,7 +345,7 @@ export function Game(p: GameProps) {
   );
 }
 
-/** The beat after a pass: the price just passed, the next one a dollar up, and the day's three steps with this look lit. Navy and gold, no red. */
+/** The beat after a pass: the price just passed, the next one a dollar up, and the day's three steps with this roll lit. Ink and yellow, no red. */
 function PriceStep({ passed, look }: { passed: number; look: number }) {
   return (
     <div className="mt-5 flex flex-col items-center" aria-live="polite">

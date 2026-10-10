@@ -4,7 +4,7 @@ import { currentBuyer } from "@/lib/game/buyer";
 import { isMember, MEMBER_PERKS, MEMBER_PRICE, periodKey, refreshMember } from "@/lib/game/member";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Membership · Trade Shark" };
+export const metadata = { title: "Membership" };
 
 /** Optional membership. Plain about what it is and what it isn't. */
 export default async function MemberPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -32,7 +32,7 @@ export default async function MemberPage({ searchParams }: { searchParams: Promi
           ))}
         </ul>
         <h2 className="pt-2 font-bold">What it isn&apos;t</h2>
-        <p className="text-sm text-navy/70">No extra looks, no cheaper everyday packs, and no free shipping on every pack. Packs still cost what they cost.</p>
+        <p className="text-sm text-navy/70">No extra rolls, no cheaper everyday packs, and no free shipping on every pack. Packs still cost what they cost.</p>
       </div>
 
       {!buyer || !buyer.paymentMethodId ? (

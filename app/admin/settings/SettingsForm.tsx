@@ -138,7 +138,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           </p>
         </div>
         <div>
-          <label className="label">Trade Shark note</label>
+          <label className="label">Shop note</label>
           <input className="input" value={s.shopNote} onChange={(e) => setS({ ...s, shopNote: e.target.value })} />
         </div>
       </section>

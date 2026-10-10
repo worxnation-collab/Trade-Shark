@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { doorSlug, isDoor, passwordConfigured } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Trade Shark", robots: { index: false, follow: false } };
+export const metadata = { title: "Pokéroll", robots: { index: false, follow: false } };
 
 /** The founder door (FOUNDER_DOOR). Any other top-level path is a plain 404. Always the password screen, never the desk. */
 export default async function Door({ params }: { params: Promise<{ door: string }> }) {

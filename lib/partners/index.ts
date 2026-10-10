@@ -273,7 +273,7 @@ export async function payPartner(partnerId: string, opts: { retain?: boolean } =
     return { ok: true as const, amount, retained: true };
   }
   try {
-    const t = await transfer(amount, p.stripeAccountId!, `Trade Shark payout · ${p.name}`, payout.id);
+    const t = await transfer(amount, p.stripeAccountId!, `Pokéroll payout · ${p.name}`, payout.id);
     await db.partnerPayout.update({ where: { id: payout.id }, data: { status: "paid", transferId: t.id } });
     return { ok: true as const, amount, transferId: t.id };
   } catch (e) {
@@ -295,7 +295,7 @@ export async function paySender(senderId: string) {
   const payout = await db.senderPayout.create({ data: { senderId, amount, status: "pending" } });
   await db.senderEarning.updateMany({ where: { id: { in: owed.map((e) => e.id) } }, data: { payoutId: payout.id } });
   try {
-    const t = await transfer(amount, s.stripeAccountId, `Trade Shark consignment payout · ${s.name}`, payout.id);
+    const t = await transfer(amount, s.stripeAccountId, `Pokéroll consignment payout · ${s.name}`, payout.id);
     await db.senderPayout.update({ where: { id: payout.id }, data: { status: "paid", transferId: t.id } });
     await addReserve("sender-payout", -amount, `payout:${payout.id}`, `paid ${s.name}`);
     return { ok: true as const, amount, transferId: t.id };

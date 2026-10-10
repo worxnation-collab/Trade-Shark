@@ -1,8 +1,8 @@
 /**
- * The brand has no image files. The pack is drawn from the fin (components/Pack.tsx: flat navy body, one gold edge,
- * the fin, the category name in Archivo Black). Stages are flat color (components/Stage.tsx). Type is Archivo, with
- * Archivo Black for pack names, titles and the wordmark. The shop is sand with a gold edge; the desk is a dark bench.
- * Text never sits on the art. lib/brandScenes.json stays empty; nothing here calls an image API.
+ * The brand is Pokéroll, one product with pokeroll.fun: the mark is public/logo-mark.png (shared with pokeroll.fun),
+ * the pack is drawn in code (components/Pack.tsx: ink body, one yellow edge, the mark, the category name). Stages are
+ * flat color (components/Stage.tsx). Type is the system face. The shop is the light canvas with ink and yellow; the
+ * desk is a dark bench. lib/brandScenes.json stays empty; nothing here calls an image API.
  */
 
 /** The name printed on each category's pack. */

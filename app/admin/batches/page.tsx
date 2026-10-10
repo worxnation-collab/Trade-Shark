@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 import { db } from "@/lib/db";
 
 export const metadata = { title: "Batches" };

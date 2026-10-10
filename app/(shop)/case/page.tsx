@@ -7,7 +7,7 @@ import { CaseReel } from "./CaseReel";
 import { RosterRollPull } from "./RosterRollPull";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "The case · Trade Shark" };
+export const metadata = { title: "The case" };
 
 /** The case: real cards from my stock drifting by. Look only; packs are the only thing for sale. */
 export default async function CasePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

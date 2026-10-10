@@ -116,7 +116,7 @@ describe("ship request", () => {
     const stripe = fakeStripe();
     const r = await shipStored(b, (q as { ship: { quoteId: string } }).ship.quoteId, { api: stripe.api as never });
     expect(r).toMatchObject({ ok: true, shipping: 5.95, packs: 0, singles: 1 });
-    expect(stripe.charges).toEqual([expect.objectContaining({ amount: 595, description: "Trade Shark · shipping 1 single" })]);
+    expect(stripe.charges).toEqual([expect.objectContaining({ amount: 595, description: "Pokéroll · shipping 1 single" })]);
     expect(vault()[0]).toMatchObject({ status: "ship_requested", orderId: (r as { orderId: string }).orderId });
     expect(buyLabel).not.toHaveBeenCalled(); // flat rate: I buy the label from Orders
 

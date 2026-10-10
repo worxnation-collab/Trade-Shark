@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 import { StatusChip } from "@/components/StatusChip";
 import { db } from "@/lib/db";
 import { netAfterFees, type Channel } from "@/lib/pricing/engine";

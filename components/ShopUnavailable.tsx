@@ -1,4 +1,4 @@
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 
 /** Public fallback: never show visitors a stack trace or config details. */
 export function ShopUnavailable() {

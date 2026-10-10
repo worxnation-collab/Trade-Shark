@@ -3,7 +3,7 @@
  * in Kissimmee. Plain fetch with the API key (SHIPPO_API_KEY, server only). Every call has a timeout; a failed or
  * missing rate falls back to $5.95 and I buy the label from the order.
  */
-export const FROM_ADDRESS = { name: "Trade Shark", street1: "1424 Orchid Lane", city: "Kissimmee", state: "FL", zip: "34744", country: "US" };
+export const FROM_ADDRESS = { name: "Pokéroll", street1: "1424 Orchid Lane", city: "Kissimmee", state: "FL", zip: "34744", country: "US" };
 export const PARCEL = { length: 6, width: 4, height: 1, weight: 4 }; // inches, ounces: one pack
 /** Each extra pack in the same parcel adds this much weight; every 4 packs add an inch of height. */
 export const EXTRA_PACK_OZ = 1.5;

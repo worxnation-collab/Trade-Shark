@@ -188,7 +188,7 @@ export async function shipStored(buyer: Buyer, quoteId: string, opts: { api?: Ch
   };
   const api = opts.api !== undefined ? opts.api : chargeApi();
   if (quote.amount > 0) {
-    const paid = await chargeSaved(buyer, quote.amount, "ship", null, `Trade Shark · shipping ${itemsLabel(quote.packIds.length, quote.vaultIds.length)}`, api, order.id);
+    const paid = await chargeSaved(buyer, quote.amount, "ship", null, `Pokéroll · shipping ${itemsLabel(quote.packIds.length, quote.vaultIds.length)}`, api, order.id);
     if (!paid.ok) {
       await unclaim();
       return { ok: false as const, error: paid.error, code: "declined" };
@@ -230,8 +230,8 @@ export async function buyAndStoreLabel(orderId: string) {
     const items = [...order.packs.map((p) => `${productName(p.category)} ${p.number ?? ""}`.trim()), ...order.vaultItems.map((v) => v.name)];
     const mail = await sendMail({
       to: order.buyer.email,
-      subject: order.packs.length ? "Your Trade Shark packs are on their way" : "Your Trade Shark single is on its way",
-      text: `Hi ${order.buyer.name}!\n\nYour ${items.join(", ")} ship${items.length === 1 ? "s" : ""} from Florida by USPS Ground Advantage.\nTracking: ${label.trackingUrl}\n\nThanks for playing!\nTrade Shark`,
+      subject: order.packs.length ? "Your Pokéroll packs are on their way" : "Your Pokéroll card is on its way",
+      text: `Hi ${order.buyer.name}!\n\nYour ${items.join(", ")} ship${items.length === 1 ? "s" : ""} from Florida by USPS Ground Advantage.\nTracking: ${label.trackingUrl}\n\nThanks for playing!\nPokéroll`,
     });
     return db.shipOrder.update({ where: { id: updated.id }, data: mail.ok ? { emailedAt: new Date(), emailError: null } : { emailError: mail.error } });
   } catch (e) {

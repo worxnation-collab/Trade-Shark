@@ -157,7 +157,7 @@ export function Collection({
   if (!packs.length && !singles.length)
     return (
       <p className="mt-8 rounded-lg border border-navy/15 bg-white p-10 text-center text-base text-navy/80">
-        No packs yet. <Link href="/" className="underline">Pick a pack</Link> to play.
+        No packs yet. <Link href="/packs/pokemon" className="underline">Roll a pack</Link> to play.
       </p>
     );
 

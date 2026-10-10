@@ -3,7 +3,7 @@ import { currentBuyer, isGuest } from "@/lib/game/buyer";
 import { TzField } from "./TzField";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Save a card · Trade Shark" };
+export const metadata = { title: "Save a card" };
 
 /** Save or change a card (Stripe) and where to ship. Not needed to look: a first Keep saves the card with its payment. */
 export default async function SaveCard({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {

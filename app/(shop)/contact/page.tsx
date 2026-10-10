@@ -10,13 +10,13 @@ export default function Contact() {
       <h1 className="text-3xl font-extrabold">Contact</h1>
       <p>Want a card, more photos, or a bundle price? Email me and I'll get back to you.</p>
       {email ? (
-        <a className="btn-reveal px-5 py-2.5 text-base" href={`mailto:${email}?subject=${encodeURIComponent("Trade Shark question")}`}>
+        <a className="btn-reveal px-5 py-2.5 text-base" href={`mailto:${email}?subject=${encodeURIComponent("Pokéroll question")}`}>
           {email}
         </a>
       ) : (
         <p className="text-sm text-navy/60">Contact email coming soon.</p>
       )}
-      <p className="text-sm text-navy/60">Trade Shark ships from Florida with tracking.</p>
+      <p className="text-sm text-navy/60">Pokéroll ships from Florida with tracking.</p>
     </div>
   );
 }

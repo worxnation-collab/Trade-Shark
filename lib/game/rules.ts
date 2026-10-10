@@ -51,7 +51,7 @@ export const CHECKOUT_HOLD_MS = 30 * 60_000;
 /** At most this many chase packs reserved at once per category, so one player can't drain the list. */
 export const CHASE_RESERVE_CAP = 1;
 
-export const RULES_LINE = "Looking is free. Three looks a day. The first is $3.99 to keep, the next is $4.99, the last is $5.99.";
+export const RULES_LINE = "You roll it. You keep it or put it back. Three free rolls a day: the first is $3.99 to keep, the next is $4.99, the last is $5.99.";
 
 /** The keep price for the nth look of the day (1-based) in a category. Past the ladder stays on its last step. */
 export function keepPriceFor(look: number): number {

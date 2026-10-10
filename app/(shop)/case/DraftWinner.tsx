@@ -11,15 +11,15 @@ export function DraftWinner({ winner }: { winner: Winner }) {
       {winner ? (
         <>
           <span className="font-semibold">Pokéroll winner{winner.yesterday ? ` · ${day(winner.date)}` : ""}:</span> {winner.handle} · {winner.score}.{" "}
-          {winner.pulled ? "Their free card came from this case." : "A free card from this case is waiting for them."}{" "}
+          {winner.pulled ? "Their free card came from the case." : "A free card from the case is waiting for them."}{" "}
         </>
       ) : (
         <>
-          <span className="font-semibold">Be today&apos;s winner.</span> Top Pokéroll score each day gets a free card from this case.{" "}
+          <span className="font-semibold">Be today&apos;s winner.</span> Top lineup score each day gets a free card from the case.{" "}
         </>
       )}
       <a href={POKEROLL_URL} target="_blank" rel="noopener noreferrer" className="underline">
-        Play the draft
+        Roll a lineup
       </a>
     </p>
   );

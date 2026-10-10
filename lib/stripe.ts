@@ -123,14 +123,14 @@ export async function createPaymentLink(api: PaymentLinkApi, card: LinkCard, bas
     image: base.startsWith("https://") ? `${base}/api/shop/image/${card.id}/front` : null,
     metadata: { card_id: card.id, sku: card.id },
     redirect: thankYouUrl(base, card.id),
-    inactiveMessage: "This card has sold. Thanks for stopping by Trade Shark.",
+    inactiveMessage: "This card has sold. Thanks for stopping by Pokéroll.",
     shipping,
   });
   return { ...link, amount: amount / 100 };
 }
 
-/** Fallback product name; packs pass their own ("Pokemon Pack, Trade Shark"). */
-export const PACK_PRODUCT_NAME = "Pack, Trade Shark";
+/** Fallback product name; packs pass their own ("Pokemon Pack, Pokéroll"). */
+export const PACK_PRODUCT_NAME = "Pack, Pokéroll";
 export const packThankYouUrl = (base: string, id: string) => `${base}/shop/thank-you?stack=${encodeURIComponent(id)}`;
 
 /** One link for a whole pack: the description lists every card in it. */
@@ -150,7 +150,7 @@ export async function createPackLink(
     image: pack.image && base.startsWith("https://") ? pack.image : null,
     metadata: { lil_stack_id: pack.id, sku: `stack-${pack.id}` },
     redirect: packThankYouUrl(base, pack.id),
-    inactiveMessage: "This pack has sold. Thanks for stopping by Trade Shark.",
+    inactiveMessage: "This pack has sold. Thanks for stopping by Pokéroll.",
     shipping,
   });
   return { ...link, amount: amount / 100 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { EmptyState } from "@/components/SharkFin";
+import { EmptyState } from "@/components/Brand";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { confetti } from "@/lib/client/feel";
