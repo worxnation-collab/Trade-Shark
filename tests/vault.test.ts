@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeDb } from "./fakeDb";
 
 const fake = fakeDb();
+const CODE = "c0deC0de_-c0deC0de_-c0";
+const CODE_HASH = createHash("sha256").update(`roster-roll-code:${CODE}`).digest("hex");
 const db = fake.db;
 vi.mock("@/lib/db", () => ({ db }));
 
@@ -51,7 +54,7 @@ const fakeStripe = () => {
 };
 
 async function win(buyerId = "winner") {
-  const single = await pullSingle("2026-10-08", "SharkFan", buyerId);
+  const single = await pullSingle("2026-10-08", "SharkFan", CODE, buyerId);
   expect(single).not.toBeNull();
   return vault().find((v) => v.cardId === single!.id)! as { id: string; cardId: string };
 }
@@ -62,13 +65,13 @@ beforeEach(() => {
   sendMail.mockClear();
   T("buyer").push(buyer("winner"), buyer("other"));
   T("card").push(stockCard("c1", 6.5));
-  T("rosterRollClaim").push({ date: "2026-10-08", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null });
+  T("rosterRollClaim").push({ date: "2026-10-08", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
 });
 
 describe("prize reservation", () => {
   it("reserves the exact card and writes the vault row", async () => {
     const now = new Date("2026-10-09T14:00:00Z");
-    await pullSingle("2026-10-08", "SharkFan", "winner", now);
+    await pullSingle("2026-10-08", "SharkFan", CODE, "winner", now);
     expect(card("c1").status).toBe("Vaulted");
     expect(vault()).toEqual([
       expect.objectContaining({ buyerId: "winner", cardId: "c1", name: "Card c1", image: "display/c1.png", condition: "LP", value: 6.5, status: "in_vault", stockStatus: "Priced", source: "roster-roll", sourceRef: "2026-10-08", wonAt: now, orderId: null }),
@@ -79,8 +82,8 @@ describe("prize reservation", () => {
     await win();
     expect(inCase()).toHaveLength(0); // the case and pack builder both draw from Priced/BulkHold only
     // A second winner the next day finds nothing to give.
-    T("rosterRollClaim").push({ date: "2026-10-09", handle: "Reef_99", score: 1, status: "unclaimed", cardId: null, buyerId: null });
-    expect(await pullSingle("2026-10-09", "Reef_99", "other")).toBeNull();
+    T("rosterRollClaim").push({ date: "2026-10-09", handle: "Reef_99", score: 1, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
+    expect(await pullSingle("2026-10-09", "Reef_99", CODE, "other")).toBeNull();
     expect(vault()).toHaveLength(1);
   });
 });
@@ -141,7 +144,7 @@ describe("ship request", () => {
 
   it("a guest winner with no saved card is asked for one before anything is charged", async () => {
     T("buyer").push(buyer("guest", false));
-    const single = await pullSingle("2026-10-08", "SharkFan", "guest");
+    const single = await pullSingle("2026-10-08", "SharkFan", CODE, "guest");
     const item = vault().find((v) => v.cardId === single!.id)! as { id: string };
     const g = T("buyer").find((x) => x.id === "guest") as never;
     const q = await quoteShipment(g, [], null, [item.id]);

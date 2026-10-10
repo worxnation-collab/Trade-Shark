@@ -13,8 +13,8 @@ export default async function CasePage({ searchParams }: { searchParams: Promise
   const q = await searchParams;
   // A Roster Roll winner's link adds one line above the drift; any other link, or a used one, leaves the page as it is.
   // Pokéroll (Roster Roll's new name) links with reward=pokeroll; older links say roster-roll.
-  const reward = (q.reward === "roster-roll" || q.reward === "pokeroll") && typeof q.date === "string" && typeof q.handle === "string" ? { date: q.date, handle: q.handle } : null;
-  const [cards, offer] = await Promise.all([caseCards().catch(() => []), reward ? canPull(reward.date, reward.handle).catch(() => false) : false]);
+  const reward = (q.reward === "roster-roll" || q.reward === "pokeroll") && typeof q.date === "string" && typeof q.handle === "string" ? { date: q.date, handle: q.handle, code: typeof q.code === "string" ? q.code : "" } : null;
+  const [cards, offer] = await Promise.all([caseCards().catch(() => []), reward ? canPull(reward.date, reward.handle, reward.code).catch(() => false) : false]);
   // The winner's own browser (signed cookie from the pull) keeps their card and the vault link; everyone else sees the plain Case.
   const won =
     reward && !offer && isWinner((await cookies()).get(WINNER_COOKIE)?.value, reward.date, reward.handle)
@@ -33,7 +33,7 @@ export default async function CasePage({ searchParams }: { searchParams: Promise
           .
         </p>
       </div>
-      {reward && (offer || won) && <RosterRollPull date={reward.date} handle={reward.handle} pulled={won} />}
+      {reward && (offer || won) && <RosterRollPull date={reward.date} handle={reward.handle} code={reward.code} pulled={won} />}
       {cards.length ? <CaseReel cards={cards} /> : <p className="px-4 py-16 text-center text-navy/60">The case is being restocked.</p>}
     </section>
   );

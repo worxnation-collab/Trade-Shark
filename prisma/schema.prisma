@@ -605,7 +605,7 @@ model PdfIngest {
 }
 
 /// Roster Roll daily winner: one row per America/New_York date, written only by POST /api/roster-roll/claim.
-/// The winner's link (/case?reward=roster-roll&date=…&handle=…) pulls one free single from loose stock; the row then flips to claimed.
+/// The winner's link (/case?reward=pokeroll&date=…&handle=…&code=…) pulls one free single from loose stock; the row then flips to claimed.
 model RosterRollClaim {
   date      String    @id // YYYY-MM-DD, America/New_York
   handle    String // 3–16 characters, matched case-insensitively against the link
@@ -613,6 +613,7 @@ model RosterRollClaim {
   status    String    @default("unclaimed") // unclaimed | claimed
   cardId    String? // the single that was pulled
   buyerId   String? // the player whose vault it went into
+  codeHash  String? // sha256 of the link's secret code (Roster Roll sends it with the winner); the pull needs the code
   createdAt DateTime  @default(now())
   claimedAt DateTime?
 }

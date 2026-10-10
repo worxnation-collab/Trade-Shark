@@ -13,13 +13,13 @@ const details = (c: SingleView) => [c.setName, c.number ? `#${c.number.replace(/
  * shows its best card. It goes into their vault (Collection) and never ships on its own. If the pull doesn't go through (already pulled, nothing to give) the
  * line simply goes away. `pulled`: the winner came back (refresh), so show their card straight away.
  */
-export function RosterRollPull({ date, handle, pulled = null }: { date: string; handle: string; pulled?: SingleView | null }) {
+export function RosterRollPull({ date, handle, code, pulled = null }: { date: string; handle: string; code: string; pulled?: SingleView | null }) {
   const [state, setState] = useState<"offer" | "busy" | "gone">("offer");
   const [card, setCard] = useState<SingleView | null>(pulled);
 
   async function pull() {
     setState("busy");
-    const r = await fetch("/api/roster-roll/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, handle, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
+    const r = await fetch("/api/roster-roll/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, handle, code, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
       .then((x) => x.json())
       .catch(() => null);
     if (r?.ok && r.card) setCard(r.card as SingleView);

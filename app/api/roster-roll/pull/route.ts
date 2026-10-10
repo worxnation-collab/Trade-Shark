@@ -11,11 +11,11 @@ export const runtime = "nodejs";
  * refresh still shows the card. Anything else answers { ok: false } and changes nothing.
  */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { date?: unknown; handle?: unknown; tz?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { date?: unknown; handle?: unknown; code?: unknown; tz?: unknown };
   try {
     const current = await currentBuyer();
     const buyer = current ?? (await newGuest(typeof body.tz === "string" && isValidZone(body.tz) ? body.tz : "America/New_York"));
-    const card = await pullSingle(body.date, body.handle, buyer.id);
+    const card = await pullSingle(body.date, body.handle, body.code, buyer.id);
     if (!card) return NextResponse.json({ ok: false });
     const res = NextResponse.json({ ok: true, card });
     res.cookies.set(WINNER_COOKIE, winnerCookie(card.date, card.handle), { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 90 });

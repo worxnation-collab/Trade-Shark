@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { caseWhere } from "./caseStock";
 import { db } from "./db";
@@ -11,7 +11,8 @@ export type { SingleView } from "./rosterRollLink";
 /**
  * Roster Roll daily winner. Roster Roll writes one row per America/New_York date (POST /api/roster-roll/claim, the
  * only writer); the winner's link /case?reward=roster-roll&date=…&handle=… offers one free single from the same loose
- * stock the packs draw from. One pull per date: the row flips unclaimed → claimed as the card is taken. A bad link,
+ * stock the packs draw from. The link also carries a secret `code` (sent with the winner by Roster Roll, stored only as
+ * a hash): the date and handle are public on the board, so they alone never open the pull. One pull per date: the row flips unclaimed → claimed as the card is taken. A bad link,
  * a claimed row or no row leaves The case as it is. The prize never ships on its own: it goes into the winner's vault
  * (Collection), and they choose to ship it or sell it back from there.
  */
@@ -27,6 +28,12 @@ export function parseDate(v: unknown): string | null {
 export function parseHandle(v: unknown): string | null {
   return typeof v === "string" && /^\S{3,16}$/u.test(v) ? v : null;
 }
+
+/** The link's secret: 22–64 url-safe characters. */
+export function parseCode(v: unknown): string | null {
+  return typeof v === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(v) ? v : null;
+}
+const codeHash = (code: string) => createHash("sha256").update(`roster-roll-code:${code}`).digest("hex");
 
 export function parseScore(v: unknown): number | null {
   const n = typeof v === "string" && v.trim() ? Number(v) : v;
@@ -44,14 +51,15 @@ export function nyToday(now = new Date()): string {
  */
 const SINGLE_WHERE: Prisma.CardWhereInput = { AND: [caseWhere, { partnerId: { not: null } }, { listPrice: { lt: BIN.chaseFrom } }] };
 
-const matchRow = (date: string, handle: string) => ({ date, handle: { equals: handle, mode: "insensitive" as const } });
+const matchRow = (date: string, handle: string, code?: string) => ({ date, handle: { equals: handle, mode: "insensitive" as const }, ...(code ? { codeHash: codeHash(code) } : {}) });
 
-/** True when this link should offer the pull: a matching unclaimed row and at least one card to give. */
-export async function canPull(date: unknown, handle: unknown): Promise<boolean> {
+/** True when this link should offer the pull: a matching unclaimed row (code included) and at least one card to give. */
+export async function canPull(date: unknown, handle: unknown, code: unknown): Promise<boolean> {
   const d = parseDate(date);
   const h = parseHandle(handle);
-  if (!d || !h) return false;
-  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h), status: "unclaimed" }, select: { date: true } });
+  const c = parseCode(code);
+  if (!d || !h || !c) return false;
+  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, c), status: "unclaimed" }, select: { date: true } });
   return !!row && (await db.card.count({ where: SINGLE_WHERE })) > 0;
 }
 
@@ -64,13 +72,14 @@ class NoStock extends Error {}
  * it back. Returns null when the link doesn't match an unclaimed row (a second pull) or there is nothing to give;
  * nothing changes then.
  */
-export async function pullSingle(date: unknown, handle: unknown, buyerId: string, now = new Date()): Promise<SingleView | null> {
+export async function pullSingle(date: unknown, handle: unknown, code: unknown, buyerId: string, now = new Date()): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
-  if (!d || !h) return null;
+  const c = parseCode(code);
+  if (!d || !h || !c) return null;
   try {
     return await db.$transaction(async (tx) => {
-      const flip = await tx.rosterRollClaim.updateMany({ where: { ...matchRow(d, h), status: "unclaimed" }, data: { status: "claimed", claimedAt: now } });
+      const flip = await tx.rosterRollClaim.updateMany({ where: { ...matchRow(d, h, c), status: "unclaimed" }, data: { status: "claimed", claimedAt: now } });
       if (!flip.count) return null;
       for (let tries = 0; tries < 5; tries++) {
         const n = await tx.card.count({ where: SINGLE_WHERE });
@@ -140,20 +149,28 @@ export async function claimedSingle(date: unknown, handle: unknown): Promise<Sin
 
 export type RecordResult = { ok: true } | { ok: false; status: number; error: string };
 
-/** Roster Roll's write: one winner per New York date. A second write for that date is refused. */
-export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown }, now = new Date()): Promise<RecordResult> {
+/**
+ * Roster Roll's write: one winner per New York date, with the link's secret code. Sending the same winner and code
+ * again is fine (a retry); anything else for a recorded date is refused.
+ */
+export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown; code?: unknown }, now = new Date()): Promise<RecordResult> {
   const date = parseDate(body.date);
   const handle = parseHandle(body.handle);
   const score = parseScore(body.score);
+  const code = parseCode(body.code);
   if (!date) return { ok: false, status: 400, error: "date must be YYYY-MM-DD (America/New_York)" };
   if (date > nyToday(now)) return { ok: false, status: 400, error: "date is in the future (America/New_York)" };
   if (!handle) return { ok: false, status: 400, error: "handle must be 3–16 characters, no spaces" };
   if (score == null) return { ok: false, status: 400, error: "score must be a whole number ≥ 0" };
+  if (!code) return { ok: false, status: 400, error: "code must be 22–64 url-safe characters" };
   try {
-    await db.rosterRollClaim.create({ data: { date, handle, score } });
+    await db.rosterRollClaim.create({ data: { date, handle, score, codeHash: codeHash(code) } });
     return { ok: true };
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { ok: false, status: 409, error: "a winner is already recorded for that date" };
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const same = await db.rosterRollClaim.findFirst({ where: matchRow(date, handle, code), select: { date: true } });
+      return same ? { ok: true } : { ok: false, status: 409, error: "a winner is already recorded for that date" };
+    }
     throw e;
   }
 }
