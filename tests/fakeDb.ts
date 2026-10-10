@@ -40,6 +40,8 @@ function field(v: unknown, cond: unknown): boolean {
     if (op === "not" && (isObj(x) ? field(v, x) : x === null ? v == null : eq(v, x, ci))) return false;
     if (op === "lt" && !(v != null && (v as number) < (x as number))) return false;
     if (op === "gt" && !(v != null && (v as number) > (x as number))) return false;
+    if (op === "gte" && !(v != null && (v as number) >= (x as number))) return false;
+    if (op === "lte" && !(v != null && (v as number) <= (x as number))) return false;
     if (op === "contains" && !(typeof v === "string" && (ci ? v.toLowerCase().includes(String(x).toLowerCase()) : v.includes(String(x))))) return false;
   }
   return true;

@@ -18,7 +18,7 @@ const stockCard = (id: string, name: string) => ({
 const cards = () => fake.t("card");
 
 process.env.PLAYER_SECRET = "test-secret";
-const { canPull, claimedSingle, isWinner, nyToday, parseDate, parseHandle, pullSingle, recordWinner, winnerCookie } = await import("@/lib/rosterRoll");
+const { recentWinner, canPull, claimedSingle, isWinner, nyToday, parseDate, parseHandle, pullSingle, recordWinner, winnerCookie } = await import("@/lib/rosterRoll");
 
 beforeEach(() => {
   fake.reset();
@@ -101,5 +101,14 @@ describe("Roster Roll claim", () => {
 
   it("has no refresh view before the pull", async () => {
     expect(await claimedSingle("2026-10-08", "SharkFan")).toBeNull();
+  });
+
+  it("shows the newest recent winner, or nothing", async () => {
+    // beforeEach records 2026-10-08; on Oct 9 (New York) that's yesterday's winner.
+    expect(await recentWinner(new Date("2026-10-09T16:00:00Z"))).toEqual({ date: "2026-10-08", handle: "SharkFan", score: 9120, pulled: false, yesterday: true });
+    await pullSingle("2026-10-08", "SharkFan", CODE, "b1");
+    expect(await recentWinner(new Date("2026-10-09T16:00:00Z"))).toMatchObject({ pulled: true });
+    // Two days later it's stale: "Be today's winner".
+    expect(await recentWinner(new Date("2026-10-10T16:00:00Z"))).toBeNull();
   });
 });

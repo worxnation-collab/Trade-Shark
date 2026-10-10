@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Disclaimer } from "@/components/Disclaimer";
+import { POKEROLL_URL } from "@/lib/rosterRollLink";
 import { categoryOf, isPublicCategory } from "@/lib/categories";
 import { headers } from "next/headers";
 import { currentBuyer, ipKey } from "@/lib/game/buyer";
@@ -52,6 +53,14 @@ export default async function PackPage({ params, searchParams }: { params: Promi
         error={error ? error.slice(0, 200) : undefined}
       />
       <Disclaimer className="mx-auto mt-10 max-w-md text-center" />
+      {category === "pokemon" && (
+        <p className="mx-auto mt-4 max-w-md text-center text-sm text-navy/70">
+          <a href={POKEROLL_URL} target="_blank" rel="noopener noreferrer" className="underline">
+            Play the draft for a free card
+          </a>
+          : the top Pokéroll score each day gets one.
+        </p>
+      )}
     </section>
   );
 }

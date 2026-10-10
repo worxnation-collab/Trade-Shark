@@ -147,6 +147,24 @@ export async function claimedSingle(date: unknown, handle: unknown): Promise<Sin
 }
 
 
+/** One day before a YYYY-MM-DD date. */
+const dayBefore = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * The newest recorded winner, if it's yesterday's or today's (New York). Public facts only: handle, score, date and
+ * whether the card was pulled. Pokéroll records the winner when the day locks at midnight ET, so this is normally
+ * yesterday's row; nothing recent = null ("Be today's winner").
+ */
+export async function recentWinner(now = new Date()) {
+  const today = nyToday(now);
+  const row = await db.rosterRollClaim.findFirst({
+    where: { date: { gte: dayBefore(today), lte: today } },
+    orderBy: { date: "desc" },
+    select: { date: true, handle: true, score: true, status: true },
+  });
+  return row ? { date: row.date, handle: row.handle, score: row.score, pulled: row.status === "claimed", yesterday: row.date !== today } : null;
+}
+
 export type RecordResult = { ok: true } | { ok: false; status: number; error: string };
 
 /**
