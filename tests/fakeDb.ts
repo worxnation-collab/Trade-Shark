@@ -9,7 +9,7 @@ type Row = Record<string, unknown>;
 type Where = Record<string, unknown>;
 
 const UNIQUE: Record<string, string[][]> = {
-  rosterRollClaim: [["date"]],
+  rosterRollClaim: [["date", "kind"]],
   creditEntry: [["ref"]],
   vaultItem: [["source", "sourceRef"]],
   buyer: [["stripeCustomerId"]],
@@ -18,7 +18,7 @@ const DEFAULTS: Record<string, () => Row> = {
   vaultItem: () => ({ status: "in_vault", orderId: null, wonAt: new Date(), updatedAt: new Date() }),
   shipQuote: () => ({ packIds: [], vaultIds: [], usedAt: null, createdAt: new Date() }),
   shipOrder: () => ({ paymentIntentId: null, labelPath: null, trackingUrl: null, shippedAt: null, createdAt: new Date() }),
-  rosterRollClaim: () => ({ status: "unclaimed", cardId: null, buyerId: null, claimedAt: null }),
+  rosterRollClaim: () => ({ status: "unclaimed", cardId: null, buyerId: null, claimedAt: null, kind: "lineup" }),
   creditEntry: () => ({ createdAt: new Date() }),
 };
 // relation name → [table, local key, foreign key, many?]

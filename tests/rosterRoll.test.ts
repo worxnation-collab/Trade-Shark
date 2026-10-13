@@ -85,6 +85,12 @@ describe("Roster Roll claim", () => {
     expect(await recordWinner({ date: "2026-10-10", handle: "Reef_99", score: 1 }, now)).toMatchObject({ ok: false, status: 400 });
     expect(await recordWinner({ date: "2026-10-01", handle: "no", score: 1 }, now)).toMatchObject({ ok: false, status: 400 });
     expect(await recordWinner({ date: "2026-10-01", handle: "Reef_99", score: -2 }, now)).toMatchObject({ ok: false, status: 400 });
+    // Pack rip is a second winner for the same date. It does not take the lineup's row.
+    const PACK_CODE = "packCodepackCodepackC12";
+    expect(await recordWinner({ date: "2026-10-09", handle: "Ripper", score: 1800, code: PACK_CODE, kind: "pack" }, now)).toEqual({ ok: true });
+    expect(await recordWinner({ date: "2026-10-09", handle: "Other", score: 99, code: PACK_CODE, kind: "pack" }, now)).toMatchObject({ ok: false, status: 409 });
+    expect(await recordWinner({ date: "2026-10-09", kind: "nope", handle: "Reef_99", score: 1, code: CODE }, now)).toMatchObject({ ok: false, status: 400 });
+    expect(await recentWinner(now)).toMatchObject({ handle: "SharkFan" });
   });
 
   it("keeps the card for the winner's browser only", async () => {
