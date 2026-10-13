@@ -7,9 +7,8 @@ export const runtime = "nodejs";
 const sha = (s: string) => createHash("sha256").update(s).digest();
 
 /**
- * Roster Roll records the day's winner: { date: "YYYY-MM-DD" (America/New_York), handle, score, code }, with
- * `Authorization: Bearer <ROSTER_ROLL_KEY>`. The only writer of RosterRollClaim. 201 recorded (or the same winner and
- * code sent again), 409 that date already has another winner, 400 bad input, 401 wrong key, 503 no key set on the server.
+ * Roster Roll records the day's winner: { date, handle, score, code, kind? }. kind defaults to "lineup".
+ * "pack" is the Pack Rip winner, a second row for the same date. `Authorization: Bearer <ROSTER_ROLL_KEY>`.
  */
 export async function POST(req: Request) {
   const key = process.env.ROSTER_ROLL_KEY;

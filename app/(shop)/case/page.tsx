@@ -23,7 +23,7 @@ export default async function CasePage({ searchParams }: { searchParams: Promise
   // The winner's own browser (signed cookie from the pull) keeps their card and the vault link; everyone else sees the plain Case.
   const won =
     reward && !offer && isWinner((await cookies()).get(WINNER_COOKIE)?.value, reward.date, reward.handle)
-      ? await claimedSingle(reward.date, reward.handle).catch(() => null)
+      ? await claimedSingle(reward.date, reward.handle, reward.code).catch(() => null)
       : null;
   return (
     <section className="-mx-4 -my-8 sm:-my-10">

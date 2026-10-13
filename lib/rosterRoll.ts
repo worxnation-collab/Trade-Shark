@@ -51,7 +51,12 @@ export function nyToday(now = new Date()): string {
  */
 const SINGLE_WHERE: Prisma.CardWhereInput = { AND: [caseWhere, { partnerId: { not: null } }, { listPrice: { lt: BIN.chaseFrom } }] };
 
-const matchRow = (date: string, handle: string, code?: string) => ({ date, handle: { equals: handle, mode: "insensitive" as const }, ...(code ? { codeHash: codeHash(code) } : {}) });
+const matchRow = (date: string, handle: string, code?: string, kind?: string) => ({
+  date,
+  handle: { equals: handle, mode: "insensitive" as const },
+  ...(code ? { codeHash: codeHash(code) } : {}),
+  ...(kind ? { kind } : {}),
+});
 
 /** True when this link should offer the pull: a matching unclaimed row (code included) and at least one card to give. */
 export async function canPull(date: unknown, handle: unknown, code: unknown): Promise<boolean> {
@@ -79,6 +84,9 @@ export async function pullSingle(date: unknown, handle: unknown, code: unknown, 
   if (!d || !h || !c) return null;
   try {
     return await db.$transaction(async (tx) => {
+      const existing = await tx.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, c), status: "unclaimed" }, select: { kind: true } });
+      if (!existing) return null;
+      const kind = existing.kind === "pack" ? "pack" : "lineup";
       const flip = await tx.rosterRollClaim.updateMany({ where: { ...matchRow(d, h, c), status: "unclaimed" }, data: { status: "claimed", claimedAt: now } });
       if (!flip.count) return null;
       for (let tries = 0; tries < 5; tries++) {
@@ -87,9 +95,13 @@ export async function pullSingle(date: unknown, handle: unknown, code: unknown, 
         const pick = await tx.card.findFirst({ where: SINGLE_WHERE, orderBy: { id: "asc" }, skip: Math.floor(Math.random() * n), select: { id: true } });
         if (!pick) continue;
         // vaultCard re-checks the stock rule on the write, so a pack that took the card a moment ago wins and we draw again.
-        const item = await vaultCard(tx, { buyerId, cardId: pick.id, where: SINGLE_WHERE, source: "roster-roll", sourceRef: d, now });
+        // Lineup prizes stay source roster-roll. A pack-rip prize uses pack-rip so both can land on the same date.
+        const item = await vaultCard(tx, { buyerId, cardId: pick.id, where: SINGLE_WHERE, source: kind === "pack" ? "pack-rip" : "roster-roll", sourceRef: d, now });
         if (!item) continue;
-        const row = await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id, buyerId } });
+        const where = existing.kind ? { date: d, kind: existing.kind } : { date: d };
+        await tx.rosterRollClaim.updateMany({ where, data: { cardId: pick.id, buyerId } });
+        const row = await tx.rosterRollClaim.findFirst({ where });
+        if (!row) return null;
         return singleView(row, await tx.card.findUniqueOrThrow({ where: { id: pick.id }, select: VIEW_SELECT }));
       }
       throw new NoStock();
@@ -137,11 +149,12 @@ export function isWinner(cookie: string | undefined, date: unknown, handle: unkn
 }
 
 /** The single a claimed row gave (for the winner's own refresh and image). */
-export async function claimedSingle(date: unknown, handle: unknown): Promise<SingleView | null> {
+export async function claimedSingle(date: unknown, handle: unknown, code?: unknown): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
-  if (!d || !h) return null;
-  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h), status: "claimed", cardId: { not: null } } });
+  const c = code == null || code === "" ? undefined : parseCode(code);
+  if (!d || !h || (code != null && code !== "" && !c)) return null;
+  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, c), status: "claimed", cardId: { not: null } } });
   const card = row?.cardId ? await db.card.findUnique({ where: { id: row.cardId }, select: VIEW_SELECT }) : null;
   return row && card ? singleView(row, card) : null;
 }
@@ -151,14 +164,13 @@ export async function claimedSingle(date: unknown, handle: unknown): Promise<Sin
 const dayBefore = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
 /**
- * The newest recorded winner, if it's yesterday's or today's (New York). Public facts only: handle, score, date and
- * whether the card was pulled. Pokéroll records the winner when the day locks at midnight ET, so this is normally
- * yesterday's row; nothing recent = null ("Be today's winner").
+ * The newest recorded lineup winner, if it's yesterday's or today's (New York). Pack-rip winners are a separate
+ * kind and stay off this line, so the case still names the lineup winner. Public facts only.
  */
 export async function recentWinner(now = new Date()) {
   const today = nyToday(now);
   const row = await db.rosterRollClaim.findFirst({
-    where: { date: { gte: dayBefore(today), lte: today } },
+    where: { date: { gte: dayBefore(today), lte: today }, NOT: { kind: "pack" } },
     orderBy: { date: "desc" },
     select: { date: true, handle: true, score: true, status: true },
   });
@@ -168,26 +180,29 @@ export async function recentWinner(now = new Date()) {
 export type RecordResult = { ok: true } | { ok: false; status: number; error: string };
 
 /**
- * Roster Roll's write: one winner per New York date, with the link's secret code. Sending the same winner and code
- * again is fine (a retry); anything else for a recorded date is refused.
+ * Roster Roll's write: one winner per New York date and reward kind (lineup, the default, or pack). Sending the same
+ * winner and code again is fine (a retry); a different winner for that date and kind is refused. Omitting kind keeps
+ * the lineup claim exactly as before.
  */
-export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown; code?: unknown }, now = new Date()): Promise<RecordResult> {
+export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown; code?: unknown; kind?: unknown }, now = new Date()): Promise<RecordResult> {
   const date = parseDate(body.date);
   const handle = parseHandle(body.handle);
   const score = parseScore(body.score);
   const code = parseCode(body.code);
+  const kind = body.kind == null || body.kind === "" ? "lineup" : body.kind === "lineup" || body.kind === "pack" ? body.kind : null;
   if (!date) return { ok: false, status: 400, error: "date must be YYYY-MM-DD (America/New_York)" };
   if (date > nyToday(now)) return { ok: false, status: 400, error: "date is in the future (America/New_York)" };
   if (!handle) return { ok: false, status: 400, error: "handle must be 3–16 characters, no spaces" };
   if (score == null) return { ok: false, status: 400, error: "score must be a whole number ≥ 0" };
   if (!code) return { ok: false, status: 400, error: "code must be 22–64 url-safe characters" };
+  if (!kind) return { ok: false, status: 400, error: "kind must be lineup or pack" };
   try {
-    await db.rosterRollClaim.create({ data: { date, handle, score, codeHash: codeHash(code) } });
+    await db.rosterRollClaim.create({ data: { date, handle, score, codeHash: codeHash(code), kind } });
     return { ok: true };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const same = await db.rosterRollClaim.findFirst({ where: matchRow(date, handle, code), select: { date: true } });
-      return same ? { ok: true } : { ok: false, status: 409, error: "a winner is already recorded for that date" };
+      const same = await db.rosterRollClaim.findFirst({ where: matchRow(date, handle, code, kind), select: { date: true } });
+      return same ? { ok: true } : { ok: false, status: 409, error: kind === "lineup" ? "a winner is already recorded for that date" : "a pack winner is already recorded for that date" };
     }
     throw e;
   }
