@@ -42,6 +42,8 @@ export type PackKind = "base" | "hit" | "chase" | "member";
 export const KEEP_LADDER = [3.99, 4.99, 5.99] as const;
 export const BLIND_PRICE = 6.99;
 export const PRICES = { blind: BLIND_PRICE } as const;
+/** After the day's three opens, one sealed pack at the last keep price. Seen only after it is paid. */
+export const MYSTERY_PRICE = KEEP_LADDER[2];
 /** How long a looked-at pack is held for the player. */
 export const TIMER_SECONDS = 120;
 /** Network slack on top of the 120 s before the server refuses a Keep. */

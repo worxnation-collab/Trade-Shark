@@ -9,7 +9,7 @@ import { chargeApi, chargeSaved, refund, type ChargeApi } from "./charge";
 import { isMember, perkLeft, refreshMember, usePerk } from "./member";
 import { categoryStatus, packView, releasePack, reservePack } from "./packs";
 import { recordSale } from "../partners";
-import { CHECKOUT_HOLD_MS, KEEP_GRACE_MS, LOOKS_PER_DAY, LOOKS_PER_DAY_PER_IP, PRICES, TIMER_SECONDS, cryptoRng, isValidZone, keepCharge, keepPriceFor, storedKeepPrice, nextLocalMidnight, nextLookNumber, type Rng } from "./rules";
+import { CHECKOUT_HOLD_MS, KEEP_GRACE_MS, LOOKS_PER_DAY, LOOKS_PER_DAY_PER_IP, MYSTERY_PRICE, PRICES, TIMER_SECONDS, cryptoRng, isValidZone, keepCharge, keepPriceFor, storedKeepPrice, nextLocalMidnight, nextLookNumber, type Rng } from "./rules";
 
 /**
  * One look per account at a time, and looking is free:
@@ -228,9 +228,61 @@ export async function keep(
 
 type ShipTo = { name?: string | null; address?: { line1?: string | null; line2?: string | null; city?: string | null; state?: string | null; postal_code?: string | null } | null };
 
+/** A paid mystery checkout: reserve a sealed pack now, save the card, sell it. No pack was held before payment. */
+async function finishMystery(session: Stripe.Checkout.Session, opts: { api?: ChargeApi | null; checkout?: CheckoutApi | null; now?: Date }, s: CheckoutApi) {
+  const now = opts.now ?? new Date();
+  const cycleId = session.metadata?.cycle_id;
+  if (!cycleId) return err("Not a mystery checkout.");
+  const cycle = await db.gameCycle.findUnique({ where: { id: cycleId }, include: { buyer: true } });
+  if (!cycle) return err("That pack isn't here.");
+  if (cycle.status === "blind-bought" && cycle.packId) return { ok: true as const, already: true, packId: cycle.packId, buyerId: cycle.buyerId };
+  if (session.payment_status !== "paid") return err("That payment didn't go through.", "unpaid");
+  const pi = session.payment_intent as Stripe.PaymentIntent | null;
+  const amount = session.amount_total != null ? session.amount_total / 100 : MYSTERY_PRICE;
+  const claimed = await db.gameCycle.updateMany({ where: { id: cycle.id, status: { in: ["checkout", "charging"] } }, data: { status: "keeping" } });
+  if (!claimed.count) {
+    if (pi?.id && !(await db.gameCharge.findFirst({ where: { cycleId: cycle.id, kind: "refund" } })))
+      await refund(cycle.buyerId, cycle.id, pi.id, amount, opts.api !== undefined ? opts.api : chargeApi());
+    return err(`That mystery pack had already closed. Your $${amount.toFixed(2)} was refunded.`, "closed");
+  }
+  const pm = pi?.payment_method && typeof pi.payment_method !== "string" ? pi.payment_method : null;
+  const x = session as unknown as { collected_information?: { shipping_details?: ShipTo | null } | null; shipping_details?: ShipTo | null };
+  const ship = x.collected_information?.shipping_details ?? x.shipping_details ?? null;
+  const email = session.customer_details?.email ?? cycle.buyer.email;
+  const name = ship?.name ?? session.customer_details?.name ?? cycle.buyer.name;
+  const a = ship?.address;
+  const brand = pm?.card ? pm.card.brand.charAt(0).toUpperCase() + pm.card.brand.slice(1) : null;
+  const buyer = await db.buyer.update({
+    where: { id: cycle.buyerId },
+    data: {
+      email: email || "",
+      name: name || "",
+      ...(a?.line1
+        ? { shipTo: JSON.stringify({ name, email, address: { name, line1: a.line1, line2: a.line2 ?? "", city: a.city ?? "", state: a.state ?? "", postal: a.postal_code ?? "", country: "US" } }), addressVerified: false }
+        : {}),
+      ...(pm?.card ? { paymentMethodId: pm.id, cardFingerprint: pm.card.fingerprint ?? null, cardLabel: `${brand} ·· ${pm.card.last4}` } : {}),
+    },
+  });
+  if (pm && typeof session.customer === "string")
+    await s.customers.update(session.customer, { invoice_settings: { default_payment_method: pm.id } }).catch((e) => console.error("default card not set", e));
+  const member = isMember(buyer, now);
+  const got = await reservePack(cycle.category, buyer.id, { rng: cryptoRng, member, now });
+  if (!got) {
+    if (pi?.id) await refund(buyer.id, cycle.id, pi.id, amount, opts.api !== undefined ? opts.api : chargeApi());
+    await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
+    return err(`The last pack just went. Your $${amount.toFixed(2)} was refunded.`, "closed");
+  }
+  await db.gameCharge.updateMany({ where: { ref: session.id, kind: "blind", status: "pending" }, data: { status: "succeeded", paymentIntentId: pi?.id ?? null } });
+  await sellPack(got.pack.id, buyer, amount, "sold-blind", now);
+  await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "blind-bought", packId: got.pack.id, revealedAt: now, endedAt: now } });
+  await splitForPartners(got.pack.id);
+  return { ok: true as const, already: false, packId: got.pack.id, buyerId: cycle.buyerId };
+}
+
 /**
  * A Keep paid on Stripe Checkout (the return URL and the webhook both land here; idempotent). Saves the card, the
  * email and the address on the player, then sells the pack. Paid after the pack was already let go = refunded.
+ * A mystery checkout (kind "mystery") reserves the pack only after the payment lands.
  */
 export async function completeCheckout(sessionId: string, opts: { api?: ChargeApi | null; checkout?: CheckoutApi | null; now?: Date } = {}) {
   const s = opts.checkout !== undefined ? opts.checkout : checkoutApi();
@@ -238,7 +290,9 @@ export async function completeCheckout(sessionId: string, opts: { api?: ChargeAp
   const now = opts.now ?? new Date();
   const session = await s.checkout.sessions.retrieve(sessionId, { expand: ["payment_intent.payment_method"] });
   const cycleId = session.metadata?.cycle_id;
-  if (session.metadata?.kind !== "keep" || !cycleId) return err("Not a Keep checkout.");
+  const kind = session.metadata?.kind;
+  if ((kind !== "keep" && kind !== "mystery") || !cycleId) return err("Not a shop checkout.");
+  if (kind === "mystery") return finishMystery(session, opts, s);
   const cycle = await db.gameCycle.findUnique({ where: { id: cycleId }, include: { buyer: true } });
   if (!cycle || !cycle.packId) return err("That pack isn't here.");
   if (cycle.status === "kept") return { ok: true as const, already: true, packId: cycle.packId, buyerId: cycle.buyerId };
@@ -288,7 +342,7 @@ export async function completeCheckout(sessionId: string, opts: { api?: ChargeAp
 export async function closeCheckout(cycleId: string, status: "passed" | "expired" | "back", now = new Date(), api: CheckoutApi | null = checkoutApi()) {
   const cycle = await db.gameCycle.findUnique({ where: { id: cycleId } });
   if (!cycle || cycle.status !== "checkout") return { ok: true as const, status: cycle?.status ?? "missing" };
-  const charge = await db.gameCharge.findFirst({ where: { cycleId, kind: "keep", status: "pending" }, orderBy: { createdAt: "desc" } });
+  const charge = await db.gameCharge.findFirst({ where: { cycleId, kind: { in: ["keep", "blind"] }, status: "pending" }, orderBy: { createdAt: "desc" } });
   if (charge?.ref && api) {
     const session = await api.checkout.sessions.retrieve(charge.ref);
     if (session.status === "open") await api.checkout.sessions.expire(charge.ref).catch(() => null);
@@ -344,6 +398,76 @@ export async function blind(buyerIn: Buyer, category: string, opts: { api?: Char
   const api = opts.api !== undefined ? opts.api : chargeApi();
   const total = PRICES.blind;
   const paid = await chargeSaved(buyer, total, "blind", cycle.id, `Pokéroll · ${productName(category)} dealer's choice`, api);
+  if (!paid.ok) {
+    await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
+    return err(paid.error, "declined");
+  }
+  const got = await reservePack(category, buyer.id, { rng: opts.rng ?? cryptoRng, member, now });
+  if (!got) {
+    await refund(buyer.id, cycle.id, paid.paymentIntentId, total, api);
+    await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
+    return err(`The last ${productName(category)} just went. Your $${total.toFixed(2)} was refunded.`, "closed");
+  }
+  await sellPack(got.pack.id, buyer, total, "sold-blind", now);
+  await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "blind-bought", packId: got.pack.id, revealedAt: now, endedAt: now } });
+  await splitForPartners(got.pack.id);
+  return { ok: true as const, pack: await packView(got.pack.id) };
+}
+
+/**
+ * After today's three opens: one sealed pack at MYSTERY_PRICE. Charge first (saved card, or Stripe Checkout),
+ * then reserve from the same queue and show the cards. No put-back.
+ */
+export async function mystery(buyerIn: Buyer, category: string, opts: { api?: ChargeApi | null; checkout?: CheckoutApi | null; rng?: Rng; now?: Date; base?: string; ip?: string | null } = {}) {
+  if (!isPublicCategory(category)) return err("That pack isn't open.", "closed");
+  const now = opts.now ?? new Date();
+  await sweepExpired(now);
+  const buyer = await refreshMember(buyerIn);
+  const member = isMember(buyer, now);
+  const today = await looksUsed(buyer, category, opts.ip ?? null, now);
+  if (today.used < LOOKS_PER_DAY) return err("The mystery pack is there after today's three opens.", "no-looks");
+  if (await db.gameCycle.findFirst({ where: { buyerId: buyer.id, status: { in: ["revealing", "charging", "keeping", "checkout"] } } })) return err("Finish the pack you have open first.", "busy");
+  if (!(await categoryStatus(category, member, now)).open) return err(`No ${productName(category)}s are ready right now.`, "closed");
+
+  const total = MYSTERY_PRICE;
+  const label = `Pokéroll · ${productName(category)} mystery pack`;
+  if (!buyer.paymentMethodId) {
+    const s = opts.checkout !== undefined ? opts.checkout : checkoutApi();
+    if (!s || !opts.base) return err("Payments aren't set up yet.", "declined");
+    const cycle = await db.gameCycle.create({ data: { buyerId: buyer.id, category, kind: "blind", status: "charging", keepPrice: total } });
+    try {
+      let customer = buyer.stripeCustomerId;
+      if (isGuest(buyer)) {
+        customer = (await s.customers.create({ metadata: { trade_shark: "player", buyer_id: buyer.id } })).id;
+        await db.buyer.update({ where: { id: buyer.id }, data: { stripeCustomerId: customer } });
+      }
+      const meta = { trade_shark: "game", kind: "mystery", cycle_id: cycle.id, buyer_id: buyer.id };
+      const expires = Math.floor((now.getTime() + CHECKOUT_HOLD_MS) / 1000) + 60;
+      const session = await s.checkout.sessions.create({
+        mode: "payment",
+        customer,
+        customer_update: { name: "auto", shipping: "auto" },
+        shipping_address_collection: { allowed_countries: ["US"] },
+        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(total * 100), product_data: { name: `${productName(category)} · mystery pack, 12 cards` } } }],
+        payment_intent_data: { setup_future_usage: "off_session", description: label, metadata: meta },
+        metadata: meta,
+        expires_at: expires,
+        success_url: `${opts.base}/api/play/kept?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${opts.base}/api/play/kept?cycle=${cycle.id}`,
+      });
+      await db.gameCharge.create({ data: { buyerId: buyer.id, cycleId: cycle.id, ref: session.id, kind: "blind", amount: total, status: "pending" } });
+      await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "checkout", deadline: new Date(expires * 1000 + 60_000) } });
+      return { ok: true as const, checkoutUrl: session.url! };
+    } catch (e) {
+      console.error("mystery checkout failed", e);
+      await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
+      return err("Couldn't open checkout. Try again.", "declined");
+    }
+  }
+
+  const cycle = await db.gameCycle.create({ data: { buyerId: buyer.id, category, kind: "blind", status: "charging", keepPrice: total } });
+  const api = opts.api !== undefined ? opts.api : chargeApi();
+  const paid = await chargeSaved(buyer, total, "blind", cycle.id, label, api);
   if (!paid.ok) {
     await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
     return err(paid.error, "declined");

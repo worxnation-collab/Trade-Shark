@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
-import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
+import { KEEP_LADDER, LOOKS_PER_DAY, MYSTERY_PRICE, PRICES, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
 import { CardBack } from "@/components/CardBack";
 import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
@@ -146,6 +146,20 @@ export function Game(p: GameProps) {
     setPhase({ k: "won", pack: r.pack as PackView, how: "kept" });
   }
 
+  async function buyMystery() {
+    setBusy("blind");
+    setError("");
+    const r = await post("/api/play/mystery", { category: p.category });
+    if (r.ok && r.checkoutUrl) {
+      window.location.href = r.checkoutUrl as string;
+      return;
+    }
+    setBusy("");
+    if (!r.ok) return setError(r.error ?? "That didn't work.");
+    setSeal(true);
+    setPhase({ k: "won", pack: r.pack as PackView, how: "blind" });
+  }
+
   async function buyBlind() {
     setBusy("blind");
     setError("");
@@ -230,14 +244,14 @@ export function Game(p: GameProps) {
           {busy === "look" ? "Opening…" : phase.k === "passed" ? "Open the next pack" : "Open the pack"}
         </button>
       ) : (
-        <button className="btn-reveal w-full px-8 py-3.5 text-lg opacity-50" disabled>
-          Open the pack
+        <button className="btn-reveal w-full px-8 py-3.5 text-lg" disabled={!!busy} onClick={buyMystery} data-pop>
+          {busy === "blind" ? "Opening…" : `Buy the mystery pack · ${usd(MYSTERY_PRICE)}`}
         </button>
       )}
       <p className="mt-2 text-xs leading-snug text-navy/70">
         {looks > 0
           ? `You see all 12 cards. Then Buy now · ${usd(keepPriceFor(nextLook))} opens Stripe. Nothing is charged until you press it. ${looks} of ${LOOKS_PER_DAY} opens left today.`
-          : `That's ${LOOKS_PER_DAY} opens today. More tomorrow. Buy now is the gold button on the opened pack. It goes to Stripe.`}
+          : `Today's three opens are used. This one stays sealed until you pay ${usd(MYSTERY_PRICE)}. Then all 12 land in your collection.`}
       </p>
       {looks > 0 && p.member && stackLeft && (
         <button className="btn-ghost mt-2 px-5 py-2" disabled={!!busy} onClick={() => look(true)}>

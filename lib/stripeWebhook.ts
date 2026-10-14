@@ -28,7 +28,7 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<{ handled:
     return { handled: r.count > 0, note: `membership ${event.type} (${r.count})` };
   }
   // A Keep paid on Checkout (no saved card yet). The return URL usually gets there first; this catches a closed tab.
-  if (event.type.startsWith("checkout.session.") && (event.data.object as Stripe.Checkout.Session).metadata?.kind === "keep") {
+  if (event.type.startsWith("checkout.session.") && ["keep", "mystery"].includes(String((event.data.object as Stripe.Checkout.Session).metadata?.kind))) {
     const s = event.data.object as Stripe.Checkout.Session;
     const { closeCheckout, completeCheckout } = await import("./game/play");
     if (event.type === "checkout.session.expired") {
