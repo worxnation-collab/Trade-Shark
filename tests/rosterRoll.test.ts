@@ -22,7 +22,7 @@ const { recentWinner, canPull, claimedSingle, isWinner, nyToday, parseDate, pars
 
 beforeEach(() => {
   fake.reset();
-  fake.t("rosterRollClaim").push({ date: "2026-10-08", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
+  fake.t("rosterRollClaim").push({ date: "2026-10-08", kind: "lineup", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
   cards().push(stockCard("c1", "Pikachu"), stockCard("c2", "Eevee"));
 });
 

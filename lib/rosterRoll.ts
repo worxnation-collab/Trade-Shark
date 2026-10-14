@@ -51,15 +51,24 @@ export function nyToday(now = new Date()): string {
  */
 const SINGLE_WHERE: Prisma.CardWhereInput = { AND: [caseWhere, { partnerId: { not: null } }, { listPrice: { lt: BIN.chaseFrom } }] };
 
-const matchRow = (date: string, handle: string, code?: string) => ({ date, handle: { equals: handle, mode: "insensitive" as const }, ...(code ? { codeHash: codeHash(code) } : {}) });
+const matchRow = (date: string, handle: string, code?: string, kind = "lineup") => ({
+  date,
+  kind,
+  handle: { equals: handle, mode: "insensitive" as const },
+  ...(code ? { codeHash: codeHash(code) } : {}),
+});
+
+export function parseKind(v: unknown): "lineup" | "slot" | "pack" {
+  return v === "slot" || v === "pack" ? v : "lineup";
+}
 
 /** True when this link should offer the pull: a matching unclaimed row (code included) and at least one card to give. */
-export async function canPull(date: unknown, handle: unknown, code: unknown): Promise<boolean> {
+export async function canPull(date: unknown, handle: unknown, code: unknown, kind?: unknown): Promise<boolean> {
   const d = parseDate(date);
   const h = parseHandle(handle);
   const c = parseCode(code);
   if (!d || !h || !c) return false;
-  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, c), status: "unclaimed" }, select: { date: true } });
+  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, c, parseKind(kind)), status: "unclaimed" }, select: { date: true } });
   return !!row && (await db.card.count({ where: SINGLE_WHERE })) > 0;
 }
 
@@ -72,24 +81,26 @@ class NoStock extends Error {}
  * it back. Returns null when the link doesn't match an unclaimed row (a second pull) or there is nothing to give;
  * nothing changes then.
  */
-export async function pullSingle(date: unknown, handle: unknown, code: unknown, buyerId: string, now = new Date()): Promise<SingleView | null> {
+export async function pullSingle(date: unknown, handle: unknown, code: unknown, buyerId: string, now = new Date(), kind?: unknown): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
   const c = parseCode(code);
+  const game = parseKind(kind);
   if (!d || !h || !c) return null;
   try {
     return await db.$transaction(async (tx) => {
-      const flip = await tx.rosterRollClaim.updateMany({ where: { ...matchRow(d, h, c), status: "unclaimed" }, data: { status: "claimed", claimedAt: now } });
+      const flip = await tx.rosterRollClaim.updateMany({ where: { ...matchRow(d, h, c, game), status: "unclaimed" }, data: { status: "claimed", claimedAt: now } });
       if (!flip.count) return null;
       for (let tries = 0; tries < 5; tries++) {
         const n = await tx.card.count({ where: SINGLE_WHERE });
         if (!n) break;
         const pick = await tx.card.findFirst({ where: SINGLE_WHERE, orderBy: { id: "asc" }, skip: Math.floor(Math.random() * n), select: { id: true } });
         if (!pick) continue;
-        // vaultCard re-checks the stock rule on the write, so a pack that took the card a moment ago wins and we draw again.
-        const item = await vaultCard(tx, { buyerId, cardId: pick.id, where: SINGLE_WHERE, source: "roster-roll", sourceRef: d, now });
+        const item = await vaultCard(tx, { buyerId, cardId: pick.id, where: SINGLE_WHERE, source: "roster-roll", sourceRef: game === "lineup" ? d : `${d}:${game}`, now });
         if (!item) continue;
-        const row = await tx.rosterRollClaim.update({ where: { date: d }, data: { cardId: pick.id, buyerId } });
+        await tx.rosterRollClaim.updateMany({ where: matchRow(d, h, c, game), data: { cardId: pick.id, buyerId } });
+        const row = await tx.rosterRollClaim.findFirst({ where: matchRow(d, h, c, game) });
+        if (!row) return null;
         return singleView(row, await tx.card.findUniqueOrThrow({ where: { id: pick.id }, select: VIEW_SELECT }));
       }
       throw new NoStock();
@@ -137,11 +148,11 @@ export function isWinner(cookie: string | undefined, date: unknown, handle: unkn
 }
 
 /** The single a claimed row gave (for the winner's own refresh and image). */
-export async function claimedSingle(date: unknown, handle: unknown): Promise<SingleView | null> {
+export async function claimedSingle(date: unknown, handle: unknown, kind?: unknown): Promise<SingleView | null> {
   const d = parseDate(date);
   const h = parseHandle(handle);
   if (!d || !h) return null;
-  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h), status: "claimed", cardId: { not: null } } });
+  const row = await db.rosterRollClaim.findFirst({ where: { ...matchRow(d, h, undefined, parseKind(kind)), status: "claimed", cardId: { not: null } } });
   const card = row?.cardId ? await db.card.findUnique({ where: { id: row.cardId }, select: VIEW_SELECT }) : null;
   return row && card ? singleView(row, card) : null;
 }
@@ -158,7 +169,7 @@ const dayBefore = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_
 export async function recentWinner(now = new Date()) {
   const today = nyToday(now);
   const row = await db.rosterRollClaim.findFirst({
-    where: { date: { gte: dayBefore(today), lte: today } },
+    where: { date: { gte: dayBefore(today), lte: today }, kind: "lineup" },
     orderBy: { date: "desc" },
     select: { date: true, handle: true, score: true, status: true },
   });
@@ -171,24 +182,58 @@ export type RecordResult = { ok: true } | { ok: false; status: number; error: st
  * Roster Roll's write: one winner per New York date, with the link's secret code. Sending the same winner and code
  * again is fine (a retry); anything else for a recorded date is refused.
  */
-export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown; code?: unknown }, now = new Date()): Promise<RecordResult> {
+export async function recordWinner(body: { date?: unknown; handle?: unknown; score?: unknown; code?: unknown; kind?: unknown }, now = new Date()): Promise<RecordResult> {
   const date = parseDate(body.date);
   const handle = parseHandle(body.handle);
   const score = parseScore(body.score);
   const code = parseCode(body.code);
+  const kind = parseKind(body.kind);
   if (!date) return { ok: false, status: 400, error: "date must be YYYY-MM-DD (America/New_York)" };
   if (date > nyToday(now)) return { ok: false, status: 400, error: "date is in the future (America/New_York)" };
   if (!handle) return { ok: false, status: 400, error: "handle must be 3–16 characters, no spaces" };
   if (score == null) return { ok: false, status: 400, error: "score must be a whole number ≥ 0" };
   if (!code) return { ok: false, status: 400, error: "code must be 22–64 url-safe characters" };
   try {
-    await db.rosterRollClaim.create({ data: { date, handle, score, codeHash: codeHash(code) } });
+    await ensurePrizeKey();
+    await db.rosterRollClaim.create({ data: { date, kind, handle, score, codeHash: codeHash(code) } });
     return { ok: true };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const same = await db.rosterRollClaim.findFirst({ where: matchRow(date, handle, code), select: { date: true } });
-      return same ? { ok: true } : { ok: false, status: 409, error: "a winner is already recorded for that date" };
+      const same = await db.rosterRollClaim.findFirst({ where: matchRow(date, handle, code, kind), select: { date: true } });
+      return same ? { ok: true } : { ok: false, status: 409, error: "a winner is already recorded for that game on that date" };
     }
     throw e;
   }
+}
+
+let prizeKey: Promise<void> | null = null;
+
+/** Lets lineup, slot, and pack each record a winner on the same day. */
+function ensurePrizeKey() {
+  if (typeof db.$executeRawUnsafe !== "function") return Promise.resolve();
+  prizeKey ??= db
+    .$executeRawUnsafe(`ALTER TABLE trade_shark."RosterRollClaim" ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'lineup'`)
+    .then(() =>
+      db.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = 'trade_shark' AND t.relname = 'RosterRollClaim' AND c.contype = 'p'
+              AND pg_get_constraintdef(c.oid) LIKE '%kind%'
+          ) THEN
+            ALTER TABLE trade_shark."RosterRollClaim" DROP CONSTRAINT IF EXISTS "RosterRollClaim_pkey";
+            ALTER TABLE trade_shark."RosterRollClaim" ADD PRIMARY KEY (date, kind);
+          END IF;
+        END $$;
+      `),
+    )
+    .then(() => undefined)
+    .catch((e) => {
+      prizeKey = null;
+      throw e;
+    });
+  return prizeKey;
 }

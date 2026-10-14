@@ -65,7 +65,7 @@ beforeEach(() => {
   sendMail.mockClear();
   T("buyer").push(buyer("winner"), buyer("other"));
   T("card").push(stockCard("c1", 6.5));
-  T("rosterRollClaim").push({ date: "2026-10-08", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
+  T("rosterRollClaim").push({ date: "2026-10-08", kind: "lineup", handle: "SharkFan", score: 9120, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
 });
 
 describe("prize reservation", () => {
@@ -82,7 +82,7 @@ describe("prize reservation", () => {
     await win();
     expect(inCase()).toHaveLength(0); // the case and pack builder both draw from Priced/BulkHold only
     // A second winner the next day finds nothing to give.
-    T("rosterRollClaim").push({ date: "2026-10-09", handle: "Reef_99", score: 1, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
+    T("rosterRollClaim").push({ date: "2026-10-09", kind: "lineup", handle: "Reef_99", score: 1, status: "unclaimed", cardId: null, buyerId: null, codeHash: CODE_HASH });
     expect(await pullSingle("2026-10-09", "Reef_99", CODE, "other")).toBeNull();
     expect(vault()).toHaveLength(1);
   });

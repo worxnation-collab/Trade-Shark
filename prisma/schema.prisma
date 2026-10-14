@@ -610,7 +610,8 @@ model PdfIngest {
 /// Roster Roll daily winner: one row per America/New_York date, written only by POST /api/roster-roll/claim.
 /// The winner's link (/case?reward=pokeroll&date=…&handle=…&code=…) pulls one free single from loose stock; the row then flips to claimed.
 model RosterRollClaim {
-  date      String    @id // YYYY-MM-DD, America/New_York
+  date      String
+  kind      String    @default("lineup") // lineup | slot | pack — one physical card per game per day
   handle    String // 3–16 characters, matched case-insensitively against the link
   score     Int
   status    String    @default("unclaimed") // unclaimed | claimed
@@ -619,6 +620,8 @@ model RosterRollClaim {
   codeHash  String? // sha256 of the link's secret code (Roster Roll sends it with the winner); the pull needs the code
   createdAt DateTime  @default(now())
   claimedAt DateTime?
+
+  @@id([date, kind])
 }
 
 /// A single won as a prize, held for the player instead of shipping. The card is reserved (Card.status Vaulted) so no

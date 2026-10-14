@@ -13,13 +13,13 @@ const details = (c: SingleView) => [c.setName, c.number ? `#${c.number.replace(/
  * shows its best card. It goes into their vault (Collection) and never ships on its own. If the pull doesn't go through (already pulled, nothing to give) the
  * line simply goes away. `pulled`: the winner came back (refresh), so show their card straight away.
  */
-export function RosterRollPull({ date, handle, code, pulled = null }: { date: string; handle: string; code: string; pulled?: SingleView | null }) {
+export function RosterRollPull({ date, handle, code, kind = "lineup", pulled = null }: { date: string; handle: string; code: string; kind?: string; pulled?: SingleView | null }) {
   const [state, setState] = useState<"offer" | "busy" | "gone">("offer");
   const [card, setCard] = useState<SingleView | null>(pulled);
 
   async function pull() {
     setState("busy");
-    const r = await fetch("/api/roster-roll/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, handle, code, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
+    const r = await fetch("/api/roster-roll/pull", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, handle, code, kind, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
       .then((x) => x.json())
       .catch(() => null);
     if (r?.ok && r.card) setCard(r.card as SingleView);
@@ -35,7 +35,7 @@ export function RosterRollPull({ date, handle, code, pulled = null }: { date: st
         </div>
         <p className="mt-3 text-lg font-semibold text-navy">{card.name}</p>
         {details(card) && <p className="text-sm text-navy/70">{details(card)}</p>}
-        <p className="mt-4 text-base text-navy">That&apos;s the single. It&apos;s in your vault, and nothing ships until you say so.</p>
+        <p className="mt-4 text-base text-navy">That&apos;s the single. It&apos;s a real card from our inventory. Ship it from your collection.</p>
         <Link href="/collection" className="mt-2 text-base text-navy underline">
           Ship it or sell it back from your collection.
         </Link>
