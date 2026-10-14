@@ -218,7 +218,7 @@ export function Game(p: GameProps) {
         {opensAt ? (
           <>A new drop opens to everyone at {opensAt}. Members are in now.</>
         ) : (
-          <>No packs are built right now, so this can't roll. Keep and Put them back show up on the cards as soon as one is ready.</>
+          <>No real packs are built yet. Cards have to be priced and sorted before one can be rolled. Nothing is for sale until then.</>
         )}
       </p>
     </>
@@ -264,12 +264,15 @@ export function Game(p: GameProps) {
           {rolling ? (
             rollDeck
           ) : (
-            <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl p-12">
-              <div className="w-40 sm:w-48">{packArt()}</div>
+            <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl p-8">
+              <div className="w-44 sm:w-52">
+                <img src="/real-pack.jpg" alt="A sealed real pack" className="w-full drop-shadow-2xl" />
+              </div>
             </Stage>
           )}
-          <p className="mt-5 max-w-md text-lg font-semibold leading-snug text-navy">Keep it, or put it back. The next roll is a dollar more.</p>
-          <p className="mt-1 max-w-md text-sm text-navy/70">You see all 12 real cards first. Nothing is charged until you press Keep.</p>
+          <p className="mt-4 rounded-full bg-gold px-4 py-1 text-sm font-bold text-[#111317]">Real cards · this one ships</p>
+          <p className="mt-4 max-w-md text-lg font-semibold leading-snug text-navy">Keep it for {usd(KEEP_LADDER[0])}, or put it back. The next one is a dollar more.</p>
+          <p className="mt-1 max-w-md text-sm text-navy/70">Not the free game. You see all 12 real cards, then you decide. Nothing is charged until you press Keep.</p>
           {priceSteps}
           {!rolling && lookButtons}
           <Rules odds={p.odds} />

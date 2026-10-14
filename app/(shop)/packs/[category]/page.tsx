@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
   const c = categoryOf((await params).category);
-  return { title: c ? `Roll a ${c.product}` : "Packs" };
+  return { title: c ? `Real ${c.product}` : "Real pack" };
 }
 
 /** The pack screen for one public category. Rules and odds are on screen before the first look. Other categories go home. */
@@ -25,7 +25,9 @@ export default async function PackPage({ params, searchParams }: { params: Promi
   const state = await playState(await currentBuyer(), category, ipKey(await headers()));
   return (
     <section>
-      <PageTitle title={cat.product} />
+      <PageTitle title="Real pack">
+        <p>Twelve real cards. You see every one before you pay.</p>
+      </PageTitle>
       <Game
         category={category}
         product={cat.product}
