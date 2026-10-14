@@ -13,8 +13,8 @@ import { BIN, CHASE_RESERVE_CAP, SLOTS, cryptoRng, drawPack, isBump, nextKind, r
 
 /** Cards that may be drawn: identified, priced, upright stock with a photo, tagged to an owner, sorted into a tray slot, not in any pack. */
 export const STOCK = ["Priced", "BulkHold"];
-/** Keep up to this many available packs per category (more stock stays loose for later draws). */
-export const AVAILABLE_TARGET = 50;
+/** Keep up to this many available packs per category. High enough to empty a real tray into packs. */
+export const AVAILABLE_TARGET = 500;
 
 /** Energy cards (basic, special, anything named Energy) never go in a pack: they wait in the desk's side bin. */
 export const isEnergy = (name?: string | null) => /\benergy\b/i.test(name ?? "");
@@ -149,7 +149,7 @@ export async function previewBuild(category: Category, count = BUILD_BATCH) {
  * Build packs from the trays and list them for sale right away (members' first hour): the 12 cards are reserved to
  * the pack, so no two buyers can get the same card. The founder pulls the stack later (Packed). Called by `autoList`.
  */
-export async function buildGamePacks(category: Category, opts: { rng?: Rng; count?: number; now?: Date } = {}) {
+export async function buildGamePacks(category: Category, opts: { rng?: Rng; count?: number; now?: Date; publicNow?: boolean } = {}) {
   const now = opts.now ?? new Date();
   const ctx = await buildContext(category);
   const room = Math.max(0, AVAILABLE_TARGET - ctx.ready.total);
@@ -176,7 +176,7 @@ export async function buildGamePacks(category: Category, opts: { rng?: Rng; coun
             hitCardId: draw.kind === "base" ? null : draw.best,
             chase: draw.kind === "chase",
             chaseCardId: draw.kind === "chase" ? draw.best : null,
-            publicAt: new Date(now.getTime() + EARLY_ACCESS_MS), // a new drop: members first
+            publicAt: opts.publicNow ? now : new Date(now.getTime() + EARLY_ACCESS_MS), // a new drop: members first, unless this fill is meant to sell now
           },
         });
         const n = await tx.card.updateMany({ where: { id: { in: draw.ids }, gamePackId: null, status: { in: STOCK } }, data: { gamePackId: pack.id, status: "LilStack" } });

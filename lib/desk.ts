@@ -78,8 +78,9 @@ export const LIST_STEP = 10;
  * mix isn't listed. Called from the desk, the button and the background tick.
  */
 export async function autoList(category: Cat) {
+  const exhaust = category === "pokemon";
   const first = await getSettings();
-  if ((first.listBudget?.[category] ?? LIST_STEP) <= 0) return { built: 0, budget: first.listBudget?.[category] ?? 0 };
+  if (!exhaust && (first.listBudget?.[category] ?? LIST_STEP) <= 0) return { built: 0, budget: first.listBudget?.[category] ?? 0 };
   // One lister per category at a time (the desk and the background tick can run together): never past the budget.
   const key = `autolist:${category}`;
   await db.setting.upsert({ where: { key }, create: { key, value: "0" }, update: {} });
@@ -89,11 +90,12 @@ export async function autoList(category: Cat) {
   try {
     const s = await getSettings(); // re-read inside the lock
     const budget = s.listBudget?.[category] ?? LIST_STEP;
-    if (budget <= 0) return { built: 0, budget };
+    if (!exhaust && budget <= 0) return { built: 0, budget };
     await assignLocations(category);
-    const r = await buildGamePacks(category, { count: budget });
-    if (r.built) await saveSettings({ listBudget: { ...s.listBudget, [category]: budget - r.built } });
-    return { built: r.built, budget: budget - r.built };
+    // Pokémon sells whatever the trays can make, including thin packs. Other categories stay on the desk allowance.
+    const r = await buildGamePacks(category, { count: exhaust ? 500 : budget, publicNow: exhaust });
+    if (!exhaust && r.built) await saveSettings({ listBudget: { ...s.listBudget, [category]: budget - r.built } });
+    return { built: r.built, budget: exhaust ? budget : budget - r.built };
   } finally {
     await db.setting.update({ where: { key }, data: { value: "0" } });
   }

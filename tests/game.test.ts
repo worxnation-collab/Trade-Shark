@@ -59,7 +59,7 @@ describe("value bins", () => {
 });
 
 describe("pack builder", () => {
-  it("draws 7 bulk + 4 mid + 1 top, value inside $3.20–$3.80 (close to the $3.99 keep)", () => {
+  it("prefers the $3.20–$3.80 band, and still ships a thin pack when the band is impossible", () => {
     expect(TARGET).toEqual({ min: 3.2, max: 3.8 });
     const p = drawPack(fitting(), seeded())!;
     expect(p.ids).toHaveLength(12);
@@ -69,20 +69,25 @@ describe("pack builder", () => {
     expect(p.ids.filter((id) => id.startsWith("t"))).toHaveLength(1);
     expect(p.value).toBeGreaterThanOrEqual(TARGET.min);
     expect(p.value).toBeLessThanOrEqual(TARGET.max);
+
+    // Every strict draw is $4.30, over the band. A thinner 12 still ships, and it stays under the ceiling.
+    const thin = drawPack(overBand(), seeded())!;
+    expect(thin.ids).toHaveLength(12);
+    expect(thin.value).toBeLessThanOrEqual(HARD_CAP);
   });
 
-  it("rejects draws that miss the band and draws again; gives up rather than pad", () => {
-    expect(drawPack(overBand(), seeded())).toBe(null);
-    // Mixed tops: only the $1.50 one fits, so the builder keeps drawing until it lands it.
+  it("keeps drawing until a pack lands in the band when one top card makes it possible", () => {
     const mixed = [...many(40, 0.1, "b"), ...many(20, 0.4, "m"), ...many(4, 3.5, "x"), ...many(1, 1.5, "t")];
     const p = drawPack(mixed, seeded(3))!;
     expect(p.ids).toContain("t0");
     expect(p.value).toBe(3.8);
   });
 
-  it("a slot it can't fill leaves the category unable to start, never a wrong-value pad", () => {
+  it("a missing top still makes a pack from the cheaper cards; a $4+ card stays out", () => {
     const noTop = [...many(40, 0.1, "b"), ...many(20, 0.5, "m"), ...many(3, 5, "x")];
-    expect(drawPack(noTop, seeded())).toBe(null);
+    const p = drawPack(noTop, seeded())!;
+    expect(p.ids).toHaveLength(12);
+    expect(p.ids.some((id) => id.startsWith("x"))).toBe(false);
     expect(shortages(noTop)).toEqual([{ slot: "top", have: 0, need: 1 }]);
     expect(shortages(fitting())).toEqual([]);
   });
@@ -98,9 +103,9 @@ describe("pack builder", () => {
     expect(new Set(packs.flatMap((p) => p.ids)).size).toBe(60);
   });
 
-  it("never shows a base pack outside the band; a chase pack may go over", () => {
+  it("shows a thin pack, and hides a base pack over the ceiling", () => {
     expect(showable({ value: 3.5, chase: false })).toBe(true);
-    expect(showable({ value: 2.4, chase: false })).toBe(false);
+    expect(showable({ value: 2.4, chase: false })).toBe(true);
     expect(showable({ value: HARD_CAP + 0.1, chase: false })).toBe(false);
     expect(showable({ value: 14, kind: "chase" })).toBe(true);
     expect(sumValue([0.1, 0.2])).toBe(0.3);
@@ -116,7 +121,8 @@ describe("pack builder", () => {
     expect(p.value).toBeGreaterThanOrEqual(HIT_TARGET.min);
     expect(p.value).toBeLessThanOrEqual(HIT_TARGET.max);
     expect(showable({ value: 6.5, kind: "hit" })).toBe(true);
-    expect(showable({ value: 13, kind: "hit" })).toBe(false);
+    expect(showable({ value: 13, kind: "hit" })).toBe(true);
+    expect(showable({ value: 21, kind: "hit" })).toBe(false);
   });
 });
 

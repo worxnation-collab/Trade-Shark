@@ -15,12 +15,17 @@ export type Slot = keyof typeof SLOTS;
 export const BIN = { midFrom: 0.25, topFrom: 1, hitFrom: 4, chaseFrom: 10 } as const;
 /** The member stack's top-slot swap. */
 export const BUMP = { from: 2.01, to: 3.99 } as const;
-/** A base pack's summed value must land here (close to the $3.99 first-look keep); otherwise the draw is thrown out and drawn again. */
+/** A base pack's summed value should land here (close to the $3.99 first-look keep). A miss is redrawn. */
 export const TARGET = { min: 3.2, max: 3.8 } as const;
 /** A hit pack: one $4–$9.99 card plus 7 bulk and 4 mid. */
 export const HIT_TARGET = { min: 5, max: 12 } as const;
-/** Never show or sell a base pack above this. Hit, chase and member packs have their own rules. */
-export const HARD_CAP = TARGET.max;
+/**
+ * A pack that can't hit its band still ships, as long as it isn't a giveaway.
+ * Thin packs (under the band) are allowed. Base packs over this don't.
+ */
+export const BASE_CEILING = 8;
+/** Never show or sell a base pack above the ceiling. Hit, chase and member packs have their own rules. */
+export const HARD_CAP = BASE_CEILING;
 
 /** The mix over the last 100 built packs in a category. */
 export const MIX = { window: 100, hit: 18, chase: 2 } as const;
@@ -182,9 +187,9 @@ function binsOf(pool: PoolCard[]) {
 }
 
 /**
- * Draw one pack of a kind, at random: 7 bulk + 4 mid + one "best" card (top for base, $4–$9.99 for hit,
- * $10+ for chase). If the total misses that kind's band, throw it out and draw again.
- * Returns null when a slot can't be filled or no draw lands in the band (never pads with the wrong value).
+ * Draw one pack. First try the real mix: 7 bulk + 4 mid + one best card, inside the value band.
+ * If that can't be done, still ship a pack: 12 priced cards, no $4+ card in a base pack, nothing over the ceiling.
+ * A thin pack is allowed. No pack is better than a fake one, but a less-good pack is still a pack.
  */
 export function drawPack(
   pool: PoolCard[],
@@ -192,6 +197,18 @@ export function drawPack(
   attempts = 400,
   kind: "base" | "hit" | "chase" = "base",
   /** Tally of why legal-looking draws were thrown out (duplicate, same type, same player). */
+  why?: Map<string, number>,
+): { ids: string[]; value: number; best: string } | null {
+  const strict = drawStrict(pool, rng, attempts, kind, why);
+  if (strict) return strict;
+  return drawLoose(pool, rng, attempts, kind, why);
+}
+
+function drawStrict(
+  pool: PoolCard[],
+  rng: Rng,
+  attempts: number,
+  kind: "base" | "hit" | "chase",
   why?: Map<string, number>,
 ): { ids: string[]; value: number; best: string } | null {
   const bins = binsOf(pool);
@@ -212,6 +229,47 @@ export function drawPack(
     return { ids: cards.map((c) => c.id), value, best: best.id };
   }
   return null;
+}
+
+/** 12 real cards when the perfect mix can't be built. Base packs stay under the ceiling and never take a $4+ card. */
+function drawLoose(
+  pool: PoolCard[],
+  rng: Rng,
+  attempts: number,
+  kind: "base" | "hit" | "chase",
+  why?: Map<string, number>,
+): { ids: string[]; value: number; best: string } | null {
+  const bins = binsOf(pool);
+  const usable =
+    kind === "base"
+      ? [...bins.bulk, ...bins.mid, ...bins.top]
+      : kind === "hit"
+        ? [...bins.bulk, ...bins.mid, ...bins.top, ...bins.hit]
+        : pool;
+  if (kind === "hit" && bins.hit.length < 1) return null;
+  if (kind === "chase" && bins.chase.length < 1) return null;
+  if (usable.length < PACK_CARDS) return null;
+  const ceiling = kind === "base" ? BASE_CEILING : kind === "hit" ? 20 : Infinity;
+  let chosen: { cards: PoolCard[]; value: number; score: number } | null = null;
+  for (let i = 0; i < attempts; i++) {
+    const cards = pick(usable, PACK_CARDS, rng);
+    if (kind === "hit" && !cards.some((c) => slotOf(c.price) === "hit")) continue;
+    if (kind === "chase" && !cards.some((c) => slotOf(c.price) === "chase")) continue;
+    const problem = packProblem(cards);
+    if (problem) {
+      const k = problem.replace(/ cards of .+$/, " cards of one player");
+      why?.set(k, (why.get(k) ?? 0) + 1);
+      continue;
+    }
+    const value = sumValue(cards.map((c) => c.price));
+    if (value > ceiling) continue;
+    const score = value >= TARGET.min && value <= TARGET.max ? 0 : Math.abs(value - (TARGET.min + TARGET.max) / 2);
+    if (!chosen || score < chosen.score) chosen = { cards, value, score };
+    if (score === 0) break;
+  }
+  if (!chosen) return null;
+  const best = [...chosen.cards].sort((a, b) => b.price - a.price)[0];
+  return { ids: chosen.cards.map((c) => c.id), value: chosen.value, best: best.id };
 }
 
 /** Draw as many base packs as the pool allows (up to `max`), each card used once. */
@@ -252,12 +310,12 @@ export function nextKind(o: {
   return "base";
 }
 
-/** Is this a pack the game may show? Base packs stay in the $3.20–$3.80 band; hit packs in $5–$12; chase and member stacks by their own build. */
+/** Is this a pack the game may show? Thin packs ship. A base pack over the ceiling does not. */
 export function showable(p: { value: number; kind?: string; chase?: boolean }) {
   const kind = p.kind ?? (p.chase ? "chase" : "base");
   if (kind === "chase" || kind === "member") return true;
-  if (kind === "hit") return p.value >= HIT_TARGET.min - 0.001 && p.value <= HIT_TARGET.max + 0.001;
-  return p.value >= TARGET.min - 0.001 && p.value <= TARGET.max + 0.001 && p.value <= HARD_CAP;
+  if (kind === "hit") return p.value > 0 && p.value <= 20;
+  return p.value > 0 && p.value <= BASE_CEILING + 0.001;
 }
 
 /**
