@@ -211,48 +211,45 @@ export function Game(p: GameProps) {
 
   // The roll stays on screen even when the case is empty. Hiding it is what made the game look gone.
   const lookButtons = !p.open ? (
-    <>
-      <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled>
-        Roll a pack · {usd(KEEP_LADDER[0])} to keep
+    <div className="mt-4 w-full max-w-md rounded-2xl border border-gold/50 bg-[#1a1612] p-3">
+      <button className="btn-reveal w-full px-8 py-3.5 text-lg" disabled>
+        Open the pack
       </button>
-      <p className="mt-3 max-w-sm text-sm text-navy/70">
+      <p className="mt-2 text-xs text-navy/70">
         {opensAt ? (
           <>A new drop opens to everyone at {opensAt}. Members are in now.</>
         ) : (
-          <>No real packs are built yet. Cards have to be priced and sorted before one can be rolled. Nothing is for sale until then.</>
+          <>No real packs are built yet. Cards have to be priced and sorted before one can be opened.</>
         )}
       </p>
-    </>
+    </div>
   ) : (
-    <>
+    <div className="mt-4 flex w-full max-w-md flex-col items-center rounded-2xl border border-gold/50 bg-[#1a1612] p-3">
       {looks > 0 ? (
-        <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled={!!busy} onClick={() => look()} data-pop>
-          {busy === "look" ? "Rolling…" : `${phase.k === "passed" ? "Roll again" : "Roll a pack"} · ${usd(keepPriceFor(nextLook))} to keep`}
+        <button className="btn-reveal w-full px-8 py-3.5 text-lg" disabled={!!busy} onClick={() => look()} data-pop>
+          {busy === "look" ? "Opening…" : phase.k === "passed" ? "Open the next pack" : "Open the pack"}
         </button>
       ) : (
-        <p className="mt-6 text-sm text-navy/75">That&apos;s {LOOKS_PER_DAY} rolls today. More tomorrow.</p>
-      )}
-      {looks > 0 && p.member && stackLeft && (
-        <button className="btn-ghost mt-3 px-5 py-2" disabled={!!busy} onClick={() => look(true)}>
-          {busy === "stack" ? "Rolling…" : "Roll my member stack"}
+        <button className="btn-reveal w-full px-8 py-3.5 text-lg opacity-50" disabled>
+          Open the pack
         </button>
       )}
-      <p className="mt-2 text-xs text-navy/55">
-        {looks > 0 ? `${looks} of ${LOOKS_PER_DAY} free rolls left today · ` : ""}
-        <Link href="/play/member" className="underline">
-          {p.member ? "Membership" : "Membership $7.99/mo"}
-        </Link>
-        {/* Quiet and optional: never the only thing left after a pass. */}
-        {p.hasCard && !(phase.k === "passed" && looks <= 0) && (
-          <>
-            {" · "}
-            <button className="underline" disabled={!!busy} onClick={buyBlind} data-nopop>
-              {busy === "blind" ? "Opening…" : `Dealer's choice · ${usd(PRICES.blind)}`}
-            </button>
-          </>
-        )}
+      <p className="mt-2 text-xs leading-snug text-navy/70">
+        {looks > 0
+          ? `You see all 12 cards. Then Buy now · ${usd(keepPriceFor(nextLook))} opens Stripe. Nothing is charged until you press it. ${looks} of ${LOOKS_PER_DAY} opens left today.`
+          : `That's ${LOOKS_PER_DAY} opens today. More tomorrow. Buy now is the gold button on the opened pack. It goes to Stripe.`}
       </p>
-    </>
+      {looks > 0 && p.member && stackLeft && (
+        <button className="btn-ghost mt-2 px-5 py-2" disabled={!!busy} onClick={() => look(true)}>
+          {busy === "stack" ? "Opening…" : "Open my member stack"}
+        </button>
+      )}
+      {p.hasCard && looks > 0 && (
+        <button className="mt-1 text-xs text-navy/55 underline" disabled={!!busy} onClick={buyBlind} data-nopop>
+          {busy === "blind" ? "Opening…" : `Skip the look · buy blind ${usd(PRICES.blind)}`}
+        </button>
+      )}
+    </div>
   );
 
   return (
@@ -265,17 +262,15 @@ export function Game(p: GameProps) {
           {rolling ? (
             rollDeck
           ) : (
-            <Stage category={p.category} className="flex aspect-[4/5] w-full max-w-sm items-center justify-center rounded-2xl p-8">
-              <div className="w-44 sm:w-52">
-                <img src="/real-pack.jpg" alt="A sealed real pack" className="w-full drop-shadow-2xl" />
-              </div>
+            <Stage category={p.category} className="flex w-full max-w-[220px] items-center justify-center rounded-2xl p-4">
+              <img src="/real-pack.jpg" alt="A sealed real pack" className="w-full drop-shadow-2xl" />
             </Stage>
           )}
-          <p className="mt-4 rounded-full bg-gold px-4 py-1 text-sm font-bold text-[#111317]">Real cards · this one ships</p>
-          <p className="mt-4 max-w-md text-lg font-semibold leading-snug text-navy">Keep it for {usd(KEEP_LADDER[0])}, or put it back. The next one is a dollar more.</p>
-          <p className="mt-1 max-w-md text-sm text-navy/70">Not the free game. You see all 12 real cards, then you decide. Nothing is charged until you press Keep.</p>
-          {priceSteps}
+          <p className="mt-3 rounded-full bg-gold px-4 py-1 text-sm font-bold text-[#111317]">Real cards · this one ships</p>
           {!rolling && lookButtons}
+          <p className="mt-4 max-w-md text-lg font-semibold leading-snug text-navy">Open it. See all 12. Buy now sends you to Stripe, or put it back.</p>
+          <p className="mt-1 max-w-md text-sm text-navy/70">Not the free game. Nothing is charged until you press Buy now.</p>
+          {priceSteps}
           <Rules odds={p.odds} />
         </>
       )}
@@ -304,12 +299,12 @@ export function Game(p: GameProps) {
                 Put them back
               </button>
               <button className="btn-reveal px-8 py-3 text-2xl" disabled={!!busy} onClick={keepIt} data-pop>
-                {busy === "keep" ? "Keeping…" : `Keep · ${usd(phase.keepPrice)}`}
+                {busy === "keep" ? "Opening Stripe…" : `Buy now · ${usd(phase.keepPrice)}`}
               </button>
             </div>
             {phase.lookNumber > 1 && phase.afterPass && <p className="text-xs text-navy/60">You put one back, so this one is a dollar more.</p>}
             <p className="text-xs text-navy/55">
-              {p.hasCard ? `Charged to ${p.cardLabel ?? "your saved card"}.` : "Paid with Stripe; your card is saved for next time."} Stored in your Collection until you ship.
+              {p.hasCard ? `Charged to ${p.cardLabel ?? "your saved card"}.` : "Buy now opens Stripe Checkout and saves the card for next time."} The pack waits in your Collection until you ship it.
             </p>
           </div>
         </>
