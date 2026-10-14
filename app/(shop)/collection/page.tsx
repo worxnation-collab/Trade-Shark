@@ -51,7 +51,7 @@ export default async function CollectionPage() {
           .
         </p>
       ) : (
-        <Collection packs={packs} singles={singles} credit={credit} sellBackPct={settings?.sellBackPct ?? 80} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} />
+        <Collection packs={packs} singles={singles} credit={credit} sellBackPct={settings?.sellBackPct ?? 80} order={CATEGORIES.map((c) => c.key)} address={shipFields(buyer)} canShip={packs.length > 0} />
       )}
       <Disclaimer className="mx-auto mt-10 max-w-md text-center" />
     </section>

@@ -59,6 +59,11 @@ async function win(buyerId = "winner") {
   return vault().find((v) => v.cardId === single!.id)! as { id: string; cardId: string };
 }
 
+/** One real pack purchase. Prize cards alone do not unlock shipping. */
+function bought(buyerId = "winner") {
+  T("gamePack").push({ id: `pack-${buyerId}`, reservedBy: buyerId, status: "kept", category: "pokemon", orderId: "past" });
+}
+
 beforeEach(() => {
   fake.reset();
   buyLabel.mockClear();
@@ -100,6 +105,8 @@ describe("no auto-ship", () => {
 
   it("a quote alone charges nothing and leaves the single in the vault", async () => {
     const item = await win();
+    expect(await quoteShipment(T("buyer")[0] as never, [], null, [item.id])).toMatchObject({ ok: false, code: "no-purchase" });
+    bought();
     const q = await quoteShipment(T("buyer")[0] as never, [], null, [item.id]);
     expect(q).toMatchObject({ ok: true, ship: { amount: 5.95, how: "fallback", packs: 0, singles: 1 } });
     expect(T("gameCharge")).toHaveLength(0);
@@ -111,6 +118,7 @@ describe("no auto-ship", () => {
 describe("ship request", () => {
   it("confirming the quote charges shipping only, then the label marks it shipped", async () => {
     const item = await win();
+    bought();
     const b = T("buyer")[0] as never;
     const q = await quoteShipment(b, [], null, [item.id]);
     const stripe = fakeStripe();
@@ -133,6 +141,7 @@ describe("ship request", () => {
 
   it("a declined card puts the single back in the vault", async () => {
     const item = await win();
+    bought();
     const b = T("buyer")[0] as never;
     const q = await quoteShipment(b, [], null, [item.id]);
     const declined = { paymentIntents: { create: async () => ({ id: "pi_x", status: "requires_action" }) }, refunds: { create: async () => ({ id: "", status: null }) } };
@@ -147,6 +156,8 @@ describe("ship request", () => {
     const single = await pullSingle("2026-10-08", "SharkFan", CODE, "guest");
     const item = vault().find((v) => v.cardId === single!.id)! as { id: string };
     const g = T("buyer").find((x) => x.id === "guest") as never;
+    expect(await quoteShipment(g, [], null, [item.id])).toMatchObject({ ok: false, code: "no-purchase" });
+    bought("guest");
     const q = await quoteShipment(g, [], null, [item.id]);
     expect(await shipStored(g, (q as { ship: { quoteId: string } }).ship.quoteId, { api: fakeStripe().api as never })).toMatchObject({ ok: false, code: "no-card" });
     expect(vault()[0].status).toBe("in_vault");
@@ -178,6 +189,7 @@ describe("sell-back", () => {
     expect(await sellBackQuote("other", item.id)).toBeNull();
     expect(await sellBack("other", item.id)).toMatchObject({ ok: false });
     expect(card("c1").status).toBe("Vaulted");
+    bought();
     const b = T("buyer")[0] as never;
     const q = await quoteShipment(b, [], null, [item.id]);
     await shipStored(b, (q as { ship: { quoteId: string } }).ship.quoteId, { api: fakeStripe().api as never });

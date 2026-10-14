@@ -54,6 +54,7 @@ export function Collection({
   sellBackPct = 80,
   order,
   address,
+  canShip = false,
 }: {
   packs: StoredPack[];
   singles?: VaultSingle[];
@@ -61,6 +62,7 @@ export function Collection({
   sellBackPct?: number;
   order: string[];
   address: ShipToFields;
+  canShip?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<PackView | null>(null);
@@ -291,7 +293,15 @@ export function Collection({
       ))}
 
       <div className="sticky bottom-3 z-10 mt-8 rounded-lg border border-navy/15 border-b-gold bg-sand p-4 text-center">
-        {ship.k === "off" && (
+        {ship.k === "off" && !canShip && (
+          <>
+            <button className="btn-reveal px-8 py-3 text-lg opacity-50" disabled>
+              Ship
+            </button>
+            <p className="mt-1 text-xs text-navy/60">Buy one real pack and shipping unlocks. Until then, cards stay in your collection.</p>
+          </>
+        )}
+        {ship.k === "off" && canShip && (
           <>
             <button
               className="btn-reveal px-8 py-3 text-lg"

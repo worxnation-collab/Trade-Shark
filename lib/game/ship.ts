@@ -77,7 +77,13 @@ export async function ensureVerified(buyer: Buyer): Promise<{ ok: true; id: stri
   return v;
 }
 
-/** The player's bought packs, newest first; `orderId` null = still in the Collection, waiting to ship. */
+/** A real shop purchase: one kept or blind pack. Prize cards alone do not unlock shipping. */
+export async function hasShopPurchase(buyerId: string) {
+  const n = await db.gamePack.count({ where: { reservedBy: buyerId, status: { in: BOUGHT } } });
+  return n > 0;
+}
+
+const NEED_PURCHASE = { ok: false as const, error: "Buy one real pack before anything in your collection can ship.", code: "no-purchase" as const };
 export async function collection(buyerId: string) {
   return db.gamePack.findMany({
     where: { reservedBy: buyerId, status: { in: BOUGHT } },
@@ -103,6 +109,7 @@ async function storedSingles(buyerId: string, ids: string[]) {
  * singles. A changed address is saved and verified first; USPS has to be able to deliver it. Nothing is charged here.
  */
 export async function quoteShipment(buyerIn: Buyer, packIds: string[], address?: ShipToFields | null, vaultIds: string[] = []) {
+  if (!(await hasShopPurchase(buyerIn.id))) return NEED_PURCHASE;
   const ids = [...new Set(packIds.map(String))];
   const vids = [...new Set(vaultIds.map(String))];
   const [packs, singles] = await Promise.all([storedPacks(buyerIn.id, ids), storedSingles(buyerIn.id, vids)]);
@@ -158,6 +165,7 @@ export async function validQuote(buyer: Buyer, quoteId: string | null | undefine
  */
 export async function shipStored(buyer: Buyer, quoteId: string, opts: { api?: ChargeApi | null; now?: Date } = {}) {
   const now = opts.now ?? new Date();
+  if (!(await hasShopPurchase(buyer.id))) return NEED_PURCHASE;
   const quote = await validQuote(buyer, quoteId, now);
   if (!quote) return { ok: false as const, error: "That shipping price expired. Check it again.", code: "ship-changed" };
   if (quote.amount > 0 && !buyer.paymentMethodId) return { ok: false as const, error: "Save a card first.", code: "no-card" };
