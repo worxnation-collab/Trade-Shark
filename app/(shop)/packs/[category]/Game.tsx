@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pop } from "@/lib/client/feel";
 import type { PackView } from "@/lib/game/packs";
-import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, RULES_LINE, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
+import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, TIMER_SECONDS, keepPriceFor } from "@/lib/game/rules";
 import { CardBack } from "@/components/CardBack";
 import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
@@ -191,18 +191,37 @@ export function Game(p: GameProps) {
   );
 
   const opensAt = p.opensAt ? new Date(p.opensAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
+  const priceSteps = (
+    <ol className="mt-3 flex flex-wrap justify-center gap-2 text-xs" aria-label="Keep prices">
+      {KEEP_LADDER.map((price, i) => (
+        <li
+          key={price}
+          className={
+            i === 0
+              ? "rounded-full border border-gold bg-gold px-3 py-1.5 font-semibold text-[#111317]"
+              : "rounded-full border border-navy/25 px-3 py-1.5 text-navy/70"
+          }
+        >
+          {i === 0 ? "Keep" : `After ${i} put-back${i > 1 ? "s" : ""}`} · {usd(price)}
+        </li>
+      ))}
+    </ol>
+  );
 
-  // Under the rules (first visit) and after a pass: look again, or the quiet extras.
+  // The roll stays on screen even when the case is empty. Hiding it is what made the game look gone.
   const lookButtons = !p.open ? (
-    <p className="mt-6 text-sm text-navy/75">
-      {opensAt ? (
-        <>
-          A new drop opens to everyone at {opensAt}. <Link href="/play/member" className="underline">Members</Link> are in now.
-        </>
-      ) : (
-        <>No {p.product}s are ready right now. Check back after my next batch.</>
-      )}
-    </p>
+    <>
+      <button className="btn-reveal mt-6 px-9 py-3.5 text-lg" disabled>
+        Roll a pack · {usd(KEEP_LADDER[0])} to keep
+      </button>
+      <p className="mt-3 max-w-sm text-sm text-navy/70">
+        {opensAt ? (
+          <>A new drop opens to everyone at {opensAt}. Members are in now.</>
+        ) : (
+          <>No packs are built right now, so this can't roll. Keep and Put them back show up on the cards as soon as one is ready.</>
+        )}
+      </p>
+    </>
   ) : (
     <>
       {looks > 0 ? (
@@ -237,11 +256,11 @@ export function Game(p: GameProps) {
 
   return (
     <div className="mx-auto mt-6 flex max-w-4xl flex-col items-center text-center">
-      {error && <p className="mb-4 rounded border border-navy/20 bg-white px-3 py-2 text-sm text-navy">{error}</p>}
+      {error && <p className="mb-4 rounded-xl border border-gold/40 bg-[#1a1612] px-3 py-2 text-sm text-navy">{error}</p>}
 
       {phase.k === "intro" && (
         <>
-          {/* The stage sits behind the pack (or the rolling deck) only; the rules and the button stay below. */}
+          {/* The stage sits behind the pack (or the rolling deck) only; the choice stays below. */}
           {rolling ? (
             rollDeck
           ) : (
@@ -249,8 +268,11 @@ export function Game(p: GameProps) {
               <div className="w-40 sm:w-48">{packArt()}</div>
             </Stage>
           )}
-          <Rules odds={p.odds} />
+          <p className="mt-5 max-w-md text-lg font-semibold leading-snug text-navy">Keep it, or put it back. The next roll is a dollar more.</p>
+          <p className="mt-1 max-w-md text-sm text-navy/70">You see all 12 real cards first. Nothing is charged until you press Keep.</p>
+          {priceSteps}
           {!rolling && lookButtons}
+          <Rules odds={p.odds} />
         </>
       )}
 
@@ -264,7 +286,7 @@ export function Game(p: GameProps) {
             <CardGrid pack={phase.pack} />
           </div>
           {/* Stays on screen while you scroll the cards: the clock and both choices. */}
-          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-lg border border-navy/15 border-b-gold bg-sand p-3">
+          <div className="sticky bottom-3 z-30 mt-6 flex w-full max-w-md flex-col items-center gap-1.5 rounded-2xl border border-gold/50 bg-[#1a1612] p-3">
             <p className="text-xs text-navy/65" role="timer" aria-live="off" aria-label={`${left} seconds left`}>
               <span className="font-semibold text-navy">{clock(left)}</span> left
             </p>
@@ -372,17 +394,17 @@ function PriceStep({ passed, look }: { passed: number; look: number }) {
 
 function Rules({ odds }: { odds: string[] }) {
   return (
-    <div className="mt-6 max-w-md">
-      <p className="text-lg font-semibold leading-snug text-navy">{RULES_LINE}</p>
-      <ul className="mt-3 space-y-1 text-left text-sm text-navy/80">
+    <div className="mt-8 max-w-md">
+      <p className="text-left text-[11px] font-semibold tracking-[0.08em] text-navy/50 uppercase">What's in the pack</p>
+      <ul className="mt-2 space-y-1 text-left text-sm text-navy/70">
         {odds.map((o) => (
           <li key={o} className="flex gap-2">
-            <span className="text-navy/40">•</span>
+            <span className="text-gold">•</span>
             {o}
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-left text-xs text-navy/60">Packs you buy wait in your Collection. Ship one or several together whenever you like; shipping is charged then.</p>
+      <p className="mt-2 text-left text-xs text-navy/55">Packs you buy wait in your Collection. Ship one or several together whenever you like; shipping is charged then.</p>
     </div>
   );
 }

@@ -364,3 +364,21 @@ kbd {
   .case-reel { height: auto !important; overflow: visible !important; }
   .case-dup { display: none !important; }
 }
+
+/* Public shop: the dark vault from pokeroll.fun. navy/sand keep their class names. */
+.vault {
+  --color-sand: #0e0c09;
+  --color-sand-2: #1a1612;
+  --color-navy: #f4efe6;
+  --color-navy-2: #cbbfaa;
+  color-scheme: dark;
+  background: #0e0c09;
+  color: #f4efe6;
+}
+.vault .bg-white {
+  background-color: #1a1612;
+}
+.vault .btn-reveal,
+.vault .bg-gold {
+  color: #111317;
+}

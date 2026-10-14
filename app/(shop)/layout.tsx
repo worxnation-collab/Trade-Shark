@@ -4,11 +4,11 @@ import { Wordmark } from "@/components/Brand";
 import { consignOpen } from "@/lib/partners";
 import { POKEROLL_URL } from "@/lib/rosterRollLink";
 
-/** One product with pokeroll.fun: the Pokéroll mark and name, ink on the light canvas, the two rolls up front. */
+/** The shop counter, in the same dark vault as pokeroll.fun. */
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   const open = await consignOpen().catch(() => false);
   return (
-    <div className="flex min-h-screen flex-col bg-sand">
+    <div className="vault flex min-h-screen flex-col bg-sand">
       <header className="border-b border-navy/10 bg-sand">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2.5">
           <Link href="/" aria-label="Pokéroll home">
