@@ -4,7 +4,7 @@
 export function LogoMark({ size = 28, className = "" }: { size?: number; className?: string }) {
   return (
     <img
-      src="/logo-mark.png"
+      src="/logo-mark.png?v=foil"
       alt=""
       width={size}
       height={size}

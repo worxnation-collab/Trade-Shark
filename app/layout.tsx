@@ -5,7 +5,7 @@ import { FeelListener } from "@/components/Feel";
 export const metadata: Metadata = {
   title: { default: "Pokéroll", template: "%s · Pokéroll" },
   description: "You roll it. Roll a starting lineup or a pack of 12 real Pokémon cards. Daily winner gets a free card.",
-  icons: { apple: "/apple-touch-icon.png" },
+  icons: { icon: "/favicon-32.png?v=foil", apple: "/apple-touch-icon.png?v=foil" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

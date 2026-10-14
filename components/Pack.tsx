@@ -21,7 +21,7 @@ export function Pack({ category, className = "" }: { category: string; className
         <path d={crimp(262, 280, true)} fill="#08090b" />
         <rect x="0" y="14" width="200" height="252" fill="#111317" />
         {/* the Pokéroll mark */}
-        <image href="/logo-mark.png" x="58" y="62" width="84" height="84" clipPath="url(#pack-mark)" />
+        <image href="/logo-mark.png?v=foil" x="58" y="62" width="84" height="84" clipPath="url(#pack-mark)" />
         {/* the one yellow edge */}
         <rect x="0" y="259" width="200" height="4" fill="#F5C518" />
         <text x="100" y="196" textAnchor="middle" fill="#FFFFFF" fontSize="25" fontWeight="800" letterSpacing="-0.5" style={{ fontFamily: "var(--font-display)" }}>
