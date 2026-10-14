@@ -266,6 +266,11 @@ async function finishMystery(session: Stripe.Checkout.Session, opts: { api?: Cha
   if (pm && typeof session.customer === "string")
     await s.customers.update(session.customer, { invoice_settings: { default_payment_method: pm.id } }).catch((e) => console.error("default card not set", e));
   const member = isMember(buyer, now);
+  if (!isPublicCategory(cycle.category)) {
+    if (pi?.id) await refund(buyer.id, cycle.id, pi.id, amount, opts.api !== undefined ? opts.api : chargeApi());
+    await db.gameCycle.update({ where: { id: cycle.id }, data: { status: "failed", endedAt: now } });
+    return err("That pack isn't open.", "closed");
+  }
   const got = await reservePack(cycle.category, buyer.id, { rng: cryptoRng, member, now });
   if (!got) {
     if (pi?.id) await refund(buyer.id, cycle.id, pi.id, amount, opts.api !== undefined ? opts.api : chargeApi());
