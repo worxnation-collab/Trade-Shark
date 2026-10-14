@@ -8,7 +8,7 @@ import { KEEP_LADDER, LOOKS_PER_DAY, PRICES, TIMER_SECONDS, keepPriceFor } from 
 import { CardBack } from "@/components/CardBack";
 import { Pack } from "@/components/Pack";
 import { Stage } from "@/components/Stage";
-import { CardGrid } from "./CardGrid";
+import { AccountPrompt } from "../../AccountPrompt";
 
 type Phase =
   | { k: "intro" }
@@ -365,6 +365,13 @@ export function Game(p: GameProps) {
             </Link>
           </div>
         </>
+      )}
+      {phase.k !== "intro" && (
+        <AccountPrompt
+          actionKey={
+            phase.k === "revealing" ? phase.cycleId : phase.k === "won" ? `${phase.how}-${phase.pack.number ?? "pack"}` : `pass-${phase.lookNumber}-${phase.why}`
+          }
+        />
       )}
     </div>
   );

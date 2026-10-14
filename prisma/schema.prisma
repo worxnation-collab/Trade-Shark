@@ -286,7 +286,7 @@ model Setting {
   value String
 }
 
-/// A player: a Stripe customer with a saved card. No password; the browser holds a signed cookie.
+/// A player. A guest has a cookie and no password. A name and password are optional, so the same cards open on another device. Google or Apple can attach to this row later.
 model Buyer {
   id                   String       @id @default(cuid())
   createdAt            DateTime     @default(now())
@@ -295,6 +295,9 @@ model Buyer {
   shipTo               String // JSON name + address, for fulfillment
   tz                   String // IANA zone from their browser at signup; locks end at its local midnight
   stripeCustomerId     String       @unique
+  // Optional sign-in. Null on a guest. Username is stored lowercase.
+  username             String?      @unique
+  passwordHash         String?
   paymentMethodId      String?
   cardFingerprint      String? // locks follow the card too, so a fresh cookie doesn't reset them
   cardLabel            String? // "Visa ·· 4242"
