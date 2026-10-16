@@ -18,6 +18,11 @@ export async function POST(req: Request) {
   if (!given || !timingSafeEqual(sha(given), sha(key))) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ ok: false, error: "send JSON: { date, handle, score, code }" }, { status: 400 });
-  const r = await recordWinner(body);
-  return r.ok ? NextResponse.json({ ok: true }, { status: 201 }) : NextResponse.json({ ok: false, error: r.error }, { status: r.status });
+  try {
+    const r = await recordWinner(body);
+    return r.ok ? NextResponse.json({ ok: true }, { status: 201 }) : NextResponse.json({ ok: false, error: r.error }, { status: r.status });
+  } catch (e) {
+    console.error("roster-roll claim failed", e);
+    return NextResponse.json({ ok: false, error: "couldn't record the winner" }, { status: 500 });
+  }
 }

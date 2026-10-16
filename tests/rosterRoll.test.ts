@@ -111,4 +111,27 @@ describe("Roster Roll claim", () => {
     // Two days later it's stale: "Be today's winner".
     expect(await recentWinner(new Date("2026-10-10T16:00:00Z"))).toBeNull();
   });
+
+  it("stores the prize beside the claim table when that table rejects the row", async () => {
+    const claims = (db as unknown as { rosterRollClaim: { create: () => Promise<unknown> } }).rosterRollClaim;
+    const orig = claims.create;
+    claims.create = async () => {
+      throw new Prisma.PrismaClientKnownRequestError("column kind does not exist", { code: "P2010", clientVersion: "test" });
+    };
+    try {
+      const now = new Date("2026-10-09T16:00:00Z");
+      expect(await recordWinner({ date: "2026-10-09", handle: "Reef_99", score: 44030, code: CODE, kind: "pack" }, now)).toEqual({ ok: true });
+      expect(await recordWinner({ date: "2026-10-09", handle: "reef_99", score: 44030, code: CODE, kind: "pack" }, now)).toEqual({ ok: true });
+      expect(await recordWinner({ date: "2026-10-09", handle: "Other", score: 1, code: CODE, kind: "pack" }, now)).toMatchObject({ ok: false, status: 409 });
+      expect(await canPull("2026-10-09", "Reef_99", CODE, "pack")).toBe(true);
+      expect(await canPull("2026-10-09", "Reef_99", CODE, "lineup")).toBe(false);
+      const card = await pullSingle("2026-10-09", "Reef_99", CODE, "b1", now, "pack");
+      expect(card).toMatchObject({ name: expect.any(String) });
+      expect(await pullSingle("2026-10-09", "Reef_99", CODE, "b1", now, "pack")).toBeNull();
+      expect(await claimedSingle("2026-10-09", "Reef_99", "pack")).toMatchObject({ id: card!.id });
+      expect(fake.t("rosterRollClaim").some((r) => r.date === "2026-10-09")).toBe(false);
+    } finally {
+      claims.create = orig;
+    }
+  });
 });

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const date = q.get("date");
   const handle = q.get("handle");
   if (!isWinner((await cookies()).get(WINNER_COOKIE)?.value, date, handle)) return new Response("not found", { status: 404 });
-  const single = await claimedSingle(date, handle).catch(() => null);
+  const single = await claimedSingle(date, handle, q.get("kind")).catch(() => null);
   const c = single ? await db.card.findUnique({ where: { id: single.id }, select: { id: true, frontImage: true, frontDisplay: true } }) : null;
   if (!c?.frontImage) return new Response("not found", { status: 404 });
   return framedImageResponse(c);

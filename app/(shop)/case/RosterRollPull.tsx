@@ -27,7 +27,7 @@ export function RosterRollPull({ date, handle, code, kind = "lineup", pulled = n
   }
 
   if (card) {
-    const q = new URLSearchParams({ date, handle }).toString();
+    const q = new URLSearchParams({ date, handle, kind }).toString();
     return (
       <div className="flex flex-col items-center px-4 pb-6 text-center">
         <div className="card-in w-full max-w-[18rem]" style={{ "--i": 0 } as React.CSSProperties}>
